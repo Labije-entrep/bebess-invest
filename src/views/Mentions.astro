@@ -1,0 +1,55 @@
+---
+import Base from '../layouts/Base.astro';
+import Valeur from '../components/Valeur.astro';
+import { getCabinet, getSeo } from '../data';
+import { t, type Langue } from '../i18n/config';
+
+interface Props { langue: Langue }
+const { langue } = Astro.props;
+const cabinet = getCabinet(langue);
+const seo = getSeo(langue);
+const l = t(langue);
+const lg = cabinet.legal;
+---
+<Base langue={langue} page="mentions" titre={seo.mentions.titre} description={seo.mentions.description}>
+  <section style="border-top:0">
+    <div class="wrap wrap--texte">
+      <div class="intro-page">
+        <span class="mono">{l.mentionsEyebrow}</span>
+        <h1>{l.mentionsTitre}</h1>
+        <p class="chapeau" style="font-size:.95rem">{l.mentionsChapeau}</p>
+        {l.languePrevaut && (<p class="accuse" style="margin-top:4px">{l.languePrevaut}</p>)}
+      </div>
+      <div class="legal" style="margin-top:32px">
+        <div>
+          <h3>{l.mentionsSections.editeur}</h3>
+          <p>
+            {cabinet.nom} — <Valeur v={lg.formeJuridique} />.<br />
+            {l.siege} : <Valeur v={cabinet.contact.adresse} />, <Valeur v={cabinet.contact.codePostalVille} />.<br />
+            <Valeur v={lg.rcs} /> — <Valeur v={lg.tva} /> — <Valeur v={lg.ape} />.<br />
+            {l.directeurPub} : <Valeur v={lg.directeurPublication} />.<br />
+            <a href={`mailto:${cabinet.contact.email}`}>{cabinet.contact.email}</a>
+          </p>
+        </div>
+        <div>
+          <h3>{l.mentionsSections.statut}</h3>
+          <p>
+            <Valeur v={lg.statut} /> — ORIAS <Valeur v={lg.orias} /> (<a href="https://www.orias.fr" rel="noopener">www.orias.fr</a>),
+            <Valeur v={lg.association} />.
+          </p>
+        </div>
+        <div><h3>{l.mentionsSections.assurance}</h3><p><Valeur v={lg.rcp} />. <Valeur v={lg.garantieFinanciere} /></p></div>
+        <div><h3>{l.mentionsSections.mediation}</h3><p><Valeur v={lg.mediateur} /></p></div>
+        <div><h3>{l.mentionsSections.hebergement}</h3><p><Valeur v={lg.hebergeur} /></p></div>
+        <div>
+          <h3>{l.mentionsSections.donnees}</h3>
+          <p>
+            {l.donneesTexte} <Valeur v={lg.conservationDonnees} /> {l.donneesDroits}
+            <a href={`mailto:${cabinet.contact.email}`}>{cabinet.contact.email}</a>. {l.donneesCookies}
+          </p>
+        </div>
+        <div><h3>{l.mentionsSections.risques}</h3><p><Valeur v={lg.avertissementRisque} /></p></div>
+      </div>
+    </div>
+  </section>
+</Base>

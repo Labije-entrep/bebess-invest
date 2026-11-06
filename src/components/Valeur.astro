@@ -1,0 +1,11 @@
+---
+/* Affiche une valeur de contenu. Si elle commence par "A COMPLETER",
+   elle s'affiche soulignee en dore : on repere ainsi ce qui manque,
+   dans les deux langues. */
+import { MARQUEUR } from '../data';
+interface Props { v: string }
+const { v } = Astro.props;
+const aCompleter = typeof v === 'string' && v.startsWith(MARQUEUR);
+const texte = aCompleter ? v.slice(MARQUEUR.length).replace(/^\s*:\s*/, '') : v;
+---
+{aCompleter ? <span class="aremplir">{texte || '…'}</span> : <Fragment>{texte}</Fragment>}

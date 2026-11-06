@@ -1,0 +1,32 @@
+---
+import { getCabinet } from '../data';
+import Valeur from './Valeur.astro';
+import { MENU, route, t, type Langue } from '../i18n/config';
+
+interface Props { langue: Langue }
+const { langue } = Astro.props;
+const cabinet = getCabinet(langue);
+const libelles = t(langue);
+const annee = new Date().getFullYear();
+---
+<footer class="site">
+  <div class="wrap">
+    <div class="pied-haut">
+      <a class="marque" href={route('accueil', langue)} style="margin:0">
+        <span class="sceau" aria-hidden="true">B</span>
+        <span><b>{cabinet.nom}</b><i><Valeur v={cabinet.baseline} /></i></span>
+      </a>
+      <div class="pied-liens">
+        {MENU.map((p) => (<a href={route(p, langue)}>{libelles.menu[p]}</a>))}
+        <a href={route('mentions', langue)}>{libelles.menu.mentions}</a>
+      </div>
+    </div>
+    <p class="pied-legal">
+      {cabinet.nom} — <Valeur v={cabinet.legal.formeJuridique} />, <Valeur v={cabinet.legal.rcs} />.
+      ORIAS <Valeur v={cabinet.legal.orias} /> — <Valeur v={cabinet.legal.statut} />,
+      <Valeur v={cabinet.legal.association} />.<br />
+      <Valeur v={cabinet.legal.avertissementRisque} /><br />
+      © {annee} {cabinet.nom}.
+    </p>
+  </div>
+</footer>

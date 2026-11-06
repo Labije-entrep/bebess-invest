@@ -1,0 +1,28 @@
+---
+import Base from '../layouts/Base.astro';
+import { route, t, LANGUES, type Langue } from '../i18n/config';
+
+interface Props { langue: Langue }
+const { langue } = Astro.props;
+const l = t(langue);
+/* L'hebergement statique ne sert qu'une page d'erreur, quelle que soit
+   l'adresse demandee : elle s'affiche donc dans les deux langues. */
+const autre = LANGUES.find((x) => x !== langue)!;
+const a = t(autre);
+---
+<Base langue={langue} page="accueil" titre={l.titre404} description={l.texte404}>
+  <section style="border-top:0">
+    <div class="wrap wrap--texte" style="text-align:center">
+      <span class="mono">{l.erreur404}</span>
+      <h1 style="margin:16px 0 18px">{l.titre404}</h1>
+      <p class="chapeau" style="margin:0 auto">{l.texte404}</p>
+      <div class="actions" style="justify-content:center">
+        <a class="btn btn--plein" href={route('accueil', langue)}>{l.retourAccueil}</a>
+        <a class="btn btn--discret" href={route('contact', langue)}>{l.ctaContact}</a>
+      </div>
+      <p class="chapeau" lang={autre} style="margin:34px auto 0;font-size:.9rem;border-top:1px solid var(--rule-faible);padding-top:26px">
+        {a.texte404} <a href={route('accueil', autre)} style="color:var(--laiton-clair)">{a.retourAccueil}</a>.
+      </p>
+    </div>
+  </section>
+</Base>

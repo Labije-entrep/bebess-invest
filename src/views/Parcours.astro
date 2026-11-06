@@ -1,0 +1,74 @@
+---
+import Base from '../layouts/Base.astro';
+import Valeur from '../components/Valeur.astro';
+import { getCabinet, getSeo } from '../data';
+import { route, t, type Langue } from '../i18n/config';
+
+interface Props { langue: Langue }
+const { langue } = Astro.props;
+const cabinet = getCabinet(langue);
+const seo = getSeo(langue);
+const l = t(langue);
+const d = cabinet.dirigeant;
+---
+<Base langue={langue} page="parcours" titre={seo.parcours.titre} description={seo.parcours.description} type="profile">
+  <section style="border-top:0">
+    <div class="wrap">
+      <div class="portrait-bloc">
+        {d.portrait ? (
+          <img src={d.portrait} alt={d.portraitAlt} width="640" height="800" style="border:1px solid var(--rule)" />
+        ) : (
+          <div class="cadre">
+            <div>
+              <span class="sceau" aria-hidden="true">B</span>
+              <p>{l.portraitAttente[0]}<br />{l.portraitAttente[1]}<br />{l.portraitAttente[2]}</p>
+            </div>
+          </div>
+        )}
+        <div>
+          <span class="mono">{l.menu.parcours}</span>
+          <h1 style="margin:14px 0 20px"><Valeur v={d.nom} />, <Valeur v={d.titre} /></h1>
+          <p class="chapeau"><Valeur v={d.accroche} /></p>
+          <ul class="puces" style="margin-top:20px">
+            {d.faits.map((f) => (<li><Valeur v={f} /></li>))}
+          </ul>
+          <div class="actions"><a class="btn btn--discret" href={route('contact', langue)}>{l.ctaContact}</a></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="bande--marine">
+    <div class="wrap">
+      <div class="titre-section"><span class="mono">{l.trajectoire}</span><h2>{l.trajectoireTitre}</h2></div>
+      <p class="chapeau">{l.trajectoireChapeau}</p>
+      <div class="jalons">
+        {cabinet.jalons.map((j) => (
+          <div class="jalon">
+            <span class="annee"><Valeur v={j.annee} /></span>
+            <div>
+              <h3><Valeur v={j.titre} /></h3>
+              <p class="lieu"><Valeur v={j.lieu} /></p>
+              <p><Valeur v={j.texte} /></p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="titre-section"><span class="mono">{l.convictions}</span><h2>{l.convictionsTitre}</h2></div>
+      <div class="grille grille--3" style="margin-top:28px">
+        {cabinet.convictions.map((c) => (
+          <div class="case">
+            <span class="mono">{c.rang}</span>
+            <h3><Valeur v={c.titre} /></h3>
+            <p><Valeur v={c.texte} /></p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+</Base>

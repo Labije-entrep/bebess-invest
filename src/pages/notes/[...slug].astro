@@ -1,0 +1,14 @@
+---
+import { getCollection } from 'astro:content';
+import Note from '../../views/Note.astro';
+
+export async function getStaticPaths() {
+  const notes = await getCollection(
+    'notes',
+    ({ id, data }) => id.startsWith('fr/') && data.publie !== false
+  );
+  return notes.map((note) => ({ params: { slug: note.id.slice(3) }, props: { note } }));
+}
+const { note } = Astro.props;
+---
+<Note langue="fr" note={note} />

@@ -1,0 +1,11 @@
+# Reglages techniques du site. Volontairement hors du CMS :
+# basculer "publie" a true met la version anglaise en ligne.
+langueParDefaut: fr
+langues:
+  fr:
+    publie: true
+  en:
+    # Tant que c'est false : les pages anglaises se construisent et sont
+    # consultables pour relecture, mais elles portent une balise noindex,
+    # sont absentes du sitemap, et le selecteur de langue reste masque.
+    publie: false

@@ -1,0 +1,104 @@
+---
+import Base from '../layouts/Base.astro';
+import Valeur from '../components/Valeur.astro';
+import { getCabinet, getSeo, nettoyer } from '../data';
+import { route, t, type Langue } from '../i18n/config';
+
+interface Props { langue: Langue }
+const { langue } = Astro.props;
+const cabinet = getCabinet(langue);
+const seo = getSeo(langue);
+const l = t(langue);
+const c = cabinet.contact;
+const chapeau = l.contactChapeau.replace('{delai}', c.delaiReponse.toLowerCase());
+---
+<Base langue={langue} page="contact" titre={seo.contact.titre} description={seo.contact.description}>
+  <section style="border-top:0">
+    <div class="wrap">
+      <div class="contact-grille">
+        <div>
+          <span class="mono">{l.menu.contact}</span>
+          <h1 style="margin:16px 0 18px">{l.contactTitre}</h1>
+          <p class="chapeau">{chapeau}</p>
+
+          {c.lienRendezVous && (
+            <div class="actions"><a class="btn btn--plein" href={c.lienRendezVous}>{l.ctaCreneau}</a></div>
+          )}
+
+          <form id="form-contact" method="POST" action={c.endpointFormulaire || undefined} novalidate>
+            <input type="hidden" name="langue" value={langue} />
+            <div class="duo">
+              <div class="champ"><label for="f-nom">{l.champs.nom}</label><input id="f-nom" name="nom" type="text" autocomplete="name" required /></div>
+              <div class="champ"><label for="f-tel">{l.champs.telephone}</label><input id="f-tel" name="telephone" type="tel" autocomplete="tel" /></div>
+            </div>
+            <div class="champ"><label for="f-email">{l.champs.email}</label><input id="f-email" name="email" type="email" autocomplete="email" required /></div>
+            <div class="champ">
+              <label for="f-objet">{l.champs.objet}</label>
+              <select id="f-objet" name="objet">
+                {cabinet.objetsContact.map((o) => (<option>{nettoyer(o)}</option>))}
+              </select>
+            </div>
+            <div class="champ"><label for="f-message">{l.champs.message}</label><textarea id="f-message" name="message"></textarea></div>
+            <label class="consent" for="f-consent">
+              <input id="f-consent" name="consentement" type="checkbox" required />
+              <span>{l.consentement} <a href={route('mentions', langue)} style="color:var(--laiton-clair)">{l.politique}</a>.</span>
+            </label>
+            <div><button class="btn btn--plein" type="submit">{l.champs.envoyer}</button></div>
+            <p id="accuse" class="accuse" hidden></p>
+          </form>
+        </div>
+
+        <div class="coord">
+          <div class="ligne"><span class="mono">{l.coord.email}</span><a class="val" href={`mailto:${c.email}`}>{c.email}</a></div>
+          <div class="ligne"><span class="mono">{l.coord.telephone}</span><span class="val"><Valeur v={c.telephone} /></span></div>
+          <div class="ligne"><span class="mono">{l.coord.adresse}</span><span class="val"><Valeur v={c.adresse} /><br /><Valeur v={c.codePostalVille} /></span></div>
+          <div class="ligne"><span class="mono">{l.coord.reponse}</span><span class="val"><Valeur v={c.delaiReponse} /></span></div>
+          {c.linkedin && (<div class="ligne"><span class="mono">{l.coord.linkedin}</span><a class="val" href={c.linkedin}>{l.coord.profil}</a></div>)}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script define:vars={{ endpoint: c.endpointFormulaire, textes: l.champs, erreurs: { champs: l.erreurChamps, endpoint: l.erreurEndpoint, envoi: l.erreurEnvoi }, succes: l.succesEnvoi }}>
+    const form = document.getElementById('form-contact');
+    const accuse = document.getElementById('accuse');
+
+    function message(texte, erreur) {
+      accuse.className = erreur ? 'accuse accuse--erreur' : 'accuse';
+      accuse.textContent = texte;
+      accuse.hidden = false;
+    }
+
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      let ok = true;
+      for (const id of ['f-nom', 'f-email', 'f-consent']) {
+        const champ = document.getElementById(id);
+        const vide = champ.type === 'checkbox' ? !champ.checked : !champ.value.trim();
+        champ.style.borderColor = vide ? 'var(--alerte)' : '';
+        if (vide) ok = false;
+      }
+      if (!ok) return message(erreurs.champs, true);
+      if (!endpoint) return message(erreurs.endpoint, true);
+
+      const bouton = form.querySelector('button[type=submit]');
+      bouton.disabled = true;
+      bouton.textContent = textes.envoi;
+      try {
+        const reponse = await fetch(endpoint, {
+          method: 'POST',
+          headers: { Accept: 'application/json' },
+          body: new FormData(form),
+        });
+        if (!reponse.ok) throw new Error(String(reponse.status));
+        form.reset();
+        message(succes, false);
+        bouton.textContent = textes.envoye;
+      } catch {
+        bouton.disabled = false;
+        bouton.textContent = textes.envoyer;
+        message(erreurs.envoi, true);
+      }
+    });
+  </script>
+</Base>

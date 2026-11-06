@@ -1,0 +1,20 @@
+# Search engine titles and descriptions for the English pages.
+# Title under 60 characters, description under 155.
+accueil:
+  titre: "A COMPLETER : English page title"
+  description: "A COMPLETER : English description"
+approche:
+  titre: "A COMPLETER"
+  description: "A COMPLETER"
+parcours:
+  titre: "A COMPLETER"
+  description: "A COMPLETER"
+notes:
+  titre: "A COMPLETER"
+  description: "A COMPLETER"
+contact:
+  titre: "A COMPLETER"
+  description: "A COMPLETER"
+mentions:
+  titre: "A COMPLETER"
+  description: "A COMPLETER"

@@ -1,0 +1,196 @@
+# =====================================================================
+#  CONTENUS DU CABINET — source unique
+#  Editable a la main, ou via le CMS sur https://<le-site>/admin
+#  Toute valeur commencant par "A COMPLETER" s'affiche en dore souligne
+#  sur le site : on repere ainsi ce qui manque encore.
+# =====================================================================
+
+nom: "BeBess'Invest"
+baseline: "Conseil & suivi de portefeuilles"
+accroche: "La discipline avant la promesse."
+accrocheAccent: "avant"          # le mot mis en italique doré dans le titre
+resume: >-
+  BeBess'Invest accompagne un nombre volontairement restreint de clients dans la
+  construction, le suivi et l'arbitrage de leurs portefeuilles d'actifs. Un
+  interlocuteur unique, une méthode écrite, des comptes rendus à date fixe.
+
+dirigeant:
+  nom: "A COMPLETER : prénom et nom"
+  titre: "Fondateur"
+  accroche: "A COMPLETER : une phrase qui résume la trajectoire — années d'expérience, type d'institution, raison du passage à l'indépendance."
+  faits:
+    - "A COMPLETER : années d'expérience en gestion ou en analyse"
+    - "A COMPLETER : dernier poste occupé et établissement"
+    - "A COMPLETER : certification professionnelle (AMF, CFA, autre)"
+  portrait: ""                   # ex. /img/portrait.jpg — vide = cadre d'attente
+  portraitAlt: ""
+
+contact:
+  email: "contact@bebess-invest.fr"
+  telephone: "A COMPLETER : +33 X XX XX XX XX"
+  adresse: "A COMPLETER : adresse du cabinet"
+  codePostalVille: "A COMPLETER : code postal et ville"
+  ville: "A COMPLETER : ville"
+  linkedin: ""
+  delaiReponse: "Sous 2 jours ouvrés"
+  # Formulaire : créez un formulaire sur formspree.io et collez l'URL ici.
+  # Vide = le formulaire affiche un avertissement et n'envoie rien.
+  endpointFormulaire: ""
+  # Lien de prise de rendez-vous (cal.com, calendly). Vide = bouton masqué.
+  lienRendezVous: ""
+
+# Mentions réglementaires : à faire valider par l'association
+# professionnelle ou un avocat avant mise en ligne.
+legal:
+  formeJuridique: "A COMPLETER : forme juridique et capital social"
+  rcs: "A COMPLETER : ville du RCS et numéro"
+  tva: "A COMPLETER : numéro de TVA intracommunautaire"
+  ape: "A COMPLETER : code APE"
+  directeurPublication: "A COMPLETER : nom du directeur de la publication"
+  statut: "A COMPLETER : statut exercé (CIF, courtier en assurance, IOBSP...)"
+  orias: "A COMPLETER : numéro ORIAS"
+  association: "A COMPLETER : association professionnelle agréée par l'AMF et numéro d'adhérent"
+  rcp: "A COMPLETER : assureur en responsabilité civile professionnelle et adresse"
+  garantieFinanciere: "A COMPLETER : garantie financière le cas échéant"
+  mediateur: "A COMPLETER : coordonnées du médiateur de la consommation compétent"
+  hebergeur: "Cloudflare Pages — Cloudflare, Inc., 101 Townsend St, San Francisco, CA 94107, USA"
+  conservationDonnees: "A COMPLETER : durée de conservation des données du formulaire"
+  avertissementRisque: >-
+    Les investissements présentent un risque de perte en capital. Les
+    performances passées ne préjugent pas des performances futures.
+
+preuves:
+  - titre: "Indépendance"
+    texte: "Aucun réseau bancaire, aucun produit maison imposé."
+  - titre: "Conservation des fonds"
+    texte: "Vos avoirs restent chez votre dépositaire. Je ne détiens aucun fonds."
+  - titre: "Cadre réglementaire"
+    texte: "A COMPLETER : statut et numéro ORIAS"
+  - titre: "Assurance"
+    texte: "A COMPLETER : responsabilité civile professionnelle"
+
+missions:
+  - etiquette: "Cadrage"
+    titre: "Comprendre avant d'allouer"
+    texte: >-
+      Inventaire des actifs, horizon réel de chaque poche, contraintes fiscales et
+      familiales, tolérance au risque exprimée en euros et non en adjectifs. Le
+      cadrage est écrit et signé avant tout arbitrage.
+  - etiquette: "Allocation"
+    titre: "Construire l'architecture"
+    texte: >-
+      Répartition stratégique entre poches de liquidité, de rendement et de
+      croissance, puis sélection des supports : indiciel, gestion active, non
+      coté, immobilier. Chaque choix est motivé par écrit, frais compris.
+  - etiquette: "Suivi"
+    titre: "Tenir la ligne dans le temps"
+    texte: >-
+      Point trimestriel, rééquilibrage documenté, alerte en cas d'écart
+      significatif avec le cadrage initial. L'absence de mouvement est aussi une
+      décision — elle est justifiée comme les autres.
+  - etiquette: "Coordination"
+    titre: "Parler à vos autres conseils"
+    texte: >-
+      Notaire, expert-comptable, avocat, banquier : j'assure la cohérence entre
+      les décisions patrimoniales et le reste de votre organisation, et je
+      consolide les positions éparpillées.
+
+methode:
+  - titre: "Entretien de cadrage"
+    texte: >-
+      Inventaire complet : comptes titres, assurance-vie, PER, immobilier,
+      participations, crédits en cours. Nous fixons les horizons et les montants
+      plancher dont vous devez disposer à chaque échéance. Durée : une à deux
+      séances.
+  - titre: "Note d'allocation"
+    texte: >-
+      Un document écrit qui pose la répartition cible, les supports retenus, les
+      frais réels de chaque ligne et les scénarios de baisse envisagés. Vous le
+      signez — ou vous demandez qu'on le reprenne.
+  - titre: "Mise en œuvre"
+    texte: >-
+      Ouverture ou transfert des enveloppes, arbitrages étalés dans le temps
+      quand les montants le justifient, et consolidation des positions
+      existantes dans un tableau unique.
+  - titre: "Suivi trimestriel"
+    texte: >-
+      Un compte rendu écrit tous les trois mois : performance nette de frais,
+      écarts par rapport à la cible, mouvements proposés. Un point annuel plus
+      long remet le cadrage à jour.
+
+honoraires:
+  - etiquette: "Mission de cadrage"
+    montant: "A COMPLETER : honoraire forfaitaire"
+    texte: "Facturé une fois, indépendamment de la suite donnée. Vous repartez avec la note, même si vous ne confiez rien."
+  - etiquette: "Suivi de portefeuille"
+    montant: "A COMPLETER : % des encours par an"
+    texte: "Prélevé selon une périodicité définie au mandat, détaillé sur chaque compte rendu trimestriel."
+  - etiquette: "Rétrocessions"
+    montant: "A COMPLETER : politique à préciser"
+    texte: "Le détail des commissions éventuellement perçues des producteurs figure au document d'entrée en relation."
+
+clienteles:
+  - etiquette: "Cadres & professions libérales"
+    titre: "Faire travailler une épargne qui dort"
+    texte: "Des revenus confortables, des liquidités mal placées et pas le temps d'arbitrer. L'enjeu est de structurer sans ajouter de charge mentale."
+  - etiquette: "Dirigeants"
+    titre: "Préparer une cession"
+    texte: "Articuler trésorerie d'entreprise, patrimoine personnel et fiscalité de sortie, plusieurs années avant l'opération."
+  - etiquette: "Familles"
+    titre: "Transmettre sans casse"
+    texte: "Organiser la détention, anticiper les droits et éviter que la transmission ne devienne un sujet de conflit."
+
+jalons:
+  - annee: "2026 →"
+    titre: "BeBess'Invest"
+    lieu: "Fondateur — A COMPLETER : ville"
+    texte: "Création du cabinet pour appliquer, sans contrainte de réseau ni de produit maison, la méthode décrite dans la page Approche."
+  - annee: "A COMPLETER : 20XX–20XX"
+    titre: "A COMPLETER : intitulé du poste"
+    lieu: "A COMPLETER : établissement et ville"
+    texte: "A COMPLETER : deux à trois phrases — le périmètre réel, le type de clientèle, et ce qui en reste de transposable aujourd'hui."
+  - annee: "A COMPLETER : 20XX–20XX"
+    titre: "A COMPLETER : intitulé du poste"
+    lieu: "A COMPLETER : établissement et ville"
+    texte: "A COMPLETER : même principe. Un chiffre vérifiable et non trompeur porte le plus ici."
+  - annee: "A COMPLETER : 20XX"
+    titre: "Formation"
+    lieu: "A COMPLETER : diplôme et établissement"
+    texte: "A COMPLETER : diplômes et certifications, dont la certification professionnelle AMF si elle est détenue."
+
+convictions:
+  - rang: "I"
+    titre: "Les frais se disent d'abord"
+    texte: "Un rendement annoncé brut de frais n'est pas un rendement. Toute proposition chiffrée que je remets est nette."
+  - rang: "II"
+    titre: "Écrit, donc opposable"
+    texte: "Ce qui n'est pas écrit n'engage personne. Cadrage, allocation, arbitrages : tout passe par un document daté."
+  - rang: "III"
+    titre: "Dire non fait partie du conseil"
+    texte: "Certains montages sont bons pour celui qui les vend. Si votre situation ne justifie rien, je vous le dis et nous en restons là."
+
+faq:
+  - question: "Qui détient mon argent ?"
+    reponse: >-
+      Pas moi. Vos avoirs restent déposés chez l'établissement teneur de compte ou
+      l'assureur, à votre nom. Mon rôle est de conseiller et d'arbitrer dans ce
+      cadre, jamais d'encaisser vos fonds.
+  - question: "À partir de quel montant est-ce pertinent ?"
+    reponse: "A COMPLETER : montant plancher à fixer, ou formulation du type « en dessous d'un certain encours, les honoraires pèsent plus que le gain attendu — je vous le dirai franchement lors du premier échange »."
+  - question: "Comment êtes-vous rémunéré ?"
+    reponse: "A COMPLETER : honoraires de conseil, frais sur encours, ou combinaison des deux. Le détail figure au document d'entrée en relation, remis avant toute signature."
+  - question: "Puis-je partir quand je veux ?"
+    reponse: "A COMPLETER : préavis et modalités selon la lettre de mission. Les enveloppes restent les vôtres : vous récupérez la main sans transfert d'actifs imposé."
+  - question: "Que se passe-t-il si les marchés baissent fortement ?"
+    reponse: >-
+      Le scénario a été chiffré avec vous au moment du cadrage, en euros sur votre
+      propre portefeuille. En cas de baisse marquée, je reprends ce document avec
+      vous plutôt que d'improviser une réaction. Les investissements présentent un
+      risque de perte en capital, et aucune allocation ne l'annule.
+
+objetsContact:
+  - "Structurer une épargne existante"
+  - "Préparer une cession d'entreprise"
+  - "Organiser une transmission"
+  - "Second avis sur une allocation en place"
+  - "Autre"

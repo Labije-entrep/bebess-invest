@@ -1,0 +1,95 @@
+# =====================================================================
+#  ENGLISH CONTENT — mirrors src/data/fr/cabinet.yaml
+#  ---------------------------------------------------------------------
+#  Only fields that need translating appear here. Anything left out
+#  falls back to the French file, which is what we want for values that
+#  are the same in both languages: telephone number, email address,
+#  ORIAS registration number, and so on. Never copy those here, or they
+#  will have to be maintained twice.
+#
+#  Every value starting with "A COMPLETER" shows up underlined in gold
+#  on the English site. Replace them; when no gold is left, the English
+#  version is ready to publish (see src/data/site.yaml).
+# =====================================================================
+
+baseline: "A COMPLETER : English tagline, e.g. Portfolio advisory & oversight"
+accroche: "A COMPLETER : English headline, 4 to 6 words"
+accrocheAccent: "A COMPLETER : the one word to set in gold italics (it must appear in the headline above)"
+resume: "A COMPLETER : opening paragraph, 3 to 4 lines. Not a literal translation of the French — write it as an English reader would expect to read it."
+
+dirigeant:
+  titre: "A COMPLETER : job title in English, e.g. Founder"
+  accroche: "A COMPLETER : one sentence summarising the career path"
+  faits:
+    - "A COMPLETER : years of experience"
+    - "A COMPLETER : last position held and institution"
+    - "A COMPLETER : professional certification"
+
+contact:
+  delaiReponse: "A COMPLETER : e.g. Within 2 working days"
+
+legal:
+  statut: "A COMPLETER : regulatory status in English"
+  association: "A COMPLETER : professional association and membership number"
+  rcp: "A COMPLETER : professional indemnity insurer"
+  garantieFinanciere: "A COMPLETER : financial guarantee, if applicable"
+  mediateur: "A COMPLETER : consumer ombudsman"
+  conservationDonnees: "A COMPLETER : data retention period"
+  avertissementRisque: "A COMPLETER : risk warning in English. Have it checked: this wording is regulated."
+
+preuves:
+  - titre: "A COMPLETER"
+    texte: "A COMPLETER"
+  - titre: "A COMPLETER"
+    texte: "A COMPLETER"
+  - titre: "A COMPLETER"
+    texte: "A COMPLETER"
+  - titre: "A COMPLETER"
+    texte: "A COMPLETER"
+
+missions:
+  - { etiquette: "A COMPLETER", titre: "A COMPLETER", texte: "A COMPLETER" }
+  - { etiquette: "A COMPLETER", titre: "A COMPLETER", texte: "A COMPLETER" }
+  - { etiquette: "A COMPLETER", titre: "A COMPLETER", texte: "A COMPLETER" }
+  - { etiquette: "A COMPLETER", titre: "A COMPLETER", texte: "A COMPLETER" }
+
+methode:
+  - { titre: "A COMPLETER", texte: "A COMPLETER" }
+  - { titre: "A COMPLETER", texte: "A COMPLETER" }
+  - { titre: "A COMPLETER", texte: "A COMPLETER" }
+  - { titre: "A COMPLETER", texte: "A COMPLETER" }
+
+honoraires:
+  - { etiquette: "A COMPLETER", montant: "A COMPLETER", texte: "A COMPLETER" }
+  - { etiquette: "A COMPLETER", montant: "A COMPLETER", texte: "A COMPLETER" }
+  - { etiquette: "A COMPLETER", montant: "A COMPLETER", texte: "A COMPLETER" }
+
+clienteles:
+  - { etiquette: "A COMPLETER", titre: "A COMPLETER", texte: "A COMPLETER" }
+  - { etiquette: "A COMPLETER", titre: "A COMPLETER", texte: "A COMPLETER" }
+  - { etiquette: "A COMPLETER", titre: "A COMPLETER", texte: "A COMPLETER" }
+
+jalons:
+  - { annee: "2026 →", titre: "BeBess'Invest", lieu: "A COMPLETER", texte: "A COMPLETER" }
+  - { annee: "A COMPLETER", titre: "A COMPLETER", lieu: "A COMPLETER", texte: "A COMPLETER" }
+  - { annee: "A COMPLETER", titre: "A COMPLETER", lieu: "A COMPLETER", texte: "A COMPLETER" }
+  - { annee: "A COMPLETER", titre: "A COMPLETER", lieu: "A COMPLETER", texte: "A COMPLETER" }
+
+convictions:
+  - { rang: "I", titre: "A COMPLETER", texte: "A COMPLETER" }
+  - { rang: "II", titre: "A COMPLETER", texte: "A COMPLETER" }
+  - { rang: "III", titre: "A COMPLETER", texte: "A COMPLETER" }
+
+faq:
+  - { question: "A COMPLETER", reponse: "A COMPLETER" }
+  - { question: "A COMPLETER", reponse: "A COMPLETER" }
+  - { question: "A COMPLETER", reponse: "A COMPLETER" }
+  - { question: "A COMPLETER", reponse: "A COMPLETER" }
+  - { question: "A COMPLETER", reponse: "A COMPLETER" }
+
+objetsContact:
+  - "A COMPLETER"
+  - "A COMPLETER"
+  - "A COMPLETER"
+  - "A COMPLETER"
+  - "A COMPLETER"

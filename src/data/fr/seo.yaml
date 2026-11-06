@@ -1,0 +1,21 @@
+# Métadonnées de référencement, une entrée par page.
+# Titre affiché dans l'onglet : « <titre> — BeBess'Invest ».
+# Gardez le titre sous 60 caractères et la description sous 155.
+accueil:
+  titre: "Conseil en gestion de portefeuilles"
+  description: "Cabinet indépendant de conseil et de suivi de portefeuilles d'actifs. Méthode écrite, reporting trimestriel, premier échange sans engagement."
+approche:
+  titre: "Méthode et honoraires"
+  description: "Cadrage, allocation, mise en œuvre et suivi trimestriel : la méthode en quatre temps, et la grille d'honoraires affichée."
+parcours:
+  titre: "Parcours du fondateur"
+  description: "Le parcours, les certifications et les principes de travail du fondateur de BeBess'Invest."
+notes:
+  titre: "Notes de marché"
+  description: "Une note courte par mois sur la gestion de portefeuille, les frais et la fiscalité de l'épargne. Sans jargon et sans prédiction."
+contact:
+  titre: "Contact"
+  description: "Demander un premier échange de quarante-cinq minutes, sans engagement. Réponse sous deux jours ouvrés."
+mentions:
+  titre: "Mentions légales"
+  description: "Mentions légales, statut réglementaire, assurance et traitement des données personnelles."
