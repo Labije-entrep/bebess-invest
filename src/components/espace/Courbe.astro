@@ -1,0 +1,42 @@
+---
+import type { Courbe } from '../../lib/espace';
+
+interface Props {
+  courbe: Courbe | null;
+}
+const { courbe } = Astro.props;
+---
+{courbe === null ? (
+  <p class="aide">La courbe apparaîtra dès que deux points de valorisation seront disponibles.</p>
+) : (
+  <div class="defile">
+    <svg class="courbe" viewBox={`0 0 ${courbe.largeur} ${courbe.hauteur}`} role="img" aria-label="Valorisation et cumul des versements dans le temps" xmlns="http://www.w3.org/2000/svg">
+      {courbe.grille.map((g) => (
+        <>
+          <line x1={courbe.gauche} x2={courbe.droite} y1={g.y.toFixed(2)} y2={g.y.toFixed(2)} class="c-grille" />
+          <text x={courbe.gauche - 8} y={(g.y + 4).toFixed(2)} text-anchor="end" class="c-axe">{g.libelle}</text>
+        </>
+      ))}
+      <line x1={courbe.gauche} x2={courbe.droite} y1={courbe.bas} y2={courbe.bas} class="c-base" />
+      {courbe.reperes.map((r) => (
+        <text x={r.x.toFixed(2)} y={courbe.hauteur - 8} text-anchor={r.ancre} class="c-axe">{r.libelle}</text>
+      ))}
+      {courbe.series.map((s) => (
+        <>
+          <path d={s.d} fill="none" stroke={s.couleur} stroke-width="2" stroke-dasharray={s.tirets ? '6 4' : undefined} />
+          <text x={(s.fin.x + 10).toFixed(2)} y={s.fin.yNom.toFixed(2)} class="c-nom" fill={s.couleur}>{s.nom}</text>
+          <text x={(s.fin.x + 10).toFixed(2)} y={s.fin.yValeur.toFixed(2)} class="c-val" fill={s.couleur}>{s.fin.valeur}</text>
+        </>
+      ))}
+    </svg>
+  </div>
+)}
+
+<style is:global>
+  .courbe { display: block; width: 100%; min-width: 34rem; height: auto; }
+  .courbe .c-grille { stroke: var(--filet); stroke-width: 1; }
+  .courbe .c-base { stroke: var(--texte-2); stroke-width: 1; }
+  .courbe .c-axe { font-family: var(--mono); font-size: 11px; fill: var(--texte-2); }
+  .courbe .c-nom { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }
+  .courbe .c-val { font-family: var(--sans); font-weight: 300; font-size: 14px; font-variant-numeric: tabular-nums; }
+</style>

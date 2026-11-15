@@ -1,0 +1,142 @@
+---
+import Viewer from '../../layouts/Viewer.astro';
+import Courbe from '../../components/espace/Courbe.astro';
+import {
+  ciblesDuViewer, enveloppesDuViewer, ficheDuViewer, lignesDesEnveloppes,
+  mouvementsDuViewer, pointsDuViewer,
+} from '../../lib/db';
+import { dateLongue, euros, pourcent } from '../../lib/format';
+import { envDe } from '../../lib/mail';
+import {
+  arrete, courbe as calculerCourbe, indicateurs, journaliser, plusRecent,
+  repartition, signe, signeBp, teinte,
+} from '../../lib/espace';
+
+const u = Astro.locals.utilisateur;
+const tenant = Astro.locals.tenant;
+if (!u || !tenant) return Astro.redirect('/connexion');
+const { DB } = envDe(Astro.locals);
+await journaliser(DB, u.id, Astro.url.pathname);
+
+const [fiche, enveloppes, cibles, points, mouvements] = await Promise.all([
+  ficheDuViewer(DB, tenant.id, u.id),
+  enveloppesDuViewer(DB, u.id),
+  ciblesDuViewer(DB, u.id),
+  pointsDuViewer(DB, u.id),
+  mouvementsDuViewer(DB, u.id),
+]);
+const lignes = await lignesDesEnveloppes(DB, enveloppes.map((e) => e.id));
+
+const ind = indicateurs(points, enveloppes, lignes);
+const classes = repartition(lignes, cibles);
+const courbe = calculerCourbe(points);
+const enCours = mouvements.filter((m) => m.en_cours === 1).slice(0, 3);
+const dateArrete = plusRecent(enveloppes.map((e) => e.arrete_le));
+const synchro = plusRecent([...lignes.map((l) => l.arrete_le), ...enveloppes.map((e) => e.arrete_le)]);
+// Base 100 à l'origine : 10 000 centièmes + performance, affichés à une décimale.
+const dixiemes = ind.perfOrigineBp === null ? 0 : Math.round((10000 + ind.perfOrigineBp) / 10);
+const base100 = `${Math.floor(dixiemes / 10)},${dixiemes % 10}`;
+const totalLignes = classes.reduce((s, c) => s + c.montant, 0);
+---
+<Viewer titre="Tableau de bord">
+  <div class="esp-entete">
+    <div>
+      <span class="etiquette">{fiche?.mandat_ref ? `Mandat ${fiche.mandat_ref}` : 'Mandat'}</span>
+      <h1>Bonjour, {u.nom}</h1>
+    </div>
+    <div class="droite">
+      <span class="etiquette">Arrêté au</span>
+      <span class="num">{dateArrete ? arrete(dateArrete) : '—'}</span>
+    </div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi">
+      <span class="etiquette">Valorisation totale</span>
+      <span class="chiffre">{euros(ind.totalCents)}</span>
+    </div>
+    <div class="kpi">
+      <span class="etiquette">Performance {ind.annee ?? "de l'année"}, pondérée par le temps</span>
+      <span class={`chiffre ${teinte(ind.perfBp)}`}>{ind.perfBp === null ? '—' : signeBp(ind.perfBp)}</span>
+      <span class="sec" style="font-size: 11px;">hors honoraires de conseil</span>
+    </div>
+    <div class="kpi">
+      <span class="etiquette">Plus-value latente</span>
+      <span class={`chiffre ${teinte(ind.pvCents)}`}>{signe(ind.pvCents)}</span>
+    </div>
+    <div class="kpi">
+      <span class="etiquette">Versements nets de l'année</span>
+      <span class={`chiffre ${teinte(ind.versementsCents)}`}>{ind.versementsCents === null ? '—' : signe(ind.versementsCents)}</span>
+    </div>
+  </div>
+
+  <div class="tb">
+    <div>
+      <section class="bloc">
+        <span class="etiquette">Évolution</span>
+        {ind.perfOrigineBp !== null && (
+          <p class="aide">
+            Depuis l'origine : <span class={teinte(ind.perfOrigineBp)}>{signeBp(ind.perfOrigineBp)}</span>
+            {' · '}base 100 : <span class="num">{base100}</span>
+          </p>
+        )}
+        <Courbe courbe={courbe} />
+      </section>
+
+      <section class="bloc">
+        <span class="etiquette">Répartition</span>
+        {totalLignes > 0 && (
+          <div class="barre" role="img" aria-label="Répartition par classe d'actifs">
+            {classes.filter((c) => c.montant > 0).map((c) => (
+              <span style={`flex: ${c.montant} 1 0; background: ${c.couleur};`} title={c.classe}></span>
+            ))}
+          </div>
+        )}
+        <div class="defile">
+          <table class="table table-large">
+            <thead>
+              <tr><th>Classe</th><th class="num">Montant</th><th class="num">Part</th><th class="num">Cible</th><th class="num">Écart</th></tr>
+            </thead>
+            <tbody>
+              {classes.map((c) => (
+                <tr>
+                  <td><span class="pastille" style={`background: ${c.couleur};`}></span>{c.classe}</td>
+                  <td class="num">{euros(c.montant)}</td>
+                  <td class="num">{pourcent(c.partBp)}</td>
+                  <td class="num">{c.cibleBp === null ? '—' : pourcent(c.cibleBp)}</td>
+                  <td class={`num ${c.ecartBp !== null && c.ecartBp > 0 ? 'laiton' : 'sec'}`}>{c.ecartBp === null ? '—' : signeBp(c.ecartBp)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <aside class="tb-lateral">
+      <span class="etiquette">Mouvements en cours</span>
+      {enCours.length === 0 && <p class="aide">Aucun mouvement en cours.</p>}
+      {enCours.map((m) => (
+        <div class="mvt">
+          <h3>{m.libelle}</h3>
+          <div class="avance" aria-label={`Étape ${m.etape} sur 3`}>
+            {[1, 2, 3].map((n) => <span class={n <= m.etape ? 'fait' : ''}></span>)}
+          </div>
+          <p>{m.statut}{m.montant_cents !== null ? ` · ${euros(m.montant_cents)}` : ''}</p>
+        </div>
+      ))}
+      <div class="mvt">
+        <span class="etiquette">Prochain point</span>
+        <p class="laiton">{fiche?.prochain_point ? dateLongue(fiche.prochain_point) : 'À planifier'}</p>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="pied">
+    <p class="mention">
+      Les valorisations présentées sont indicatives et ne se substituent pas aux relevés officiels
+      des établissements. Les performances passées ne préjugent pas des performances futures.
+    </p>
+    <p class="mention">Dernière synchronisation : {synchro ? arrete(synchro) : '—'}.</p>
+  </footer>
+</Viewer>

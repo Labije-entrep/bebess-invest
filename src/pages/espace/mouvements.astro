@@ -1,0 +1,72 @@
+---
+import Viewer from '../../layouts/Viewer.astro';
+import { mouvementsDuViewer } from '../../lib/db';
+import { dateCourte, euros } from '../../lib/format';
+import { envDe } from '../../lib/mail';
+import { journaliser } from '../../lib/espace';
+
+const u = Astro.locals.utilisateur;
+if (!u) return Astro.redirect('/connexion');
+const { DB } = envDe(Astro.locals);
+await journaliser(DB, u.id, Astro.url.pathname);
+
+const tous = await mouvementsDuViewer(DB, u.id);
+const enCours = tous.filter((m) => m.en_cours === 1);
+const historique = tous.filter((m) => m.en_cours !== 1);
+
+const annees = [...new Set(historique.map((m) => m.date.slice(0, 4)))].sort().reverse();
+const demande = Astro.url.searchParams.get('annee') ?? '';
+const annee = annees.includes(demande) ? demande : '';
+const visibles = annee ? historique.filter((m) => m.date.startsWith(annee)) : historique;
+---
+<Viewer titre="Mouvements">
+  <h1>Mouvements</h1>
+
+  <section class="bloc">
+    <span class="etiquette">En cours</span>
+    {enCours.length === 0 && <p class="aide">Aucun mouvement en cours.</p>}
+    <div class="cartes">
+      {enCours.map((m) => (
+        <div class="mvt">
+          <h3>{m.libelle}</h3>
+          <div class="avance" aria-label={`Étape ${m.etape} sur 3`}>
+            {[1, 2, 3].map((n) => <span class={n <= m.etape ? 'fait' : ''}></span>)}
+          </div>
+          <p class="laiton">{m.statut}</p>
+          <p>
+            {[m.enveloppe, m.montant_cents !== null ? euros(m.montant_cents) : null, dateCourte(m.date)].filter(Boolean).join(' · ')}
+          </p>
+          {m.detail && <p>{m.detail}</p>}
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <section class="bloc">
+    <span class="etiquette">Historique</span>
+    <nav class="filtres" aria-label="Filtre par année">
+      <a href="/espace/mouvements" aria-current={annee === '' ? 'true' : undefined}>Toutes</a>
+      {annees.map((a) => <a href={`/espace/mouvements?annee=${a}`} aria-current={annee === a ? 'true' : undefined}>{a}</a>)}
+    </nav>
+    <div class="defile">
+      <table class="table table-large">
+        <thead>
+          <tr><th>Date</th><th>Libellé</th><th>Enveloppe</th><th class="num">Montant</th><th>Statut</th></tr>
+        </thead>
+        <tbody>
+          {visibles.length === 0 && <tr><td colspan="5" class="sec">Aucun mouvement pour cette période.</td></tr>}
+          {visibles.map((m) => (
+            <tr>
+              <td class="num">{dateCourte(m.date)}</td>
+              <td>{m.libelle}</td>
+              <td>{m.enveloppe ?? '—'}</td>
+              <td class="num">{m.montant_cents === null ? '—' : euros(m.montant_cents)}</td>
+              <td>{m.statut}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p class="mention">Aucune opération ne peut être initiée depuis cet espace : il est en consultation seule.</p>
+  </section>
+</Viewer>

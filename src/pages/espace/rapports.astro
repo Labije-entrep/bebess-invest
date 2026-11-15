@@ -1,0 +1,55 @@
+---
+import Viewer from '../../layouts/Viewer.astro';
+import { documentsDuViewer, ficheDuViewer } from '../../lib/db';
+import { dateCourte, dateLongue, euros } from '../../lib/format';
+import { envDe } from '../../lib/mail';
+import { journaliser } from '../../lib/espace';
+
+const u = Astro.locals.utilisateur;
+const tenant = Astro.locals.tenant;
+if (!u || !tenant) return Astro.redirect('/connexion');
+const { DB } = envDe(Astro.locals);
+await journaliser(DB, u.id, Astro.url.pathname);
+
+const [fiche, documents] = await Promise.all([ficheDuViewer(DB, tenant.id, u.id), documentsDuViewer(DB, u.id)]);
+
+const lignes: [string, string | null][] = fiche
+  ? [
+      ['Profil', fiche.profil_risque ? `${fiche.profil_risque}${fiche.profil_note !== null ? ` (note ${fiche.profil_note})` : ''}` : null],
+      ['Horizon', fiche.horizon],
+      ['Perte maximale acceptée', fiche.perte_max_cents !== null ? euros(fiche.perte_max_cents) : null],
+      ['Liquidité à préserver', fiche.liquidite_cents !== null ? euros(fiche.liquidite_cents) : null],
+      ['Règle de rééquilibrage', fiche.regle_reequilibrage],
+      ['Motif', fiche.allocation_motif],
+    ]
+  : [];
+---
+<Viewer titre="Stratégie et rapports">
+  <h1>Stratégie et rapports</h1>
+
+  <div class="tb">
+    <section>
+      <span class="etiquette">Note d'allocation en vigueur</span>
+      {fiche?.allocation_signee_le && <p class="laiton">Signée le {dateLongue(fiche.allocation_signee_le)}</p>}
+      {lignes.length === 0 && <p class="aide">Aucune note d'allocation n'est encore disponible.</p>}
+      <dl class="def">
+        {lignes.map(([nom, valeur]) => (
+          <div><dt>{nom}</dt><dd>{valeur ?? '—'}</dd></div>
+        ))}
+      </dl>
+    </section>
+
+    <aside class="tb-lateral">
+      <span class="etiquette">Documents</span>
+      {documents.length === 0 && <p class="aide">Aucun document.</p>}
+      <ul class="liste-doc">
+        {documents.map((d) => (
+          <li>
+            {d.titre}<br />
+            <span class="sec num">{d.categorie} · {dateCourte(d.date)}</span>
+          </li>
+        ))}
+      </ul>
+    </aside>
+  </div>
+</Viewer>
