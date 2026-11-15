@@ -1,0 +1,74 @@
+---
+import '../styles/app.css';
+
+interface Props {
+  titre: string;
+}
+const { titre } = Astro.props;
+---
+
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <title>{titre} · BeBess'Invest</title>
+  </head>
+  <body>
+    <main class="cx">
+      <aside class="cx-marque">
+        <a class="cx-logo" href="/">BeBess'Invest</a>
+        <div>
+          <span class="etiquette">Espace client</span>
+          <p class="cx-accroche">Votre patrimoine, en toute transparence.</p>
+        </div>
+        <p class="cx-mention etiquette">Consultation seule, aucun ordre n'est passé en ligne</p>
+      </aside>
+      <section class="cx-volet">
+        <div class="cx-boite">
+          <slot />
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
+
+<style is:global>
+  /* Couleurs et polices : uniquement les variables de app.css. */
+  body { font-weight: 300; }
+  .cx h1, .cx h2, .cx h3 { font-family: var(--serif); font-weight: 300; }
+  .cx h1 { font-weight: 200; }
+
+  .cx .etiquette {
+    font-family: var(--mono);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+  }
+
+  .cx { display: grid; grid-template-columns: 1fr 1fr; min-height: 100vh; }
+  .cx-marque {
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: var(--espace-xl); background: var(--marine);
+    border-right: 1px solid var(--filet);
+  }
+  .cx-logo { font-family: var(--serif); font-weight: 300; font-size: 1.5rem; color: var(--texte); }
+  .cx-logo:hover { text-decoration: none; }
+  .cx-accroche {
+    font-family: var(--serif); font-weight: 200; font-size: 2rem; line-height: 1.25;
+    margin: var(--espace-s) 0 0; max-width: 18ch;
+  }
+  .cx-mention { margin: 0; }
+  .cx-volet { display: flex; align-items: center; justify-content: center; padding: var(--espace-xl) var(--espace); }
+  .cx-boite { width: 100%; max-width: 24rem; }
+  .cx-boite h1 { font-size: 1.75rem; }
+  .cx-boite label { display: block; margin: var(--espace) 0 var(--espace-xs); }
+  .cx-boite .btn-plein { margin-top: 1.25rem; width: 100%; }
+  .cx-note { color: var(--texte-2); font-size: 0.875rem; margin-top: var(--espace); }
+  @media (max-width: 52rem) {
+    .cx { grid-template-columns: 1fr; }
+    .cx-marque { gap: var(--espace-l); padding: var(--espace-l) var(--espace); border-right: 0; border-bottom: 1px solid var(--filet); }
+  }
+</style>

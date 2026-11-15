@@ -1,0 +1,43 @@
+---
+import Connexion from '../../layouts/Connexion.astro';
+import { accueilDuRole, consommerJeton, jetonValide } from '../../lib/auth';
+import { envDe } from '../../lib/mail';
+
+// Le GET lit le jeton (jetonValide) pour afficher tout de suite un lien expiré ou déjà
+// utilisé, mais ne l'écrit pas : un aperçu de lien ou un scanner de messagerie ne le
+// consomme pas. Seul le POST, déclenché par le bouton, consomme.
+const { DB } = envDe(Astro.locals);
+const tenant = Astro.locals.tenant;
+const jeton = Astro.params.jeton ?? '';
+
+let invalide = false;
+if (Astro.request.method === 'POST') {
+  const utilisateur = tenant ? await consommerJeton(DB, Astro.cookies, jeton, tenant.id) : null;
+  if (utilisateur) {
+    return Astro.redirect(accueilDuRole(utilisateur.role), 303);
+  }
+  invalide = true;
+} else {
+  invalide = !(tenant && (await jetonValide(DB, jeton, tenant.id)));
+}
+---
+
+{
+  invalide ? (
+    <Connexion titre="Lien expiré">
+      <h1>Ce lien n'est plus valable</h1>
+      <p>Il a expiré ou a déjà été utilisé. Demandez-en un nouveau.</p>
+      <p>
+        <a class="btn" href="/connexion">Retour à la connexion</a>
+      </p>
+    </Connexion>
+  ) : (
+    <Connexion titre="Confirmer la connexion">
+      <h1>Confirmer la connexion</h1>
+      <p>Pour ouvrir votre espace, confirmez la connexion.</p>
+      <form method="post" action={Astro.url.pathname}>
+        <button class="btn-plein" type="submit">Confirmer la connexion</button>
+      </form>
+    </Connexion>
+  )
+}

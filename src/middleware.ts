@@ -1,17 +1,59 @@
 import { defineMiddleware } from 'astro:middleware';
+import { tenantParHote, type Role, type Tenant, type Utilisateur } from './lib/db';
+import { sessionCourante } from './lib/auth';
+import { envDe } from './lib/mail';
+
+declare global {
+  namespace App {
+    interface Locals {
+      utilisateur: Utilisateur | null;
+      tenant: Tenant | null;
+    }
+  }
+}
 
 const PUBLIC = 'public, s-maxage=60, stale-while-revalidate=600';
 const PRIVE = 'private, no-store';
 
-function estPrive(chemin: string): boolean {
-  return ['/espace', '/gestionnaire'].some((p) => chemin === p || chemin.startsWith(`${p}/`));
+// Une route gardée exige l'un de ces rôles. Sinon : redirection vers /connexion.
+const GARDES: { prefixe: string; roles: Role[] }[] = [
+  { prefixe: '/espace', roles: ['viewer'] },
+  { prefixe: '/gestionnaire', roles: ['gestionnaire', 'editeur'] },
+  { prefixe: '/admin', roles: ['editeur'] },
+];
+
+// Jamais en cache partagé : pages authentifiées, et pages qui lisent ou posent le cookie.
+const PRIVES = [...GARDES.map((g) => g.prefixe), '/connexion', '/deconnexion'];
+
+function sous(chemin: string, prefixe: string): boolean {
+  return chemin === prefixe || chemin.startsWith(`${prefixe}/`);
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
-  const reponse = await next();
+  const chemin = context.url.pathname;
+  const { DB } = envDe(context.locals);
+
+  const tenant = await tenantParHote(DB, context.url.host);
+  context.locals.tenant = tenant;
+  context.locals.utilisateur = null;
+
+  const prive = PRIVES.some((p) => sous(chemin, p));
+  if (prive) {
+    // Un utilisateur n'a qu'un tenant : sa session ne vaut que sur l'hôte de ce tenant.
+    const utilisateur = await sessionCourante(DB, context.cookies);
+    if (utilisateur && tenant && utilisateur.tenant_id === tenant.id) {
+      context.locals.utilisateur = utilisateur;
+    }
+  }
+
+  const garde = GARDES.find((g) => sous(chemin, g.prefixe));
+  const role = context.locals.utilisateur?.role;
+  const refuse = garde !== undefined && (role === undefined || !garde.roles.includes(role));
+
+  const reponse = refuse ? context.redirect('/connexion') : await next();
   const resultat = new Response(reponse.body, reponse);
 
-  if (estPrive(context.url.pathname)) {
+  if (prive) {
     // Toujours, quel que soit le statut : une page authentifiée ne doit jamais être mise en cache.
     resultat.headers.set('Cache-Control', PRIVE);
   } else if (

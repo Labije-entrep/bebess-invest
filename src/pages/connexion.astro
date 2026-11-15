@@ -1,0 +1,54 @@
+---
+import Connexion from '../layouts/Connexion.astro';
+import { accueilDuRole, demanderLien } from '../lib/auth';
+import { creerMailer, envDe } from '../lib/mail';
+
+if (Astro.locals.utilisateur) {
+  return Astro.redirect(accueilDuRole(Astro.locals.utilisateur.role));
+}
+
+if (Astro.request.method === 'POST') {
+  const donnees = await Astro.request.formData();
+  const email = String(donnees.get('email') ?? '').trim().toLowerCase();
+  const tenant = Astro.locals.tenant;
+  if (tenant && email.length <= 254 && email.includes('@')) {
+    const env = envDe(Astro.locals);
+    try {
+      const jeton = await demanderLien(env.DB, tenant.id, email);
+      if (jeton) {
+        const lien = `${Astro.url.origin}/connexion/${jeton}`;
+        await creerMailer(env).envoyer(
+          email,
+          'Votre lien de connexion',
+          `Bonjour,\n\nPour accéder à votre espace, ouvrez ce lien. Il est valable 15 minutes et ne sert qu'une fois :\n\n${lien}\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce message.\n\nBeBess'Invest`,
+        );
+      }
+    } catch (erreur) {
+      // Jamais de détail côté navigateur : la réponse reste identique dans tous les cas.
+      console.error('[connexion] envoi impossible :', erreur instanceof Error ? erreur.message : erreur);
+    }
+  }
+  return Astro.redirect('/connexion?envoye=1');
+}
+
+const envoye = Astro.url.searchParams.get('envoye') === '1';
+---
+
+<Connexion titre="Connexion">
+  <h1>Connexion</h1>
+  {
+    envoye ? (
+      <p role="status">
+        Si cette adresse est associée à un compte, un lien de connexion vient d'être envoyé.
+        Il est valable 15 minutes.
+      </p>
+    ) : (
+      <form method="post" action="/connexion">
+        <label class="etiquette" for="email">Adresse e-mail</label>
+        <input class="champ" id="email" name="email" type="email" autocomplete="email" required maxlength="254" />
+        <button class="btn-plein" type="submit">Recevoir un lien</button>
+      </form>
+    )
+  }
+  <p class="cx-note">Pas de mot de passe : un lien à usage unique vous est envoyé par e-mail.</p>
+</Connexion>

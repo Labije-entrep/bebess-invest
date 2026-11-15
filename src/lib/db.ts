@@ -7,6 +7,7 @@ export interface Requete {
   bind(...valeurs: unknown[]): Requete;
   first<T = unknown>(): Promise<T | null>;
   all<T = unknown>(): Promise<{ results: T[] }>;
+  run(): Promise<unknown>;
 }
 export interface Base {
   prepare(sql: string): Requete;

@@ -1,0 +1,12 @@
+---
+import { deconnecter } from '../lib/auth';
+import { envDe } from '../lib/mail';
+
+// POST uniquement, depuis un formulaire : un simple lien ou une image ne déconnecte personne.
+if (Astro.request.method !== 'POST') {
+  return new Response(null, { status: 405, headers: { Allow: 'POST' } });
+}
+
+await deconnecter(envDe(Astro.locals).DB, Astro.cookies);
+return Astro.redirect('/connexion', 303);
+---
