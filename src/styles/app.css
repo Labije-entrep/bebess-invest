@@ -1,25 +1,55 @@
-/* Espace client : un seul thème sombre, aucun arrondi. */
+/* Espace client : un seul thème sombre, aucun arrondi, aucune ombre. */
+
+/* Polices auto-hébergées, sous-ensemble latin, graisses utilisées seulement. */
+@import '@fontsource/newsreader/latin-200.css';
+@import '@fontsource/newsreader/latin-300.css';
+@import '@fontsource/newsreader/latin-400.css';
+@import '@fontsource/newsreader/latin-300-italic.css';
+@import '@fontsource/ibm-plex-sans/latin-300.css';
+@import '@fontsource/ibm-plex-sans/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-400.css';
 
 :root {
-  --fond: #0d0f12;
-  --fond-2: #14181d;
-  --fond-3: #1b2027;
-  --texte: #e9e6df;
-  --texte-2: #9b9ca3;
-  --filet: #2a2f38;
-  --accent: #c7a96b;
-  --accent-2: #8e7743;
-  --positif: #6fae8a;
-  --alerte: #c8745f;
-  --serif: Georgia, 'Times New Roman', serif;
-  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Charte : couleurs */
+  --fond: #070a10;
+  --marine: #0d1829;
+  --texte: #e6e1d6;
+  --texte-2: #98a2b2;
+  --accent: #b99455;
+  --accent-clair: #dcbf88;
+  --sur-accent: #140f05;
+  --filet: rgba(185, 148, 85, 0.26);
+  --champ-fond: rgba(19, 36, 61, 0.45);
+  --positif: #4fb08d;
+  --alerte: #c2614f;
+
+  /* Couleurs de série, dans cet ordre (graphique de répartition) */
+  --serie-1: #b9862b;
+  --serie-2: #4e9bd6;
+  --serie-3: #c9684e;
+  --serie-4: #3fa98a;
+  --serie-5: #9b7bd4;
+
+  /* Charte : familles de police */
+  --serif: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  /* Mise en page et échelle d'espacement */
   --largeur: 72rem;
+  --espace-xs: 0.5rem;
+  --espace-s: 0.75rem;
+  --espace-m: 1rem;
   --espace: 1.5rem;
+  --espace-l: 2rem;
+  --espace-xl: 3rem;
+  --espace-xxl: 4rem;
 }
 
 *, *::before, *::after {
   box-sizing: border-box;
   border-radius: 0;
+  box-shadow: none;
 }
 
 html { background: var(--fond); color: var(--texte); }
@@ -36,7 +66,7 @@ body {
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-h1, h2, h3 { font-family: var(--serif); font-weight: 400; line-height: 1.2; margin: 0 0 1rem; }
+h1, h2, h3 { font-family: var(--serif); font-weight: 400; line-height: 1.2; margin: 0 0 var(--espace-m); }
 
 .wrap {
   width: 100%;
@@ -45,12 +75,12 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 400; line-height: 1.2; marg
   padding: 0 var(--espace);
 }
 
-.section { padding: 4rem 0; }
+.section { padding: var(--espace-xxl) 0; }
 
 .filet {
   border: 0;
   border-top: 1px solid var(--filet);
-  margin: 2rem 0;
+  margin: var(--espace-l) 0;
 }
 
 .etiquette {
@@ -80,10 +110,20 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 400; line-height: 1.2; marg
   border: 1px solid var(--accent);
   cursor: pointer;
 }
-.btn:hover { background: var(--fond-3); text-decoration: none; }
+.btn:hover { background: var(--marine); text-decoration: none; }
 
-.btn-plein { background: var(--accent); color: var(--fond); }
-.btn-plein:hover { background: var(--accent-2); color: var(--texte); text-decoration: none; }
+.btn-plein { background: var(--accent); color: var(--sur-accent); }
+.btn-plein:hover {
+  background: var(--accent-clair);
+  border-color: var(--accent-clair);
+  color: var(--sur-accent);
+  text-decoration: none;
+}
+
+.champ,
+:where(input:not([type='checkbox'], [type='radio'], [type='submit'], [type='button']), select, textarea) {
+  background: var(--champ-fond);
+}
 
 .champ {
   display: block;
@@ -91,7 +131,6 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 400; line-height: 1.2; marg
   padding: 0.7rem 0.9rem;
   font: inherit;
   color: var(--texte);
-  background: var(--fond-2);
   border: 1px solid var(--filet);
 }
 .champ:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
@@ -110,7 +149,7 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 400; line-height: 1.2; marg
   color: var(--texte-2);
 }
 .table th, .table td {
-  padding: 0.75rem 0.5rem;
+  padding: var(--espace-s) var(--espace-xs);
   border-bottom: 1px solid var(--filet);
 }
 .table td.num, .table th.num { text-align: right; }
