@@ -1,0 +1,38 @@
+---
+import Gestion from '../../../layouts/Gestion.astro';
+import { envDe } from '../../../lib/mail';
+import { pageContenu } from '../../../lib/db';
+import { dateCourte } from '../../../lib/format';
+import { MODELES } from '../../../lib/site';
+
+const { DB } = envDe(Astro.locals);
+const tenant = Astro.locals.tenant!;
+const lignes = await Promise.all(
+  MODELES.map(async (m) => ({ m, page: await pageContenu(DB, tenant.id, m.cle) })),
+);
+---
+<Gestion titre="Contenus">
+  <span class="etiquette">Site public</span>
+  <h1>Contenus</h1>
+  <div class="defile">
+    <table class="table">
+      <thead>
+        <tr><th>Clé</th><th>Page</th><th>État</th><th>Dernière mise à jour</th><th></th></tr>
+      </thead>
+      <tbody>
+        {lignes.map(({ m, page }) => (
+          <tr>
+            <td>{m.cle}</td>
+            <td>{m.libelle}</td>
+            <td class={page ? undefined : 'perime'}>{page ? 'Renseignée' : 'Vide'}</td>
+            <td>{page ? dateCourte(page.maj_le) : '—'}</td>
+            <td class="num">
+              <a href={`/gestionnaire/contenus/${m.cle}`}>Modifier</a> ·
+              <a href={m.route}>Aperçu</a>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</Gestion>

@@ -1,4 +1,37 @@
 ---
-import Notes from "../../views/Notes.astro";
+import Public from '../../layouts/Public.astro';
+import { envDe } from '../../lib/mail';
+import { notesPubliees } from '../../lib/db';
+import { dateLongue } from '../../lib/format';
+import { chargerPage, chaine } from '../../lib/site';
+
+const { DB } = envDe(Astro.locals);
+const tenant = Astro.locals.tenant;
+const nom = tenant?.nom ?? "BeBess'Invest";
+const page = await chargerPage(DB, tenant?.id, 'notes');
+const c = page.c;
+// Les notes publiées s'affichent toujours ; seuls l'en-tête et le message vide ont des valeurs par défaut.
+const notes = tenant ? await notesPubliees(DB, tenant.id) : [];
 ---
-<Notes langue="fr" />
+<Public titre={page.titre ?? `Notes de marché · ${nom}`} description={page.description}>
+  <section class="bloc-hero">
+    <div class="wrap">
+      <span class="etiquette">{chaine(c?.eyebrow) || 'Notes'}</span>
+      <h1>{chaine(c?.titre) || 'Notes de marché'}</h1>
+      {chaine(c?.intro) && <p>{c?.intro}</p>}
+      {notes.length === 0 ? (
+        <div class="vide-explicite"><p>{chaine(c?.vide) || "Aucune note n'est publiée pour le moment."}</p></div>
+      ) : (
+        <ul class="liste-notes">
+          {notes.map((n) => (
+            <li>
+              <span class="etiquette">{dateLongue(n.date)}</span>
+              <h2><a href={`/notes/${n.slug}`}>{n.titre}</a></h2>
+              {n.chapeau && <p>{n.chapeau}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  </section>
+</Public>
