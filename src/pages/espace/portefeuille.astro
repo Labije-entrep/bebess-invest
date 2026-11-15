@@ -1,0 +1,66 @@
+---
+import Viewer from '../../layouts/Viewer.astro';
+import { enveloppesDuViewer, lignesDesEnveloppes } from '../../lib/db';
+import { euros, pourcent } from '../../lib/format';
+import { envDe } from '../../lib/mail';
+import { journaliser, partBp, signe, signeBp, teinte } from '../../lib/espace';
+
+const u = Astro.locals.utilisateur;
+if (!u) return Astro.redirect('/connexion');
+const { DB } = envDe(Astro.locals);
+await journaliser(DB, u.id, Astro.url.pathname);
+
+const enveloppes = await enveloppesDuViewer(DB, u.id);
+const lignes = await lignesDesEnveloppes(DB, enveloppes.map((e) => e.id));
+---
+<Viewer titre="Portefeuille">
+  <h1>Portefeuille</h1>
+
+  {enveloppes.length === 0 && <p class="aide">Aucune enveloppe à afficher.</p>}
+
+  {enveloppes.map((e) => {
+    const siennes = lignes.filter((l) => l.enveloppe_id === e.id);
+    return (
+      <section class="bloc">
+        <div class="esp-entete">
+          <div>
+            <h2>{e.libelle}</h2>
+            <span class="etiquette">
+              {[e.etablissement, e.ouverte_en ? `ouverte en ${e.ouverte_en.slice(0, 4)}` : null].filter(Boolean).join(' · ')}
+            </span>
+          </div>
+          <div class="droite">
+            <span class="chiffre num" style="font-size: 1.5rem;">{euros(e.valorisation_cents)}</span><br />
+            <span class={`num ${teinte(e.perf_bp)}`}>{e.perf_bp === null ? '—' : signeBp(e.perf_bp)}</span>
+          </div>
+        </div>
+        <div class="defile">
+          <table class="table table-large">
+            <thead>
+              <tr>
+                <th>Support</th><th class="num">Valorisation</th><th class="num">Part</th>
+                <th class="num">Plus ou moins-value</th><th class="num">Frais annuels</th>
+              </tr>
+            </thead>
+            <tbody>
+              {siennes.map((l) => (
+                <tr>
+                  <td>{l.libelle}</td>
+                  <td class="num">{euros(l.valorisation_cents)}</td>
+                  <td class="num">{pourcent(partBp(l.valorisation_cents, e.valorisation_cents))}</td>
+                  <td class={`num ${teinte(l.pv_cents)}`}>{l.pv_cents === null ? '—' : signe(l.pv_cents)}</td>
+                  <td class="num">{l.frais_bp === null ? '—' : pourcent(l.frais_bp)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    );
+  })}
+
+  <p class="mention">
+    Le non coté est valorisé chaque trimestre : sa valeur affichée correspond à la dernière
+    valorisation disponible et peut différer de sa valeur de cession.
+  </p>
+</Viewer>
