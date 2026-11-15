@@ -1,5 +1,6 @@
 import { defineConfig } from 'astro/config';
 import sitemap from '@astrojs/sitemap';
+import cloudflare from '@astrojs/cloudflare';
 import { readFileSync } from 'node:fs';
 import yaml from 'js-yaml';
 
@@ -12,6 +13,8 @@ const site_ = yaml.load(readFileSync('./src/data/site.yaml', 'utf8'));
 const anglaisPublie = site_?.langues?.en?.publie === true;
 
 export default defineConfig({
+  output: 'server',
+  adapter: cloudflare({ platformProxy: { enabled: true } }),
   site: SITE,
   trailingSlash: 'never',
   build: { format: 'file' },
