@@ -1,0 +1,89 @@
+---
+import '../styles/app.css';
+
+interface Props {
+  titre: string;
+}
+const { titre } = Astro.props;
+const liens: [string, string][] = [
+  ['/gestionnaire', 'Tableau de bord'],
+  ['/gestionnaire/viewers/nouveau', 'Nouveau viewer'],
+  ['/gestionnaire/import', 'Import CSV'],
+  ['/deconnexion', 'Déconnexion'],
+];
+const ici = Astro.url.pathname.replace(/\/$/, '');
+---
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{titre} · Espace gestionnaire</title>
+  </head>
+  <body class="gest">
+    <header class="gest-haut">
+      <div class="wrap gest-barre">
+        <a class="gest-marque" href="/gestionnaire">Espace gestionnaire</a>
+        <button class="btn gest-burger" type="button" aria-expanded="false" aria-controls="gest-menu" data-menu>Menu</button>
+        <nav id="gest-menu" class="gest-menu" aria-label="Navigation">
+          {liens.map(([href, nom]) => <a href={href} aria-current={ici === href ? 'page' : undefined}>{nom}</a>)}
+        </nav>
+      </div>
+    </header>
+    <main class="wrap section"><slot /></main>
+    <script is:inline>
+      var b = document.querySelector('[data-menu]'), m = document.getElementById('gest-menu');
+      b.addEventListener('click', function () {
+        var o = m.classList.toggle('ouvert');
+        b.setAttribute('aria-expanded', o ? 'true' : 'false');
+      });
+    </script>
+  </body>
+</html>
+
+<style is:global>
+  .gest .etiquette, .gest .table th, .gest .onglets a { font-family: var(--mono); font-weight: 400; }
+  .gest h1 { font-weight: 300; font-size: 2rem; }
+  .gest h2 { font-weight: 300; font-size: 1.4rem; }
+  .gest .section { padding-top: var(--espace-xl); }
+  .gest-haut { border-bottom: 1px solid var(--filet); }
+  .gest-barre { display: flex; align-items: center; justify-content: space-between; gap: var(--espace); min-height: 4rem; flex-wrap: wrap; }
+  .gest-marque { font-family: var(--serif); font-weight: 300; font-size: 1.25rem; color: var(--texte); }
+  .gest-menu { display: flex; gap: var(--espace); flex-wrap: wrap; }
+  .gest-menu a { font-size: 0.875rem; color: var(--texte-2); }
+  .gest-menu a[aria-current='page'] { color: var(--accent-clair); }
+  .gest-burger { display: none; }
+  @media (max-width: 48rem) {
+    .gest-burger { display: inline-block; }
+    .gest-menu { display: none; width: 100%; flex-direction: column; gap: var(--espace-s); padding-bottom: var(--espace-m); }
+    .gest-menu.ouvert { display: flex; }
+  }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--filet); border-bottom: 1px solid var(--filet); margin: var(--espace-l) 0; }
+  .kpi { padding: var(--espace) var(--espace); border-left: 1px solid var(--filet); }
+  .kpi:first-child { border-left: 0; padding-left: 0; }
+  .kpi .chiffre { font-size: 1.75rem; display: block; margin-top: var(--espace-xs); }
+  @media (max-width: 48rem) {
+    .kpis { grid-template-columns: 1fr 1fr; }
+    .kpi:nth-child(3) { border-left: 0; padding-left: 0; }
+    .kpi:nth-child(n + 3) { border-top: 1px solid var(--filet); }
+  }
+  .onglets { display: flex; flex-wrap: wrap; gap: var(--espace); border-bottom: 1px solid var(--filet); margin: var(--espace-l) 0; }
+  .onglets a { padding: var(--espace-xs) 0; font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--texte-2); border-bottom: 1px solid transparent; margin-bottom: -1px; }
+  .onglets a[aria-current='page'] { color: var(--accent-clair); border-bottom-color: var(--accent); }
+  .groupe { margin-bottom: var(--espace); }
+  .groupe .etiquette { margin-bottom: var(--espace-xs); }
+  .grille { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 var(--espace-l); }
+  @media (max-width: 48rem) { .grille { grid-template-columns: 1fr; } }
+  .erreur { color: var(--alerte); font-size: 0.8125rem; margin: 0 0 var(--espace-xs); }
+  .aide { color: var(--texte-2); font-size: 0.8125rem; margin: var(--espace-xs) 0 0; }
+  .info { border-left: 1px solid var(--accent); padding-left: var(--espace-m); margin: 0 0 var(--espace); color: var(--accent-clair); }
+  .info.alerte { border-left-color: var(--alerte); color: var(--alerte); }
+  .perime { color: var(--alerte); }
+  .defile { overflow-x: auto; }
+  .table .champ { padding: 0.45rem 0.5rem; min-width: 6rem; }
+  .table td.num .champ { text-align: right; }
+  .actions { margin-top: var(--espace); display: flex; gap: var(--espace); align-items: center; flex-wrap: wrap; }
+  .gest .btn, .gest .btn-plein { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.14em; }
+  .gest .table .btn { padding: 0.35rem 0.8rem; }
+</style>

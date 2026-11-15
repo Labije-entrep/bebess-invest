@@ -1,0 +1,27 @@
+---
+// Champ de formulaire : étiquette, message d'erreur au-dessus du champ, aide.
+interface Props {
+  nom: string;
+  label: string;
+  valeur?: string;
+  erreur?: string;
+  type?: string;
+  aide?: string;
+  lignes?: number;
+  inputmode?: 'decimal' | 'numeric' | 'text';
+  requis?: boolean;
+}
+const { nom, label, valeur = '', erreur, type = 'text', aide, lignes, inputmode, requis } = Astro.props;
+---
+<div class="groupe">
+  <label class="etiquette" for={nom}>{label}{requis ? ' *' : ''}</label>
+  {erreur && <p class="erreur" id={`${nom}-e`}>{erreur}</p>}
+  {
+    lignes ? (
+      <textarea class="champ" id={nom} name={nom} rows={lignes} aria-describedby={erreur ? `${nom}-e` : undefined}>{valeur}</textarea>
+    ) : (
+      <input class="champ" id={nom} name={nom} type={type} value={valeur} inputmode={inputmode} aria-describedby={erreur ? `${nom}-e` : undefined} />
+    )
+  }
+  {aide && <p class="aide">{aide}</p>}
+</div>

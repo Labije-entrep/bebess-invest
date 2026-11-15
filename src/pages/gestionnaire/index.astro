@@ -1,0 +1,62 @@
+---
+export const prerender = false;
+import Gestion from '../../layouts/Gestion.astro';
+import { contexte, viewersResumes, dernierImport, seuilArrete } from '../../lib/gestion';
+import { euros, dateCourte } from '../../lib/format';
+
+const c = contexte(Astro);
+if (c instanceof Response) return c;
+
+const viewers = await viewersResumes(c.db, c.tenant.id);
+const dernier = await dernierImport(c.db, c.tenant.id);
+const seuil = seuilArrete();
+const encours = viewers.reduce((s, v) => s + v.encours, 0);
+const actifs = viewers.filter((v) => v.actif === 1).length;
+const arretes = viewers.map((v) => v.arrete).filter((d): d is string => !!d).sort();
+const derniere = arretes.length ? arretes[arretes.length - 1] : null;
+const importe = Astro.url.searchParams.get('importe') === '1';
+---
+<Gestion titre="Tableau de bord">
+  <h1>Tableau de bord</h1>
+  {importe && <p class="info">Import enregistré.</p>}
+
+  <div class="kpis">
+    <div class="kpi"><span class="etiquette">Encours suivis</span><span class="chiffre">{euros(encours)}</span></div>
+    <div class="kpi"><span class="etiquette">Viewers</span><span class="chiffre">{viewers.length}</span></div>
+    <div class="kpi"><span class="etiquette">Accès actifs</span><span class="chiffre">{actifs} / {viewers.length}</span></div>
+    <div class="kpi"><span class="etiquette">Dernière valorisation</span><span class="chiffre">{derniere ? dateCourte(derniere) : '—'}</span></div>
+  </div>
+
+  <h2>Viewers</h2>
+  {
+    viewers.length === 0 ? (
+      <p>Aucun viewer pour l'instant. <a href="/gestionnaire/viewers/nouveau">Créer le premier</a>.</p>
+    ) : (
+      <div class="defile">
+        <table class="table">
+          <thead>
+            <tr><th>Nom</th><th class="num">Encours</th><th>Arrêté au</th><th>Accès</th></tr>
+          </thead>
+          <tbody>
+            {viewers.map((v) => (
+              <tr>
+                <td><a href={`/gestionnaire/viewers/${encodeURIComponent(v.id)}`}>{v.nom}</a></td>
+                <td class="num">{euros(v.encours)}</td>
+                <td class={!v.arrete || v.arrete < seuil ? 'perime' : undefined}>{v.arrete ? dateCourte(v.arrete) : 'Aucun'}</td>
+                <td>{v.actif === 1 ? 'Actif' : 'Suspendu'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  <hr class="filet" />
+  <span class="etiquette">Dernier import CSV</span>
+  <p>{dernier ? `${dernier.nom_fichier} — ${dernier.lignes} ligne${dernier.lignes > 1 ? 's' : ''} traitée${dernier.lignes > 1 ? 's' : ''}, le ${dateCourte(dernier.cree_le)}` : 'Aucun import pour l\'instant.'}</p>
+  <div class="actions">
+    <a class="btn-plein" href="/gestionnaire/viewers/nouveau">Nouveau viewer</a>
+    <a class="btn" href="/gestionnaire/import">Importer un CSV</a>
+  </div>
+</Gestion>
