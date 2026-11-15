@@ -33,9 +33,6 @@ const courbe = calculerCourbe(points);
 const enCours = mouvements.filter((m) => m.en_cours === 1).slice(0, 3);
 const dateArrete = plusRecent(enveloppes.map((e) => e.arrete_le));
 const synchro = plusRecent([...lignes.map((l) => l.arrete_le), ...enveloppes.map((e) => e.arrete_le)]);
-// Base 100 à l'origine : 10 000 centièmes + performance, affichés à une décimale.
-const dixiemes = ind.perfOrigineBp === null ? 0 : Math.round((10000 + ind.perfOrigineBp) / 10);
-const base100 = `${Math.floor(dixiemes / 10)},${dixiemes % 10}`;
 const totalLignes = classes.reduce((s, c) => s + c.montant, 0);
 ---
 <Viewer titre="Tableau de bord">
@@ -76,8 +73,7 @@ const totalLignes = classes.reduce((s, c) => s + c.montant, 0);
         <span class="etiquette">Évolution</span>
         {ind.perfOrigineBp !== null && (
           <p class="aide">
-            Depuis l'origine : <span class={teinte(ind.perfOrigineBp)}>{signeBp(ind.perfOrigineBp)}</span>
-            {' · '}base 100 : <span class="num">{base100}</span>
+            Depuis l'origine : <span class={teinte(ind.perfOrigineBp)}>{signeBp(ind.perfOrigineBp)}</span>, hors versements
           </p>
         )}
         <Courbe courbe={courbe} />
