@@ -1,24 +1,10 @@
 ---
-import Public from '../../layouts/Public.astro';
+import Note from '../../components/pub/Note.astro';
 import { envDe } from '../../lib/mail';
 import { notePubliee } from '../../lib/site';
-import { rendreMarkdown } from '../../lib/markdown';
-import { dateLongue } from '../../lib/format';
 
-const { DB } = envDe(Astro.locals);
 const tenant = Astro.locals.tenant;
-const note = tenant && Astro.params.slug ? await notePubliee(DB, tenant.id, Astro.params.slug) : null;
+const note = tenant && Astro.params.slug ? await notePubliee(envDe(Astro.locals).DB, tenant.id, Astro.params.slug) : null;
 if (!note) return Astro.rewrite('/404');
-const corps = await rendreMarkdown(note.corps_md);
 ---
-<Public titre={`${note.titre} · ${tenant?.nom ?? "BeBess'Invest"}`} description={note.chapeau ?? ''}>
-  <article class="bloc-hero">
-    <div class="wrap">
-      <span class="etiquette">{dateLongue(note.date)}</span>
-      <h1>{note.titre}</h1>
-      {note.chapeau && <p>{note.chapeau}</p>}
-      <div class="prose" set:html={corps} />
-      <div class="actions-pub"><a class="btn" href="/notes">Toutes les notes</a></div>
-    </div>
-  </article>
-</Public>
+<Note langue="fr" note={note} />

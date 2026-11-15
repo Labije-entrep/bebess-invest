@@ -1,25 +1,28 @@
 ---
 import '../styles/app.css';
 import '../styles/public.css';
+import { T, chemin, type Lg } from '../lib/publang';
 
 interface Props {
   titre: string;
   description?: string;
+  langue?: Lg;
 }
-const { titre, description = '' } = Astro.props;
+const { titre, description = '', langue = 'fr' } = Astro.props;
+const l = T[langue];
 const nom = Astro.locals.tenant?.nom ?? "BeBess'Invest";
 const canonique = Astro.url.origin + Astro.url.pathname;
 const liens: [string, string][] = [
-  ['/approche', 'Approche'],
-  ['/parcours', 'Parcours'],
-  ['/notes', 'Notes'],
-  ['/contact', 'Contact'],
-  ['/connexion', 'Espace client'],
+  [chemin('approche', langue), l.nav.approche],
+  [chemin('parcours', langue), l.nav.parcours],
+  [chemin('notes', langue), l.nav.notes],
+  [chemin('contact', langue), l.nav.contact],
+  ['/connexion', l.nav.espace],
 ];
 const ici = Astro.url.pathname.replace(/\/$/, '');
 ---
 <!doctype html>
-<html lang="fr">
+<html lang={langue}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -30,9 +33,9 @@ const ici = Astro.url.pathname.replace(/\/$/, '');
   <body class="pub">
     <header class="pub-haut">
       <div class="wrap pub-barre">
-        <a class="pub-marque" href="/">{nom}</a>
-        <button class="btn pub-burger" type="button" aria-expanded="false" aria-controls="pub-menu" data-menu>Menu</button>
-        <nav id="pub-menu" class="pub-menu" aria-label="Navigation">
+        <a class="pub-marque" href={chemin('accueil', langue)}>{nom}</a>
+        <button class="btn pub-burger" type="button" aria-expanded="false" aria-controls="pub-menu" data-menu>{l.menu}</button>
+        <nav id="pub-menu" class="pub-menu" aria-label={l.navAria}>
           {liens.map(([href, lib]) => <a href={href} aria-current={ici === href || ici.startsWith(`${href}/`) ? 'page' : undefined}>{lib}</a>)}
         </nav>
       </div>
@@ -41,13 +44,13 @@ const ici = Astro.url.pathname.replace(/\/$/, '');
     <footer class="pub-pied">
       <div class="wrap">
         <span>{nom}</span>
-        <nav aria-label="Pied de page">
-          <a href="/contact">Contact</a>
-          <a href="/mentions-legales">Mentions légales</a>
+        <nav aria-label={l.pied}>
+          <a href={chemin('contact', langue)}>{l.nav.contact}</a>
+          <a href={chemin('mentions', langue)}>{l.mentions}</a>
         </nav>
       </div>
     </footer>
-    <script is:inline>
+    <script is:inline nonce={Astro.locals.nonce}>
       var b = document.querySelector('[data-menu]'), m = document.getElementById('pub-menu');
       b.addEventListener('click', function () {
         var o = m.classList.toggle('ouvert');

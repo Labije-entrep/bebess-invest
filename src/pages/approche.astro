@@ -1,50 +1,8 @@
 ---
-import Public from '../layouts/Public.astro';
-import PubVide from '../components/PubVide.astro';
+import Approche from '../components/pub/Approche.astro';
 import { envDe } from '../lib/mail';
-import { chargerPage, chaine, liste } from '../lib/site';
+import { chargerPage } from '../lib/site';
 
-const { DB } = envDe(Astro.locals);
-const nom = Astro.locals.tenant?.nom ?? "BeBess'Invest";
-const page = await chargerPage(DB, Astro.locals.tenant?.id, 'approche');
-const c = page.c;
-const piliers = liste(c?.piliers);
-const fin = c?.final ?? {};
+const page = await chargerPage(envDe(Astro.locals).DB, Astro.locals.tenant?.id, 'approche');
 ---
-<Public titre={page.titre ?? `Approche · ${nom}`} description={page.description}>
-  {!c ? <PubVide cle="approche" /> : (
-    <>
-      <section class="bloc-hero">
-        <div class="wrap">
-          {chaine(c.eyebrow) && <span class="etiquette">{c.eyebrow}</span>}
-          <h1>{chaine(c.titre)}</h1>
-          {chaine(c.intro) && <p>{c.intro}</p>}
-        </div>
-      </section>
-      {piliers.length > 0 && (
-        <section class="bloc">
-          <div class="wrap">
-            <div class="colonnes" style={`--n: ${Math.min(piliers.length, 3)}`}>
-              {piliers.map((p, k) => (
-                <div class="colonne">
-                  <span class="etiquette">{String(k + 1).padStart(2, '0')}</span>
-                  <h3>{chaine(p.titre)}</h3>
-                  <p>{chaine(p.texte)}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-      {chaine(fin.titre) && (
-        <section class="bloc alt">
-          <div class="wrap">
-            <h2>{fin.titre}</h2>
-            {chaine(fin.texte) && <p>{fin.texte}</p>}
-            {chaine(fin.cta) && <div class="actions-pub"><a class="btn-plein" href="/contact">{fin.cta}</a></div>}
-          </div>
-        </section>
-      )}
-    </>
-  )}
-</Public>
+<Approche langue="fr" page={page} />

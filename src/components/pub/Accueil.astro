@@ -1,0 +1,115 @@
+---
+import Public from '../../layouts/Public.astro';
+import PubVide from '../PubVide.astro';
+import { chaine, chaines, liste, type PageLue } from '../../lib/site';
+import { T, chemin, type Lg } from '../../lib/publang';
+
+interface Props { langue: Lg; page: PageLue }
+const { langue, page } = Astro.props;
+const nom = Astro.locals.tenant?.nom ?? "BeBess'Invest";
+const c = page.c;
+
+const titre = chaine(c?.titre);
+const mot = chaine(c?.mot_accent);
+const i = mot ? titre.indexOf(mot) : -1;
+const avant = i >= 0 ? titre.slice(0, i) : titre;
+const apres = i >= 0 ? titre.slice(i + mot.length) : '';
+
+const preuves = chaines(c?.preuves);
+const missions = liste(c?.missions);
+const pos = c?.positionnement ?? {};
+const cit = c?.citation ?? {};
+const faq = liste(c?.faq).filter((q) => chaine(q.question) && chaine(q.reponse));
+const fin = c?.final ?? {};
+const versContact = chemin('contact', langue);
+---
+<Public langue={langue} titre={page.titre ?? `${nom}`} description={page.description}>
+  {!c ? <PubVide cle="accueil" /> : (
+    <>
+      <section class="bloc-hero">
+        <div class="wrap">
+          {chaine(c.eyebrow) && <span class="etiquette">{c.eyebrow}</span>}
+          <h1>{avant}{i >= 0 && <em class="accent">{mot}</em>}{apres}</h1>
+          {chaine(c.intro) && <p>{c.intro}</p>}
+          <div class="actions-pub">
+            {chaine(c.cta_primaire) && <a class="btn-plein" href={versContact}>{c.cta_primaire}</a>}
+            {chaine(c.cta_secondaire) && <a class="btn" href={chemin('approche', langue)}>{c.cta_secondaire}</a>}
+          </div>
+        </div>
+      </section>
+
+      {preuves.length > 0 && (
+        <section class="wrap">
+          <ul class="preuves" style={`grid-template-columns: repeat(${Math.min(preuves.length, 4)}, 1fr)`}>
+            {preuves.map((p) => <li>{p}</li>)}
+          </ul>
+        </section>
+      )}
+
+      {missions.length > 0 && (
+        <section class="bloc">
+          <div class="wrap">
+            <div class="colonnes" style={`--n: ${missions.length}`}>
+              {missions.map((m) => (
+                <div class="colonne">
+                  <span class="etiquette">{chaine(m.etiquette)}</span>
+                  <h3>{chaine(m.titre)}</h3>
+                  <p>{chaine(m.texte)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {(chaine(pos.titre) || chaine(pos.p1)) && (
+        <section class="bloc alt">
+          <div class="wrap">
+            {chaine(pos.eyebrow) && <span class="etiquette">{pos.eyebrow}</span>}
+            <h2>{chaine(pos.titre)}</h2>
+            {chaine(pos.p1) && <p>{pos.p1}</p>}
+            {chaine(pos.p2) && <p>{pos.p2}</p>}
+          </div>
+        </section>
+      )}
+
+      {chaine(cit.texte) && (
+        <section class="bloc">
+          <div class="wrap">
+            <blockquote class="citation">
+              <p>{langue === 'fr' ? `« ${cit.texte} »` : `“${cit.texte}”`}</p>
+              {chaine(cit.source) && <footer class="etiquette">{cit.source}</footer>}
+            </blockquote>
+          </div>
+        </section>
+      )}
+
+      {faq.length > 0 && (
+        <section class="bloc alt">
+          <div class="wrap">
+            <span class="etiquette">{T[langue].faq}</span>
+            <div class="faq">
+              {faq.map((q) => (
+                <details>
+                  <summary>{q.question}</summary>
+                  <p>{q.reponse}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {chaine(fin.titre) && (
+        <section class="bloc">
+          <div class="wrap">
+            {chaine(fin.eyebrow) && <span class="etiquette">{fin.eyebrow}</span>}
+            <h2>{fin.titre}</h2>
+            {chaine(fin.texte) && <p>{fin.texte}</p>}
+            {chaine(fin.cta) && <div class="actions-pub"><a class="btn-plein" href={versContact}>{fin.cta}</a></div>}
+          </div>
+        </section>
+      )}
+    </>
+  )}
+</Public>

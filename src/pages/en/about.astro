@@ -1,4 +1,9 @@
 ---
-import Parcours from "../../views/Parcours.astro";
+import Parcours from '../../components/pub/Parcours.astro';
+import { envDe } from '../../lib/mail';
+import { chargerPage } from '../../lib/site';
+
+const page = await chargerPage(envDe(Astro.locals).DB, Astro.locals.tenant?.id, 'parcours', 'en');
+if (!page.c) return Astro.redirect('/parcours', 302);
 ---
-<Parcours langue="en" />
+<Parcours langue="en" page={page} />

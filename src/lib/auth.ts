@@ -56,7 +56,7 @@ export async function demanderLien(db: Base, tenantId: string, email: string): P
     .first<{ n: number }>();
   if ((compte?.n ?? 0) >= DEMANDES_MAX) {
     // Visible côté serveur seulement : la réponse au navigateur ne change pas.
-    console.warn(`[connexion] limite de ${DEMANDES_MAX} demandes par heure atteinte pour ${email.trim().toLowerCase()}`);
+    console.warn(`[connexion] limite de ${DEMANDES_MAX} demandes par heure atteinte`);
     return null;
   }
 

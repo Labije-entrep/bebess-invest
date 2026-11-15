@@ -1,4 +1,14 @@
 ---
-import Notes from "../../../views/Notes.astro";
+import Notes from '../../../components/pub/Notes.astro';
+import { envDe } from '../../../lib/mail';
+import { notesPubliees } from '../../../lib/db';
+import { chargerPage } from '../../../lib/site';
+
+const { DB } = envDe(Astro.locals);
+const tenant = Astro.locals.tenant;
+const page = await chargerPage(DB, tenant?.id, 'notes', 'en');
+const notes = tenant ? await notesPubliees(DB, tenant.id, 'en') : [];
+// Ni contenu anglais pour la page, ni note anglaise : on renvoie vers l'équivalent français.
+if (!page.c && notes.length === 0) return Astro.redirect('/notes', 302);
 ---
-<Notes langue="en" />
+<Notes langue="en" page={page} notes={notes} />

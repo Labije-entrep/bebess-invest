@@ -1,0 +1,34 @@
+---
+import Public from '../../layouts/Public.astro';
+import { chaine, type PageLue } from '../../lib/site';
+import type { NoteMarche } from '../../lib/db';
+import { T, cheminNote, dateLongueLg, type Lg } from '../../lib/publang';
+
+interface Props { langue: Lg; page: PageLue; notes: NoteMarche[] }
+const { langue, page, notes } = Astro.props;
+const l = T[langue];
+const nom = Astro.locals.tenant?.nom ?? "BeBess'Invest";
+const c = page.c;
+---
+<Public langue={langue} titre={page.titre ?? `${l.notesTitre} · ${nom}`} description={page.description}>
+  <section class="bloc-hero">
+    <div class="wrap">
+      <span class="etiquette">{chaine(c?.eyebrow) || l.notesEtiquette}</span>
+      <h1>{chaine(c?.titre) || l.notesTitre}</h1>
+      {chaine(c?.intro) && <p>{c?.intro}</p>}
+      {notes.length === 0 ? (
+        <div class="vide-explicite"><p>{chaine(c?.vide) || l.notesVide}</p></div>
+      ) : (
+        <ul class="liste-notes">
+          {notes.map((n) => (
+            <li>
+              <span class="etiquette">{dateLongueLg(n.date, langue)}</span>
+              <h2><a href={cheminNote(n.slug, langue)}>{n.titre}</a></h2>
+              {n.chapeau && <p>{n.chapeau}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  </section>
+</Public>

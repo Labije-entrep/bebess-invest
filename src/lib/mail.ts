@@ -23,7 +23,10 @@ export function envDe(locals: unknown): Env {
 
 const pilotConsole: Mailer = {
   async envoyer(destinataire, sujet, texte) {
-    console.log(`\n[mail:console] À : ${destinataire}\n[mail:console] Sujet : ${sujet}\n${texte}\n`);
+    // Développement seulement : en production, le pilote console n'écrit rien (ni adresse, ni lien).
+    if (import.meta.env.DEV) {
+      console.log(`\n[mail:console] À : ${destinataire}\n[mail:console] Sujet : ${sujet}\n${texte}\n`);
+    }
   },
 };
 

@@ -1,0 +1,11 @@
+---
+import Note from '../../../components/pub/Note.astro';
+import { envDe } from '../../../lib/mail';
+import { notePubliee } from '../../../lib/site';
+
+const tenant = Astro.locals.tenant;
+const slug = Astro.params.slug ?? '';
+const note = tenant && slug ? await notePubliee(envDe(Astro.locals).DB, tenant.id, slug, 'en') : null;
+if (!note) return Astro.redirect(`/notes/${encodeURIComponent(slug)}`, 302);
+---
+<Note langue="en" note={note} />

@@ -1,0 +1,22 @@
+---
+import Public from '../layouts/Public.astro';
+import Viewer from '../layouts/Viewer.astro';
+import Gestion from '../layouts/Gestion.astro';
+import Erreur from '../components/Erreur.astro';
+import { T, langueDe } from '../lib/publang';
+
+const p = Astro.url.pathname;
+const sous = (prefixe: string) => p === prefixe || p.startsWith(`${prefixe}/`);
+const langue = langueDe(p);
+const e = T[langue].erreur;
+const titre = e.titre500;
+---
+{sous('/espace') ? (
+  <Viewer titre={titre}><Erreur code="500" retour={{ href: '/espace', libelle: 'Retour au tableau de bord' }} /></Viewer>
+) : sous('/gestionnaire') ? (
+  <Gestion titre={titre}><Erreur code="500" retour={{ href: '/gestionnaire', libelle: 'Retour au tableau de bord' }} /></Gestion>
+) : (
+  <Public langue={langue} titre={titre}>
+    <div class="wrap"><Erreur code="500" langue={langue} retour={{ href: langue === 'en' ? '/en' : '/', libelle: e.accueil }} /></div>
+  </Public>
+)}

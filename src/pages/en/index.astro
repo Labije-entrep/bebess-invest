@@ -1,4 +1,9 @@
 ---
-import Accueil from "../../views/Accueil.astro";
+import Accueil from '../../components/pub/Accueil.astro';
+import { envDe } from '../../lib/mail';
+import { chargerPage } from '../../lib/site';
+
+const page = await chargerPage(envDe(Astro.locals).DB, Astro.locals.tenant?.id, 'accueil', 'en');
+if (!page.c) return Astro.redirect('/', 302);
 ---
-<Accueil langue="en" />
+<Accueil langue="en" page={page} />

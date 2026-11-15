@@ -4,6 +4,7 @@
 // du gestionnaire connecté est toujours vérifié.
 
 import { accueilDuRole } from './auth';
+import { AccesRefuse, appartient, exiger } from './cloisonnement';
 import { creerMailer, envDe } from './mail';
 import {
   enveloppesDuViewer,
@@ -183,7 +184,8 @@ export function dernierImport(db: Base, tenantId: string): Promise<ImportCsv | n
 
 const COLONNES_VIEWER = 'id, tenant_id, email, nom, role, actif, cree_le';
 
-export function viewerDuTenant(db: Base, tenantId: string, id: string): Promise<Utilisateur | null> {
+export async function viewerDuTenant(db: Base, tenantId: string, id: string): Promise<Utilisateur | null> {
+  if (!(await appartient(db, tenantId, 'viewer', id))) return null;
   return db
     .prepare(`SELECT ${COLONNES_VIEWER} FROM utilisateur WHERE id = ? AND tenant_id = ? AND role = 'viewer'`)
     .bind(id, tenantId)
@@ -229,7 +231,7 @@ export async function envoyerLien(locals: unknown, email: string, nom: string, l
     );
     return true;
   } catch (e) {
-    console.error('[gestionnaire] envoi du lien impossible :', e);
+    console.error('[gestionnaire] envoi du lien impossible :', e instanceof Error ? e.message : 'erreur');
     return false;
   }
 }
@@ -245,6 +247,23 @@ export async function traiter(
   action: string,
   f: FormData,
 ): Promise<Retour> {
+  // Contrôle de cloisonnement, avant toute écriture : le viewer et chaque identifiant reçu
+  // doivent appartenir au tenant du gestionnaire connecté.
+  try {
+    await exiger(db, tenantId, 'viewer', viewerId);
+    const type = { enveloppes: 'enveloppe', lignes: 'ligne', suppr_point: 'point', suppr_mouvement: 'mouvement' }[action] as
+      'enveloppe' | 'ligne' | 'point' | 'mouvement' | undefined;
+    if (type) {
+      for (const [cle, valeur] of f) {
+        if ((cle === 'id' || /^r\d+_id$/.test(cle)) && typeof valeur === 'string' && valeur !== '') {
+          await exiger(db, tenantId, type, valeur.slice(0, 64));
+        }
+      }
+    }
+  } catch (e) {
+    if (e instanceof AccesRefuse) return { onglet: 'fiche', erreurs: { general: 'Accès refusé.' } };
+    throw e;
+  }
   switch (action) {
     case 'fiche':
       return { onglet: 'fiche', erreurs: await enregistrerFiche(db, viewerId, f) };

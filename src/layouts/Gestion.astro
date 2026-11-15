@@ -34,7 +34,7 @@ const ici = Astro.url.pathname.replace(/\/$/, '');
       </div>
     </header>
     <main class="wrap section"><slot /></main>
-    <script is:inline>
+    <script is:inline nonce={Astro.locals.nonce}>
       var b = document.querySelector('[data-menu]'), m = document.getElementById('gest-menu');
       b.addEventListener('click', function () {
         var o = m.classList.toggle('ouvert');
