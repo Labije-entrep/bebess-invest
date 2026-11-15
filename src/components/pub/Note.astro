@@ -1,0 +1,21 @@
+---
+import Public from '../../layouts/Public.astro';
+import type { NoteMarche } from '../../lib/db';
+import { rendreMarkdown } from '../../lib/markdown';
+import { T, chemin, dateLongueLg, type Lg } from '../../lib/publang';
+
+interface Props { langue: Lg; note: NoteMarche }
+const { langue, note } = Astro.props;
+const corps = await rendreMarkdown(note.corps_md);
+---
+<Public langue={langue} titre={`${note.titre} · ${Astro.locals.tenant?.nom ?? "BeBess'Invest"}`} description={note.chapeau ?? ''}>
+  <article class="bloc-hero">
+    <div class="wrap">
+      <span class="etiquette">{dateLongueLg(note.date, langue)}</span>
+      <h1>{note.titre}</h1>
+      {note.chapeau && <p>{note.chapeau}</p>}
+      <div class="prose" set:html={corps} />
+      <div class="actions-pub"><a class="btn" href={chemin('notes', langue)}>{T[langue].toutesNotes}</a></div>
+    </div>
+  </article>
+</Public>

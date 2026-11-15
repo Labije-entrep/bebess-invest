@@ -1,0 +1,28 @@
+---
+// Corps commun des pages d'erreur. Le lien de retour dépend de la zone, le texte de la langue.
+import { T, type Lg } from '../lib/publang';
+
+interface Props {
+  code: '404' | '500';
+  retour: { href: string; libelle: string };
+  langue?: Lg;
+}
+const { code, retour, langue = 'fr' } = Astro.props;
+const e = T[langue].erreur;
+const titre = code === '404' ? e.titre404 : e.titre500;
+const texte = code === '404' ? e.texte404 : e.texte500;
+---
+<div class="erreur-page">
+  <span class="etiquette">{e.code} {code}</span>
+  <h1>{titre}</h1>
+  <p>{texte}</p>
+  <p><a class="btn-plein" href={retour.href}>{retour.libelle}</a></p>
+</div>
+
+<style is:global>
+  .erreur-page { padding: var(--espace-xxl) 0; max-width: 40rem; }
+  .erreur-page .etiquette { font-family: var(--mono); font-weight: 400; color: var(--accent); }
+  .erreur-page h1 { font-weight: 200; font-size: 2.5rem; margin: var(--espace-s) 0 var(--espace); }
+  .erreur-page p { font-weight: 300; margin: 0 0 var(--espace); }
+  .erreur-page .btn-plein { font-family: var(--mono); font-weight: 400; font-size: 0.75rem; letter-spacing: 0.14em; }
+</style>

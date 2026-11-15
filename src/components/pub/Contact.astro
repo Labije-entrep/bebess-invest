@@ -1,0 +1,79 @@
+---
+import Public from '../../layouts/Public.astro';
+import PubVide from '../PubVide.astro';
+import { chaine, paragraphes } from '../../lib/site';
+import { T, chemin, type Lg } from '../../lib/publang';
+import type { EtatContact } from '../../lib/contact';
+
+interface Props { langue: Lg; etat: EtatContact }
+const { langue, etat } = Astro.props;
+const { page, vals, erreurs, general, envoye } = etat;
+const l = T[langue].contact;
+const nom = Astro.locals.tenant?.nom ?? "BeBess'Invest";
+const c = page.c;
+const conf = c?.confirmation ?? {};
+const coord = c?.coordonnees ?? {};
+const action = chemin('contact', langue);
+---
+<Public langue={langue} titre={page.titre ?? `${T[langue].nav.contact} · ${nom}`} description={page.description}>
+  {envoye ? (
+    <section class="bloc-hero">
+      <div class="wrap">
+        <span class="etiquette">{l.envoye}</span>
+        <h1>{chaine(conf.titre) || l.merci}</h1>
+        <p>{chaine(conf.texte) || l.reponse}</p>
+        <div class="actions-pub"><a class="btn" href={chemin('accueil', langue)}>{l.retour}</a></div>
+      </div>
+    </section>
+  ) : !c ? <PubVide cle="contact" /> : (
+    <section class="bloc-hero">
+      <div class="wrap deux">
+        <div class="coord">
+          {chaine(c.eyebrow) && <span class="etiquette">{c.eyebrow}</span>}
+          <h1>{chaine(c.titre)}</h1>
+          {chaine(c.intro) && <p>{c.intro}</p>}
+          {chaine(coord.adresse) && <p>{coord.adresse}</p>}
+          {chaine(coord.telephone) && <p>{coord.telephone}</p>}
+          {paragraphes(chaine(coord.horaires)).map((h) => <p>{h}</p>)}
+        </div>
+        <form class="formulaire" method="post" action={action} novalidate>
+          {general && <p class="erreur">{general}</p>}
+          <div class="piege" aria-hidden="true"><label>{l.piege} <input type="text" name="site" tabindex="-1" autocomplete="off" /></label></div>
+          <div class="groupe">
+            <label class="etiquette" for="nom">{l.nom}</label>
+            <input class="champ" id="nom" name="nom" type="text" autocomplete="name" required value={vals.nom} />
+            {erreurs.nom && <p class="erreur">{erreurs.nom}</p>}
+          </div>
+          <div class="groupe">
+            <label class="etiquette" for="email">{l.email}</label>
+            <input class="champ" id="email" name="email" type="email" autocomplete="email" required value={vals.email} />
+            {erreurs.email && <p class="erreur">{erreurs.email}</p>}
+          </div>
+          <div class="groupe">
+            <label class="etiquette" for="telephone">{l.telephone}</label>
+            <input class="champ" id="telephone" name="telephone" type="tel" autocomplete="tel" value={vals.telephone} />
+            {erreurs.telephone && <p class="erreur">{erreurs.telephone}</p>}
+          </div>
+          <div class="groupe">
+            <label class="etiquette" for="objet">{l.objet}</label>
+            <input class="champ" id="objet" name="objet" type="text" required value={vals.objet} />
+            {erreurs.objet && <p class="erreur">{erreurs.objet}</p>}
+          </div>
+          <div class="groupe">
+            <label class="etiquette" for="message">{l.message}</label>
+            <textarea class="champ" id="message" name="message" rows="7" required>{vals.message}</textarea>
+            {erreurs.message && <p class="erreur">{erreurs.message}</p>}
+          </div>
+          <div class="groupe">
+            <label class="consent">
+              <input type="checkbox" name="consentement" value="oui" required />
+              <span>{l.consentement}</span>
+            </label>
+            {erreurs.consentement && <p class="erreur">{erreurs.consentement}</p>}
+          </div>
+          <button class="btn-plein" type="submit">{l.envoyer}</button>
+        </form>
+      </div>
+    </section>
+  )}
+</Public>

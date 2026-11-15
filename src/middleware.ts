@@ -2,14 +2,38 @@ import { defineMiddleware } from 'astro:middleware';
 import { tenantParHote, type Role, type Tenant, type Utilisateur } from './lib/db';
 import { sessionCourante } from './lib/auth';
 import { envDe } from './lib/mail';
+import { appartient } from './lib/cloisonnement';
 
 declare global {
   namespace App {
     interface Locals {
       utilisateur: Utilisateur | null;
       tenant: Tenant | null;
+      /** Nonce CSP de la requête, à poser sur tout script en ligne. */
+      nonce: string;
     }
   }
+}
+
+// Aucun domaine externe. Scripts en ligne : uniquement avec le nonce de la requête.
+// Styles en ligne tolérés : Astro en produit.
+const csp = (nonce: string) => [
+  "default-src 'self'",
+  `script-src 'self' 'nonce-${nonce}'`,
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self' data:",
+  "img-src 'self' data:",
+  "connect-src 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "object-src 'none'",
+].join('; ');
+
+function nouveauNonce(): string {
+  const o = new Uint8Array(16);
+  crypto.getRandomValues(o);
+  return btoa(String.fromCharCode(...o));
 }
 
 const PUBLIC = 'public, s-maxage=60, stale-while-revalidate=600';
@@ -36,6 +60,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const tenant = await tenantParHote(DB, context.url.host);
   context.locals.tenant = tenant;
   context.locals.utilisateur = null;
+  const nonce = nouveauNonce();
+  context.locals.nonce = nonce;
 
   const prive = PRIVES.some((p) => sous(chemin, p));
   if (prive) {
@@ -44,6 +70,13 @@ export const onRequest = defineMiddleware(async (context, next) => {
     if (utilisateur && tenant && utilisateur.tenant_id === tenant.id) {
       context.locals.utilisateur = utilisateur;
     }
+  }
+
+  // Contrôle de cloisonnement : tout l'espace client ne lit que des données du viewer connecté,
+  // lequel doit appartenir au tenant de l'hôte.
+  const u = context.locals.utilisateur;
+  if (u && u.role === 'viewer' && sous(chemin, '/espace') && tenant) {
+    if (!(await appartient(DB, tenant.id, 'viewer', u.id))) context.locals.utilisateur = null;
   }
 
   const garde = GARDES.find((g) => sous(chemin, g.prefixe));
@@ -63,6 +96,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
   ) {
     resultat.headers.set('Cache-Control', PUBLIC);
   }
+
+  resultat.headers.set('X-Frame-Options', 'DENY');
+  resultat.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  resultat.headers.set('Content-Security-Policy', csp(nonce));
 
   return resultat;
 });

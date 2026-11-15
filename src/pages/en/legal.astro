@@ -1,4 +1,9 @@
 ---
-import Mentions from "../../views/Mentions.astro";
+import Mentions from '../../components/pub/Mentions.astro';
+import { envDe } from '../../lib/mail';
+import { chargerPage } from '../../lib/site';
+
+const page = await chargerPage(envDe(Astro.locals).DB, Astro.locals.tenant?.id, 'mentions', 'en');
+if (!page.c) return Astro.redirect('/mentions-legales', 302);
 ---
-<Mentions langue="en" />
+<Mentions langue="en" page={page} />

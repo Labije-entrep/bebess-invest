@@ -1,0 +1,35 @@
+---
+import Public from '../../layouts/Public.astro';
+import PubVide from '../PubVide.astro';
+import { chaine, liste, type PageLue } from '../../lib/site';
+import type { Lg } from '../../lib/publang';
+
+interface Props { langue: Lg; page: PageLue }
+const { langue, page } = Astro.props;
+const nom = Astro.locals.tenant?.nom ?? "BeBess'Invest";
+const c = page.c;
+const etapes = liste(c?.etapes);
+---
+<Public langue={langue} titre={page.titre ?? `${langue === 'fr' ? 'Parcours' : 'About'} · ${nom}`} description={page.description}>
+  {!c ? <PubVide cle="parcours" /> : (
+    <section class="bloc-hero">
+      <div class="wrap">
+        {chaine(c.eyebrow) && <span class="etiquette">{c.eyebrow}</span>}
+        <h1>{chaine(c.titre)}</h1>
+        {chaine(c.intro) && <p>{c.intro}</p>}
+        {etapes.length > 0 && (
+          <ol class="etapes">
+            {etapes.map((e) => (
+              <li>
+                <div>
+                  <h3>{chaine(e.titre)}</h3>
+                  <p>{chaine(e.texte)}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </section>
+  )}
+</Public>

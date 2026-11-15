@@ -1,4 +1,9 @@
 ---
-import Approche from "../../views/Approche.astro";
+import Approche from '../../components/pub/Approche.astro';
+import { envDe } from '../../lib/mail';
+import { chargerPage } from '../../lib/site';
+
+const page = await chargerPage(envDe(Astro.locals).DB, Astro.locals.tenant?.id, 'approche', 'en');
+if (!page.c) return Astro.redirect('/approche', 302);
 ---
-<Approche langue="en" />
+<Approche langue="en" page={page} />

@@ -1,4 +1,10 @@
 ---
-import Contact from "../../views/Contact.astro";
+import Contact from '../../components/pub/Contact.astro';
+import { traiterContact } from '../../lib/contact';
+
+const etat = await traiterContact(Astro, 'en');
+if (etat.redirection) return Astro.redirect(etat.redirection, 303);
+// Pas de contenu anglais : l'équivalent français, jamais de texte français sous /en.
+if (!etat.page.c) return Astro.redirect('/contact', 302);
 ---
-<Contact langue="en" />
+<Contact langue="en" etat={etat} />

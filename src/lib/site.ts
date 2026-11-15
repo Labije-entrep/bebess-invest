@@ -230,10 +230,15 @@ export interface PageLue {
 }
 
 /** Une clé absente, vide ou illisible donne c = null : la page affiche un état vide. */
-export async function chargerPage(db: Base, tenantId: string | undefined, cle: string): Promise<PageLue> {
+export async function chargerPage(
+  db: Base,
+  tenantId: string | undefined,
+  cle: string,
+  langue: string = 'fr',
+): Promise<PageLue> {
   const vide: PageLue = { c: null, titre: null, description: '', maj_le: null };
   if (!tenantId) return vide;
-  const p = await pageContenu(db, tenantId, cle);
+  const p = await pageContenu(db, tenantId, cle, langue);
   if (!p) return vide;
   try {
     const o = JSON.parse(p.contenu_json);
@@ -377,13 +382,18 @@ export function noteParId(db: Base, tenantId: string, id: string): Promise<NoteM
     .first<NoteMarche>();
 }
 
-export function notePubliee(db: Base, tenantId: string, slug: string): Promise<NoteMarche | null> {
+export function notePubliee(
+  db: Base,
+  tenantId: string,
+  slug: string,
+  langue: string = 'fr',
+): Promise<NoteMarche | null> {
   return db
     .prepare(
       `SELECT ${COLONNES_NOTE} FROM note_marche
-        WHERE tenant_id = ? AND slug = ? AND langue = 'fr' AND publiee = 1`,
+        WHERE tenant_id = ? AND slug = ? AND langue = ? AND publiee = 1`,
     )
-    .bind(tenantId, slug)
+    .bind(tenantId, slug, langue)
     .first<NoteMarche>();
 }
 
