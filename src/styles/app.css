@@ -1,0 +1,116 @@
+/* Espace client : un seul thème sombre, aucun arrondi. */
+
+:root {
+  --fond: #0d0f12;
+  --fond-2: #14181d;
+  --fond-3: #1b2027;
+  --texte: #e9e6df;
+  --texte-2: #9b9ca3;
+  --filet: #2a2f38;
+  --accent: #c7a96b;
+  --accent-2: #8e7743;
+  --positif: #6fae8a;
+  --alerte: #c8745f;
+  --serif: Georgia, 'Times New Roman', serif;
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --largeur: 72rem;
+  --espace: 1.5rem;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  border-radius: 0;
+}
+
+html { background: var(--fond); color: var(--texte); }
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 1rem;
+  line-height: 1.6;
+  background: var(--fond);
+  color: var(--texte);
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+h1, h2, h3 { font-family: var(--serif); font-weight: 400; line-height: 1.2; margin: 0 0 1rem; }
+
+.wrap {
+  width: 100%;
+  max-width: var(--largeur);
+  margin: 0 auto;
+  padding: 0 var(--espace);
+}
+
+.section { padding: 4rem 0; }
+
+.filet {
+  border: 0;
+  border-top: 1px solid var(--filet);
+  margin: 2rem 0;
+}
+
+.etiquette {
+  display: block;
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--texte-2);
+}
+
+.chiffre {
+  font-family: var(--serif);
+  font-size: 2.25rem;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--texte);
+}
+
+.btn, .btn-plein {
+  display: inline-block;
+  padding: 0.7rem 1.4rem;
+  font: inherit;
+  font-size: 0.875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent);
+  cursor: pointer;
+}
+.btn:hover { background: var(--fond-3); text-decoration: none; }
+
+.btn-plein { background: var(--accent); color: var(--fond); }
+.btn-plein:hover { background: var(--accent-2); color: var(--texte); text-decoration: none; }
+
+.champ {
+  display: block;
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  font: inherit;
+  color: var(--texte);
+  background: var(--fond-2);
+  border: 1px solid var(--filet);
+}
+.champ:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.table th {
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--texte-2);
+}
+.table th, .table td {
+  padding: 0.75rem 0.5rem;
+  border-bottom: 1px solid var(--filet);
+}
+.table td.num, .table th.num { text-align: right; }
