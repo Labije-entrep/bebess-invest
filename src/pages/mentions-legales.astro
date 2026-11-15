@@ -1,4 +1,30 @@
 ---
-import Mentions from "../views/Mentions.astro";
+import Public from '../layouts/Public.astro';
+import PubVide from '../components/PubVide.astro';
+import { envDe } from '../lib/mail';
+import { chargerPage, chaine, liste, paragraphes } from '../lib/site';
+
+const { DB } = envDe(Astro.locals);
+const nom = Astro.locals.tenant?.nom ?? "BeBess'Invest";
+const page = await chargerPage(DB, Astro.locals.tenant?.id, 'mentions');
+const c = page.c;
+const sections = liste(c?.sections);
 ---
-<Mentions langue="fr" />
+<Public titre={page.titre ?? `Mentions légales · ${nom}`} description={page.description}>
+  {!c ? <PubVide cle="mentions" /> : (
+    <section class="bloc-hero">
+      <div class="wrap">
+        {chaine(c.eyebrow) && <span class="etiquette">{c.eyebrow}</span>}
+        <h1>{chaine(c.titre)}</h1>
+        <div class="prose">
+          {sections.map((s) => (
+            <>
+              <h2>{chaine(s.titre)}</h2>
+              {paragraphes(chaine(s.texte)).map((p) => <p>{p}</p>)}
+            </>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+</Public>

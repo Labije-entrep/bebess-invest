@@ -1,0 +1,58 @@
+---
+import '../styles/app.css';
+import '../styles/public.css';
+
+interface Props {
+  titre: string;
+  description?: string;
+}
+const { titre, description = '' } = Astro.props;
+const nom = Astro.locals.tenant?.nom ?? "BeBess'Invest";
+const canonique = Astro.url.origin + Astro.url.pathname;
+const liens: [string, string][] = [
+  ['/approche', 'Approche'],
+  ['/parcours', 'Parcours'],
+  ['/notes', 'Notes'],
+  ['/contact', 'Contact'],
+  ['/connexion', 'Espace client'],
+];
+const ici = Astro.url.pathname.replace(/\/$/, '');
+---
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{titre}</title>
+    {description && <meta name="description" content={description} />}
+    <link rel="canonical" href={canonique} />
+  </head>
+  <body class="pub">
+    <header class="pub-haut">
+      <div class="wrap pub-barre">
+        <a class="pub-marque" href="/">{nom}</a>
+        <button class="btn pub-burger" type="button" aria-expanded="false" aria-controls="pub-menu" data-menu>Menu</button>
+        <nav id="pub-menu" class="pub-menu" aria-label="Navigation">
+          {liens.map(([href, lib]) => <a href={href} aria-current={ici === href || ici.startsWith(`${href}/`) ? 'page' : undefined}>{lib}</a>)}
+        </nav>
+      </div>
+    </header>
+    <main><slot /></main>
+    <footer class="pub-pied">
+      <div class="wrap">
+        <span>{nom}</span>
+        <nav aria-label="Pied de page">
+          <a href="/contact">Contact</a>
+          <a href="/mentions-legales">Mentions légales</a>
+        </nav>
+      </div>
+    </footer>
+    <script is:inline>
+      var b = document.querySelector('[data-menu]'), m = document.getElementById('pub-menu');
+      b.addEventListener('click', function () {
+        var o = m.classList.toggle('ouvert');
+        b.setAttribute('aria-expanded', o ? 'true' : 'false');
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,41 @@
+---
+import Gestion from '../../../layouts/Gestion.astro';
+import { envDe } from '../../../lib/mail';
+import { aplatir, chargerPage, enregistrerPage, lireFormulaire, modeleParCle } from '../../../lib/site';
+
+const { DB } = envDe(Astro.locals);
+const tenant = Astro.locals.tenant!;
+const modele = modeleParCle(Astro.params.cle ?? '');
+if (!modele) return Astro.redirect('/gestionnaire/contenus');
+
+if (Astro.request.method === 'POST') {
+  const { titre, contenu } = lireFormulaire(modele, await Astro.request.formData());
+  await enregistrerPage(DB, tenant.id, modele.cle, titre, contenu);
+  return Astro.redirect(`/gestionnaire/contenus/${modele.cle}?ok=1`, 303);
+}
+
+const page = await chargerPage(DB, tenant.id, modele.cle);
+const rangs = aplatir(modele, page.titre, page.c ?? {});
+const ok = Astro.url.searchParams.get('ok') === '1';
+---
+<Gestion titre={`Contenu : ${modele.libelle}`}>
+  <span class="etiquette"><a href="/gestionnaire/contenus">Contenus</a></span>
+  <h1>{modele.libelle}</h1>
+  {ok && <p class="info">Enregistré.</p>}
+  <p class="aide"><a href={modele.route}>Voir la page publique</a> (aperçu après enregistrement).</p>
+  <form method="post" class="groupe">
+    {rangs.map((r) => 'entete' in r ? (
+      <h2>{r.entete}</h2>
+    ) : (
+      <div class="groupe">
+        <label class="etiquette" for={r.nom}>{r.libelle}</label>
+        {r.long
+          ? <textarea class="champ" id={r.nom} name={r.nom} rows="4">{r.valeur}</textarea>
+          : <input class="champ" id={r.nom} name={r.nom} type="text" value={r.valeur} />}
+      </div>
+    ))}
+    <div class="actions">
+      <button class="btn-plein" type="submit">Enregistrer</button>
+    </div>
+  </form>
+</Gestion>

@@ -1,4 +1,35 @@
 ---
-import Parcours from "../views/Parcours.astro";
+import Public from '../layouts/Public.astro';
+import PubVide from '../components/PubVide.astro';
+import { envDe } from '../lib/mail';
+import { chargerPage, chaine, liste } from '../lib/site';
+
+const { DB } = envDe(Astro.locals);
+const nom = Astro.locals.tenant?.nom ?? "BeBess'Invest";
+const page = await chargerPage(DB, Astro.locals.tenant?.id, 'parcours');
+const c = page.c;
+const etapes = liste(c?.etapes);
 ---
-<Parcours langue="fr" />
+<Public titre={page.titre ?? `Parcours · ${nom}`} description={page.description}>
+  {!c ? <PubVide cle="parcours" /> : (
+    <section class="bloc-hero">
+      <div class="wrap">
+        {chaine(c.eyebrow) && <span class="etiquette">{c.eyebrow}</span>}
+        <h1>{chaine(c.titre)}</h1>
+        {chaine(c.intro) && <p>{c.intro}</p>}
+        {etapes.length > 0 && (
+          <ol class="etapes">
+            {etapes.map((e) => (
+              <li>
+                <div>
+                  <h3>{chaine(e.titre)}</h3>
+                  <p>{chaine(e.texte)}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </section>
+  )}
+</Public>

@@ -1,0 +1,36 @@
+---
+import Gestion from '../../../layouts/Gestion.astro';
+import { envDe } from '../../../lib/mail';
+import { dateCourte } from '../../../lib/format';
+import { toutesLesNotes } from '../../../lib/site';
+
+const { DB } = envDe(Astro.locals);
+const notes = await toutesLesNotes(DB, Astro.locals.tenant!.id);
+---
+<Gestion titre="Notes de marché">
+  <span class="etiquette">Site public</span>
+  <h1>Notes de marché</h1>
+  <div class="actions"><a class="btn-plein" href="/gestionnaire/notes/nouveau">Nouvelle note</a></div>
+  {notes.length === 0 ? <p class="aide">Aucune note pour le moment.</p> : (
+    <div class="defile">
+      <table class="table">
+        <thead>
+          <tr><th>Date</th><th>Titre</th><th>État</th><th></th></tr>
+        </thead>
+        <tbody>
+          {notes.map((n) => (
+            <tr>
+              <td>{dateCourte(n.date)}</td>
+              <td>{n.titre}</td>
+              <td class={n.publiee ? undefined : 'perime'}>{n.publiee ? 'Publiée' : 'Brouillon'}</td>
+              <td class="num">
+                <a href={`/gestionnaire/notes/${n.id}`}>Modifier</a>
+                {n.publiee ? <> · <a href={`/notes/${n.slug}`}>Aperçu</a></> : null}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</Gestion>

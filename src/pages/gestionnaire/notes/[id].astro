@@ -1,0 +1,91 @@
+---
+import Gestion from '../../../layouts/Gestion.astro';
+import { envDe } from '../../../lib/mail';
+import { enregistrerNote, noteParId, slugifier, slugPris } from '../../../lib/site';
+
+const { DB } = envDe(Astro.locals);
+const tenant = Astro.locals.tenant!;
+const id = Astro.params.id ?? '';
+const nouvelle = id === 'nouveau';
+const existante = nouvelle ? null : await noteParId(DB, tenant.id, id);
+if (!nouvelle && !existante) return Astro.redirect('/gestionnaire/notes');
+
+const aujourdhui = new Date().toISOString().slice(0, 10);
+const v = {
+  titre: existante?.titre ?? '',
+  slug: existante?.slug ?? '',
+  chapeau: existante?.chapeau ?? '',
+  corps_md: existante?.corps_md ?? '',
+  date: existante?.date.slice(0, 10) ?? aujourdhui,
+  publiee: existante ? existante.publiee === 1 : false,
+};
+const erreurs: Record<string, string> = {};
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const lire = (k: string) => String(f.get(k) ?? '').trim();
+  v.titre = lire('titre');
+  v.slug = slugifier(lire('slug') || v.titre);
+  v.chapeau = lire('chapeau');
+  v.corps_md = String(f.get('corps_md') ?? '');
+  v.date = lire('date');
+  v.publiee = f.get('publiee') === 'oui';
+
+  if (!v.titre) erreurs.titre = 'Le titre est obligatoire.';
+  if (!v.slug) erreurs.slug = "L'adresse de la note est vide.";
+  else if (await slugPris(DB, tenant.id, v.slug, existante?.id ?? '')) erreurs.slug = 'Cette adresse est déjà utilisée par une autre note.';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v.date)) erreurs.date = 'Date invalide.';
+
+  if (Object.keys(erreurs).length === 0) {
+    const nid = await enregistrerNote(DB, tenant.id, existante?.id ?? null, {
+      slug: v.slug,
+      titre: v.titre,
+      chapeau: v.chapeau || null,
+      corps_md: v.corps_md,
+      date: v.date,
+      publiee: v.publiee,
+    });
+    return Astro.redirect(`/gestionnaire/notes/${nid}?ok=1`, 303);
+  }
+}
+const ok = Astro.url.searchParams.get('ok') === '1';
+---
+<Gestion titre={nouvelle ? 'Nouvelle note' : 'Modifier la note'}>
+  <span class="etiquette"><a href="/gestionnaire/notes">Notes de marché</a></span>
+  <h1>{nouvelle ? 'Nouvelle note' : v.titre || 'Note'}</h1>
+  {ok && <p class="info">Enregistré.</p>}
+  {existante?.publiee === 1 && <p class="aide"><a href={`/notes/${existante.slug}`}>Voir la note publiée</a></p>}
+  <form method="post">
+    <div class="groupe">
+      <label class="etiquette" for="titre">Titre</label>
+      <input class="champ" id="titre" name="titre" type="text" value={v.titre} required />
+      {erreurs.titre && <p class="erreur">{erreurs.titre}</p>}
+    </div>
+    <div class="grille">
+      <div class="groupe">
+        <label class="etiquette" for="slug">Adresse (laisser vide pour la déduire du titre)</label>
+        <input class="champ" id="slug" name="slug" type="text" value={v.slug} />
+        {erreurs.slug && <p class="erreur">{erreurs.slug}</p>}
+      </div>
+      <div class="groupe">
+        <label class="etiquette" for="date">Date</label>
+        <input class="champ" id="date" name="date" type="date" value={v.date} required />
+        {erreurs.date && <p class="erreur">{erreurs.date}</p>}
+      </div>
+    </div>
+    <div class="groupe">
+      <label class="etiquette" for="chapeau">Chapeau</label>
+      <textarea class="champ" id="chapeau" name="chapeau" rows="3">{v.chapeau}</textarea>
+    </div>
+    <div class="groupe">
+      <label class="etiquette" for="corps_md">Corps (Markdown)</label>
+      <textarea class="champ" id="corps_md" name="corps_md" rows="18">{v.corps_md}</textarea>
+    </div>
+    <div class="groupe">
+      <label><input type="checkbox" name="publiee" value="oui" checked={v.publiee} /> Publiée</label>
+    </div>
+    <div class="actions">
+      <button class="btn-plein" type="submit">Enregistrer</button>
+    </div>
+  </form>
+</Gestion>

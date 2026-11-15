@@ -1,0 +1,16 @@
+---
+// État vide explicite : la clé de contenu n'existe pas encore en base.
+interface Props {
+  cle: string;
+}
+const { cle } = Astro.props;
+---
+<section class="bloc premier">
+  <div class="wrap">
+    <span class="etiquette">Contenu à renseigner</span>
+    <h1>Cette page n'a pas encore de contenu.</h1>
+    <div class="vide-explicite">
+      <p>Le contenu « {cle} » n'est pas encore enregistré. Il se renseigne depuis l'espace gestionnaire, rubrique Contenus.</p>
+    </div>
+  </div>
+</section>
