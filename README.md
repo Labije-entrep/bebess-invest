@@ -232,3 +232,4 @@ se branchent sans cookie et sans bandeau.
 | L'enregistrement échoue sur l'ouverture de la PR | Le jeton GitHub n'a pas la permission *Pull requests* |
 | Le formulaire refuse l'envoi | `endpointFormulaire` est vide |
 | Les polices ne se chargent pas en local | Normal hors connexion : elles viennent de Google Fonts |
+# bebess-invest
