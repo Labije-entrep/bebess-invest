@@ -1,114 +1,88 @@
--- Socle de l'espace client family office.
--- Montants : centimes entiers. Pourcentages : centièmes de point (640 = 6,40 %).
--- Dates : ISO 8601 en texte.
+-- migrations/0001_socle.sql
 
-CREATE TABLE tenants (
-  id      INTEGER PRIMARY KEY,
-  nom     TEXT NOT NULL,
-  hote    TEXT NOT NULL UNIQUE,
-  cree_le TEXT NOT NULL
-);
+CREATE TABLE tenant (
+  id TEXT PRIMARY KEY, nom TEXT NOT NULL, domaine TEXT UNIQUE, cree_le TEXT NOT NULL);
 
-CREATE TABLE utilisateurs (
-  id        INTEGER PRIMARY KEY,
-  tenant_id INTEGER NOT NULL REFERENCES tenants(id),
-  email     TEXT NOT NULL UNIQUE,
-  nom       TEXT NOT NULL,
-  role      TEXT NOT NULL CHECK (role IN ('editeur', 'gestionnaire', 'viewer')),
-  actif     INTEGER NOT NULL DEFAULT 1 CHECK (actif IN (0, 1)),
-  cree_le   TEXT NOT NULL
-);
-CREATE INDEX idx_utilisateurs_tenant ON utilisateurs(tenant_id);
+CREATE TABLE utilisateur (
+  id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenant(id),
+  email TEXT NOT NULL UNIQUE, nom TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('editeur','gestionnaire','viewer')),
+  actif INTEGER NOT NULL DEFAULT 1, cree_le TEXT NOT NULL);
 
-CREATE TABLE viewers (
-  id              INTEGER PRIMARY KEY,
-  tenant_id       INTEGER NOT NULL REFERENCES tenants(id),
-  utilisateur_id  INTEGER NOT NULL UNIQUE REFERENCES utilisateurs(id),
-  gestionnaire_id INTEGER NOT NULL REFERENCES utilisateurs(id),
-  nom_famille     TEXT NOT NULL,
-  profil          TEXT NOT NULL,
-  horizon_le      TEXT NOT NULL,
-  entree_le       TEXT NOT NULL
-);
-CREATE INDEX idx_viewers_tenant ON viewers(tenant_id);
+CREATE TABLE session (
+  id TEXT PRIMARY KEY, utilisateur_id TEXT NOT NULL REFERENCES utilisateur(id),
+  expire_le TEXT NOT NULL, cree_le TEXT NOT NULL);
 
-CREATE TABLE enveloppes (
-  id            INTEGER PRIMARY KEY,
-  viewer_id     INTEGER NOT NULL REFERENCES viewers(id),
-  nom           TEXT NOT NULL,
-  type          TEXT NOT NULL,
-  etablissement TEXT NOT NULL,
-  ordre         INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX idx_enveloppes_viewer ON enveloppes(viewer_id);
+CREATE TABLE jeton_connexion (
+  hash TEXT PRIMARY KEY, utilisateur_id TEXT NOT NULL REFERENCES utilisateur(id),
+  expire_le TEXT NOT NULL, utilise_le TEXT);
 
-CREATE TABLE lignes (
-  id            INTEGER PRIMARY KEY,
-  enveloppe_id  INTEGER NOT NULL REFERENCES enveloppes(id),
-  libelle       TEXT NOT NULL,
-  classe        TEXT NOT NULL CHECK (classe IN ('actions', 'obligations', 'immobilier', 'private_equity', 'liquidites')),
-  valeur_cents  INTEGER NOT NULL,
-  ordre         INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX idx_lignes_enveloppe ON lignes(enveloppe_id);
+-- Fiche du viewer : ce que le gestionnaire saisit une fois
+CREATE TABLE fiche (
+  utilisateur_id TEXT PRIMARY KEY REFERENCES utilisateur(id),
+  mandat_ref TEXT, profil_risque TEXT, profil_note INTEGER, horizon TEXT,
+  perte_max_cents INTEGER, liquidite_cents INTEGER, regle_reequilibrage TEXT,
+  allocation_signee_le TEXT, allocation_motif TEXT, prochain_point TEXT);
 
-CREATE TABLE cibles (
-  id        INTEGER PRIMARY KEY,
-  viewer_id INTEGER NOT NULL REFERENCES viewers(id),
-  classe    TEXT NOT NULL CHECK (classe IN ('actions', 'obligations', 'immobilier', 'private_equity', 'liquidites')),
-  cible_bp  INTEGER NOT NULL,
-  ordre     INTEGER NOT NULL DEFAULT 0,
-  UNIQUE (viewer_id, classe)
-);
+-- Une enveloppe = un contrat ou un compte
+CREATE TABLE enveloppe (
+  id TEXT PRIMARY KEY, viewer_id TEXT NOT NULL REFERENCES utilisateur(id),
+  libelle TEXT NOT NULL, etablissement TEXT, ouverte_en TEXT,
+  valorisation_cents INTEGER NOT NULL DEFAULT 0, perf_bp INTEGER,
+  arrete_le TEXT NOT NULL, rang INTEGER NOT NULL DEFAULT 0);
 
-CREATE TABLE points (
-  id           INTEGER PRIMARY KEY,
-  viewer_id    INTEGER NOT NULL REFERENCES viewers(id),
-  mois         TEXT NOT NULL,
-  valeur_cents INTEGER NOT NULL,
-  UNIQUE (viewer_id, mois)
-);
+CREATE TABLE ligne (
+  id TEXT PRIMARY KEY, enveloppe_id TEXT NOT NULL REFERENCES enveloppe(id),
+  libelle TEXT NOT NULL, classe TEXT NOT NULL,
+  valorisation_cents INTEGER NOT NULL DEFAULT 0, pv_cents INTEGER,
+  frais_bp INTEGER, arrete_le TEXT NOT NULL, rang INTEGER NOT NULL DEFAULT 0);
 
-CREATE TABLE mouvements (
-  id           INTEGER PRIMARY KEY,
-  viewer_id    INTEGER NOT NULL REFERENCES viewers(id),
-  enveloppe_id INTEGER REFERENCES enveloppes(id),
-  date_le      TEXT NOT NULL,
-  libelle      TEXT NOT NULL,
-  type         TEXT NOT NULL CHECK (type IN ('apport', 'retrait', 'arbitrage')),
-  montant_cents INTEGER NOT NULL,
-  statut       TEXT NOT NULL CHECK (statut IN ('en_cours', 'execute'))
-);
-CREATE INDEX idx_mouvements_viewer ON mouvements(viewer_id);
+-- Allocation cible, pour l'ecart affiche sur le tableau de bord
+CREATE TABLE cible (
+  id TEXT PRIMARY KEY, viewer_id TEXT NOT NULL REFERENCES utilisateur(id),
+  classe TEXT NOT NULL, cible_bp INTEGER NOT NULL, rang INTEGER NOT NULL DEFAULT 0);
 
-CREATE TABLE documents (
-  id        INTEGER PRIMARY KEY,
-  viewer_id INTEGER NOT NULL REFERENCES viewers(id),
-  titre     TEXT NOT NULL,
-  categorie TEXT NOT NULL,
-  date_le   TEXT NOT NULL,
-  chemin    TEXT NOT NULL
-);
-CREATE INDEX idx_documents_viewer ON documents(viewer_id);
+-- Un point par mois : valeur du portefeuille et cumul des versements
+CREATE TABLE point (
+  id TEXT PRIMARY KEY, viewer_id TEXT NOT NULL REFERENCES utilisateur(id),
+  date TEXT NOT NULL, valeur_cents INTEGER NOT NULL,
+  versements_cumules_cents INTEGER NOT NULL,
+  UNIQUE (viewer_id, date));
 
-CREATE TABLE pages_contenu (
-  id        INTEGER PRIMARY KEY,
-  tenant_id INTEGER NOT NULL REFERENCES tenants(id),
-  slug      TEXT NOT NULL,
-  titre     TEXT NOT NULL,
-  corps     TEXT NOT NULL,
-  maj_le    TEXT NOT NULL,
-  UNIQUE (tenant_id, slug)
-);
+CREATE TABLE mouvement (
+  id TEXT PRIMARY KEY, viewer_id TEXT NOT NULL REFERENCES utilisateur(id),
+  date TEXT NOT NULL, libelle TEXT NOT NULL, enveloppe TEXT,
+  montant_cents INTEGER, statut TEXT NOT NULL,
+  en_cours INTEGER NOT NULL DEFAULT 0, etape INTEGER NOT NULL DEFAULT 0,
+  detail TEXT);
 
-CREATE TABLE notes (
-  id         INTEGER PRIMARY KEY,
-  tenant_id  INTEGER NOT NULL REFERENCES tenants(id),
-  viewer_id  INTEGER REFERENCES viewers(id),
-  titre      TEXT NOT NULL,
-  corps      TEXT NOT NULL,
-  statut     TEXT NOT NULL CHECK (statut IN ('brouillon', 'publiee')),
-  publie_le  TEXT,
-  auteur_id  INTEGER NOT NULL REFERENCES utilisateurs(id)
-);
-CREATE INDEX idx_notes_tenant ON notes(tenant_id);
+CREATE TABLE document (
+  id TEXT PRIMARY KEY, viewer_id TEXT NOT NULL REFERENCES utilisateur(id),
+  titre TEXT NOT NULL, categorie TEXT NOT NULL, date TEXT NOT NULL,
+  cle_fichier TEXT, envoye_le TEXT);
+
+-- Journal de consultation : la preuve, horodatee, jamais purgee avant 7 ans
+CREATE TABLE consultation (
+  id TEXT PRIMARY KEY, viewer_id TEXT NOT NULL REFERENCES utilisateur(id),
+  vue_le TEXT NOT NULL, page TEXT NOT NULL);
+
+-- Contenu editorial du site public, alimente par le gestionnaire
+CREATE TABLE page_contenu (
+  id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenant(id),
+  cle TEXT NOT NULL, langue TEXT NOT NULL DEFAULT 'fr',
+  titre TEXT, contenu_json TEXT NOT NULL, maj_le TEXT NOT NULL,
+  UNIQUE (tenant_id, cle, langue));
+
+CREATE TABLE note_marche (
+  id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenant(id),
+  slug TEXT NOT NULL, langue TEXT NOT NULL DEFAULT 'fr',
+  titre TEXT NOT NULL, chapeau TEXT, corps_md TEXT NOT NULL,
+  date TEXT NOT NULL, publiee INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (tenant_id, slug, langue));
+
+CREATE INDEX idx_enveloppe_viewer ON enveloppe(viewer_id);
+CREATE INDEX idx_ligne_enveloppe ON ligne(enveloppe_id);
+CREATE INDEX idx_point_viewer ON point(viewer_id, date);
+CREATE INDEX idx_mouvement_viewer ON mouvement(viewer_id, date);
+CREATE INDEX idx_consultation_viewer ON consultation(viewer_id, vue_le);
+CREATE INDEX idx_session_user ON session(utilisateur_id);

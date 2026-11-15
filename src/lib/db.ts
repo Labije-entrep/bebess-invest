@@ -1,6 +1,6 @@
 // Accès à D1. Requêtes préparées uniquement : toute valeur passe par bind().
 // Une fonction par intention. Montants en centimes, pourcentages en centièmes de point,
-// dates en chaînes ISO 8601.
+// dates en chaînes ISO 8601. Les identifiants sont des chaînes.
 
 // Forme minimale de D1Database, pour ne pas dépendre d'un paquet de types.
 export interface Requete {
@@ -13,18 +13,17 @@ export interface Base {
 }
 
 export type Role = 'editeur' | 'gestionnaire' | 'viewer';
-export type Classe = 'actions' | 'obligations' | 'immobilier' | 'private_equity' | 'liquidites';
 
 export interface Tenant {
-  id: number;
+  id: string;
   nom: string;
-  hote: string;
+  domaine: string | null;
   cree_le: string;
 }
 
 export interface Utilisateur {
-  id: number;
-  tenant_id: number;
+  id: string;
+  tenant_id: string;
   email: string;
   nom: string;
   role: Role;
@@ -32,252 +31,268 @@ export interface Utilisateur {
   cree_le: string;
 }
 
-export interface ViewerResume {
-  id: number;
-  utilisateur_id: number;
-  nom: string;
-  email: string;
-  nom_famille: string;
-  profil: string;
-}
-
-export interface Viewer {
-  id: number;
-  tenant_id: number;
-  utilisateur_id: number;
-  gestionnaire_id: number;
-  gestionnaire_nom: string;
-  nom: string;
-  email: string;
-  nom_famille: string;
-  profil: string;
-  horizon_le: string;
-  entree_le: string;
+export interface Fiche {
+  utilisateur_id: string;
+  mandat_ref: string | null;
+  profil_risque: string | null;
+  profil_note: number | null;
+  horizon: string | null;
+  perte_max_cents: number | null;
+  liquidite_cents: number | null;
+  regle_reequilibrage: string | null;
+  allocation_signee_le: string | null;
+  allocation_motif: string | null;
+  prochain_point: string | null;
 }
 
 export interface Enveloppe {
-  id: number;
-  viewer_id: number;
-  nom: string;
-  type: string;
-  etablissement: string;
-  ordre: number;
-  total_cents: number;
+  id: string;
+  viewer_id: string;
+  libelle: string;
+  etablissement: string | null;
+  ouverte_en: string | null;
+  valorisation_cents: number;
+  perf_bp: number | null;
+  arrete_le: string;
+  rang: number;
 }
 
 export interface Ligne {
-  id: number;
-  enveloppe_id: number;
+  id: string;
+  enveloppe_id: string;
   libelle: string;
-  classe: Classe;
-  valeur_cents: number;
-  ordre: number;
+  classe: string;
+  valorisation_cents: number;
+  pv_cents: number | null;
+  frais_bp: number | null;
+  arrete_le: string;
+  rang: number;
 }
 
 export interface Cible {
-  id: number;
-  viewer_id: number;
-  classe: Classe;
+  id: string;
+  viewer_id: string;
+  classe: string;
   cible_bp: number;
-  ordre: number;
+  rang: number;
 }
 
 export interface Point {
-  mois: string;
+  id: string;
+  viewer_id: string;
+  date: string;
   valeur_cents: number;
+  versements_cumules_cents: number;
 }
 
 export interface Mouvement {
-  id: number;
-  viewer_id: number;
-  enveloppe_id: number | null;
-  date_le: string;
+  id: string;
+  viewer_id: string;
+  date: string;
   libelle: string;
-  type: 'apport' | 'retrait' | 'arbitrage';
-  montant_cents: number;
-  statut: 'en_cours' | 'execute';
+  enveloppe: string | null;
+  montant_cents: number | null;
+  statut: string;
+  en_cours: number;
+  etape: number;
+  detail: string | null;
 }
 
 export interface Document {
-  id: number;
-  viewer_id: number;
+  id: string;
+  viewer_id: string;
   titre: string;
   categorie: string;
-  date_le: string;
-  chemin: string;
+  date: string;
+  cle_fichier: string | null;
+  envoye_le: string | null;
 }
 
 export interface PageContenu {
-  id: number;
-  tenant_id: number;
-  slug: string;
-  titre: string;
-  corps: string;
+  id: string;
+  tenant_id: string;
+  cle: string;
+  langue: string;
+  titre: string | null;
+  contenu_json: string;
   maj_le: string;
 }
 
-export interface Note {
-  id: number;
-  tenant_id: number;
-  viewer_id: number | null;
+export interface NoteMarche {
+  id: string;
+  tenant_id: string;
+  slug: string;
+  langue: string;
   titre: string;
-  corps: string;
-  publie_le: string;
-  auteur_nom: string;
+  chapeau: string | null;
+  corps_md: string;
+  date: string;
+  publiee: number;
 }
 
+const COLONNES_UTILISATEUR = 'id, tenant_id, email, nom, role, actif, cree_le';
+
+/** Le port et la casse sont ignorés : "Localhost:4321" et "localhost" donnent le même tenant. */
 export function tenantParHote(db: Base, hote: string): Promise<Tenant | null> {
+  const sansPort = hote.trim().toLowerCase().replace(/:\d+$/, '');
   return db
-    .prepare('SELECT id, nom, hote, cree_le FROM tenants WHERE hote = ?')
-    .bind(hote)
+    .prepare('SELECT id, nom, domaine, cree_le FROM tenant WHERE domaine = ?')
+    .bind(sansPort)
     .first<Tenant>();
 }
 
 export function utilisateurParEmail(db: Base, email: string): Promise<Utilisateur | null> {
   return db
-    .prepare(
-      'SELECT id, tenant_id, email, nom, role, actif, cree_le FROM utilisateurs WHERE email = ?',
-    )
+    .prepare(`SELECT ${COLONNES_UTILISATEUR} FROM utilisateur WHERE email = ?`)
     .bind(email.trim().toLowerCase())
     .first<Utilisateur>();
 }
 
-export function utilisateurParId(db: Base, id: number): Promise<Utilisateur | null> {
+export function utilisateurParId(db: Base, id: string): Promise<Utilisateur | null> {
   return db
-    .prepare('SELECT id, tenant_id, email, nom, role, actif, cree_le FROM utilisateurs WHERE id = ?')
+    .prepare(`SELECT ${COLONNES_UTILISATEUR} FROM utilisateur WHERE id = ?`)
     .bind(id)
     .first<Utilisateur>();
 }
 
-export async function viewersDuTenant(db: Base, tenantId: number): Promise<ViewerResume[]> {
+/** Les viewers actifs du tenant, triés par nom. */
+export async function viewersDuTenant(db: Base, tenantId: string): Promise<Utilisateur[]> {
   const { results } = await db
     .prepare(
-      `SELECT v.id, v.utilisateur_id, u.nom, u.email, v.nom_famille, v.profil
-         FROM viewers v
-         JOIN utilisateurs u ON u.id = v.utilisateur_id
-        WHERE v.tenant_id = ?
-        ORDER BY u.nom`,
+      `SELECT ${COLONNES_UTILISATEUR} FROM utilisateur
+        WHERE tenant_id = ? AND role = 'viewer' AND actif = 1
+        ORDER BY nom`,
     )
     .bind(tenantId)
-    .all<ViewerResume>();
+    .all<Utilisateur>();
   return results;
 }
 
-/** Limitée au tenant : un viewer d'un autre tenant renvoie null. */
-export function ficheDuViewer(db: Base, tenantId: number, viewerId: number): Promise<Viewer | null> {
+/** Limitée au tenant : la fiche d'un viewer d'un autre tenant renvoie null. */
+export function ficheDuViewer(db: Base, tenantId: string, viewerId: string): Promise<Fiche | null> {
   return db
     .prepare(
-      `SELECT v.id, v.tenant_id, v.utilisateur_id, v.gestionnaire_id,
-              g.nom AS gestionnaire_nom, u.nom, u.email,
-              v.nom_famille, v.profil, v.horizon_le, v.entree_le
-         FROM viewers v
-         JOIN utilisateurs u ON u.id = v.utilisateur_id
-         JOIN utilisateurs g ON g.id = v.gestionnaire_id
-        WHERE v.tenant_id = ? AND v.id = ?`,
+      `SELECT f.utilisateur_id, f.mandat_ref, f.profil_risque, f.profil_note, f.horizon,
+              f.perte_max_cents, f.liquidite_cents, f.regle_reequilibrage,
+              f.allocation_signee_le, f.allocation_motif, f.prochain_point
+         FROM fiche f
+         JOIN utilisateur u ON u.id = f.utilisateur_id
+        WHERE u.tenant_id = ? AND f.utilisateur_id = ?`,
     )
     .bind(tenantId, viewerId)
-    .first<Viewer>();
+    .first<Fiche>();
 }
 
-export async function enveloppesDuViewer(db: Base, viewerId: number): Promise<Enveloppe[]> {
+export async function enveloppesDuViewer(db: Base, viewerId: string): Promise<Enveloppe[]> {
   const { results } = await db
     .prepare(
-      `SELECT e.id, e.viewer_id, e.nom, e.type, e.etablissement, e.ordre,
-              COALESCE((SELECT SUM(l.valeur_cents) FROM lignes l WHERE l.enveloppe_id = e.id), 0)
-                AS total_cents
-         FROM enveloppes e
-        WHERE e.viewer_id = ?
-        ORDER BY e.ordre, e.id`,
+      `SELECT id, viewer_id, libelle, etablissement, ouverte_en, valorisation_cents,
+              perf_bp, arrete_le, rang
+         FROM enveloppe
+        WHERE viewer_id = ?
+        ORDER BY rang, id`,
     )
     .bind(viewerId)
     .all<Enveloppe>();
   return results;
 }
 
-export async function lignesDesEnveloppes(db: Base, enveloppeIds: number[]): Promise<Ligne[]> {
+export async function lignesDesEnveloppes(db: Base, enveloppeIds: string[]): Promise<Ligne[]> {
   if (enveloppeIds.length === 0) return [];
   // Seuls des "?" sont assemblés ici ; les valeurs passent par bind().
   const marques = enveloppeIds.map(() => '?').join(', ');
   const { results } = await db
     .prepare(
-      `SELECT id, enveloppe_id, libelle, classe, valeur_cents, ordre
-         FROM lignes
+      `SELECT id, enveloppe_id, libelle, classe, valorisation_cents, pv_cents, frais_bp,
+              arrete_le, rang
+         FROM ligne
         WHERE enveloppe_id IN (${marques})
-        ORDER BY enveloppe_id, ordre, id`,
+        ORDER BY enveloppe_id, rang, id`,
     )
     .bind(...enveloppeIds)
     .all<Ligne>();
   return results;
 }
 
-export async function ciblesDuViewer(db: Base, viewerId: number): Promise<Cible[]> {
+export async function ciblesDuViewer(db: Base, viewerId: string): Promise<Cible[]> {
   const { results } = await db
-    .prepare(
-      'SELECT id, viewer_id, classe, cible_bp, ordre FROM cibles WHERE viewer_id = ? ORDER BY ordre, id',
-    )
+    .prepare('SELECT id, viewer_id, classe, cible_bp, rang FROM cible WHERE viewer_id = ? ORDER BY rang, id')
     .bind(viewerId)
     .all<Cible>();
   return results;
 }
 
-export async function pointsDuViewer(db: Base, viewerId: number): Promise<Point[]> {
+/** Courbe mensuelle, du plus ancien au plus récent. */
+export async function pointsDuViewer(db: Base, viewerId: string): Promise<Point[]> {
   const { results } = await db
-    .prepare('SELECT mois, valeur_cents FROM points WHERE viewer_id = ? ORDER BY mois')
+    .prepare(
+      `SELECT id, viewer_id, date, valeur_cents, versements_cumules_cents
+         FROM point
+        WHERE viewer_id = ?
+        ORDER BY date`,
+    )
     .bind(viewerId)
     .all<Point>();
   return results;
 }
 
-export async function mouvementsDuViewer(db: Base, viewerId: number): Promise<Mouvement[]> {
+/** Du plus récent au plus ancien. */
+export async function mouvementsDuViewer(db: Base, viewerId: string): Promise<Mouvement[]> {
   const { results } = await db
     .prepare(
-      `SELECT id, viewer_id, enveloppe_id, date_le, libelle, type, montant_cents, statut
-         FROM mouvements
+      `SELECT id, viewer_id, date, libelle, enveloppe, montant_cents, statut, en_cours, etape, detail
+         FROM mouvement
         WHERE viewer_id = ?
-        ORDER BY date_le DESC, id DESC`,
+        ORDER BY date DESC, id DESC`,
     )
     .bind(viewerId)
     .all<Mouvement>();
   return results;
 }
 
-export async function documentsDuViewer(db: Base, viewerId: number): Promise<Document[]> {
+export async function documentsDuViewer(db: Base, viewerId: string): Promise<Document[]> {
   const { results } = await db
     .prepare(
-      `SELECT id, viewer_id, titre, categorie, date_le, chemin
-         FROM documents
+      `SELECT id, viewer_id, titre, categorie, date, cle_fichier, envoye_le
+         FROM document
         WHERE viewer_id = ?
-        ORDER BY date_le DESC, id DESC`,
+        ORDER BY date DESC, id DESC`,
     )
     .bind(viewerId)
     .all<Document>();
   return results;
 }
 
-export function pageContenu(db: Base, tenantId: number, slug: string): Promise<PageContenu | null> {
+export function pageContenu(
+  db: Base,
+  tenantId: string,
+  cle: string,
+  langue: string = 'fr',
+): Promise<PageContenu | null> {
   return db
-    .prepare('SELECT id, tenant_id, slug, titre, corps, maj_le FROM pages_contenu WHERE tenant_id = ? AND slug = ?')
-    .bind(tenantId, slug)
+    .prepare(
+      `SELECT id, tenant_id, cle, langue, titre, contenu_json, maj_le
+         FROM page_contenu
+        WHERE tenant_id = ? AND cle = ? AND langue = ?`,
+    )
+    .bind(tenantId, cle, langue)
     .first<PageContenu>();
 }
 
-/** Notes publiées du tenant : générales (sans viewer) et, si fourni, celles du viewer. */
+/** Notes de marché publiées, de la plus récente à la plus ancienne. */
 export async function notesPubliees(
   db: Base,
-  tenantId: number,
-  viewerId: number | null = null,
-): Promise<Note[]> {
+  tenantId: string,
+  langue: string = 'fr',
+): Promise<NoteMarche[]> {
   const { results } = await db
     .prepare(
-      `SELECT n.id, n.tenant_id, n.viewer_id, n.titre, n.corps, n.publie_le, u.nom AS auteur_nom
-         FROM notes n
-         JOIN utilisateurs u ON u.id = n.auteur_id
-        WHERE n.tenant_id = ?
-          AND n.statut = 'publiee'
-          AND (n.viewer_id IS NULL OR n.viewer_id = ?)
-        ORDER BY n.publie_le DESC, n.id DESC`,
+      `SELECT id, tenant_id, slug, langue, titre, chapeau, corps_md, date, publiee
+         FROM note_marche
+        WHERE tenant_id = ? AND langue = ? AND publiee = 1
+        ORDER BY date DESC, id DESC`,
     )
-    .bind(tenantId, viewerId)
-    .all<Note>();
+    .bind(tenantId, langue)
+    .all<NoteMarche>();
   return results;
 }
