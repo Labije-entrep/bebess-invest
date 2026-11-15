@@ -1,0 +1,113 @@
+---
+export const prerender = false;
+import Gestion from '../../layouts/Gestion.astro';
+import { contexte, analyserImport, appliquerImport, texte, COLONNES_IMPORT, type LigneImport } from '../../lib/gestion';
+import { euros, pourcent, dateCourte } from '../../lib/format';
+
+const c = contexte(Astro);
+if (c instanceof Response) return c;
+
+let erreur = '';
+let nom = '';
+let csv = '';
+let apercu: { fatal?: string; lignes: LigneImport[] } | null = null;
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const action = texte(f.get('action'), 20);
+  if (action === 'previsualiser') {
+    const fichier = f.get('fichier');
+    if (!(fichier instanceof File) || fichier.size === 0) erreur = 'Choisissez un fichier CSV.';
+    else if (fichier.size > 500000) erreur = 'Fichier trop volumineux (500 Ko au plus).';
+    else {
+      nom = fichier.name.slice(0, 200);
+      csv = await fichier.text();
+      apercu = await analyserImport(c.db, c.tenant.id, csv);
+    }
+  } else if (action === 'confirmer') {
+    nom = texte(f.get('nom'), 200);
+    csv = typeof f.get('csv') === 'string' ? (f.get('csv') as string) : '';
+    if (csv.length > 700000) erreur = 'Fichier trop volumineux.';
+    else {
+      const r = await appliquerImport(c.db, c.tenant.id, c.utilisateur.id, nom, csv);
+      if ('erreur' in r) {
+        erreur = r.erreur;
+        apercu = await analyserImport(c.db, c.tenant.id, csv);
+      } else return Astro.redirect('/gestionnaire?importe=1', 303);
+    }
+  }
+}
+const lignes = apercu?.lignes ?? [];
+const nbErreurs = lignes.filter((l) => l.action === 'erreur').length;
+const confirmable = apercu && !apercu.fatal && lignes.length > 0 && nbErreurs === 0;
+---
+<Gestion titre="Import CSV">
+  <h1>Import CSV</h1>
+  <p>Colonnes, dans cet ordre : <code>{COLONNES_IMPORT.join(';')}</code>. Séparateur point-virgule, UTF-8, décimale virgule, dates AAAA-MM-JJ. Rien n'est écrit avant votre confirmation.</p>
+  {erreur && <p class="info alerte">{erreur}</p>}
+  {apercu?.fatal && <p class="info alerte">{apercu.fatal}</p>}
+
+  {
+    !confirmable && (
+      <form method="post" enctype="multipart/form-data" style="max-width: 32rem">
+        <input type="hidden" name="action" value="previsualiser" />
+        <div class="groupe">
+          <label class="etiquette" for="fichier">Fichier CSV</label>
+          <input class="champ" id="fichier" name="fichier" type="file" accept=".csv,text/csv" />
+        </div>
+        <div class="actions"><button class="btn-plein" type="submit">Prévisualiser</button></div>
+      </form>
+    )
+  }
+
+  {
+    apercu && !apercu.fatal && (
+      <>
+        <hr class="filet" />
+        <h2>Prévisualisation — {nom}</h2>
+        <p>{lignes.length} ligne{lignes.length > 1 ? 's' : ''} : {lignes.filter((l) => l.action === 'création').length} création(s), {lignes.filter((l) => l.action === 'mise à jour').length} mise(s) à jour, {nbErreurs} erreur(s).</p>
+        <div class="defile">
+          <table class="table">
+            <thead>
+              <tr><th class="num">N°</th><th>Action</th><th>Viewer</th><th>Enveloppe</th><th>Ligne</th><th>Classe</th><th class="num">Valorisation</th><th class="num">PV</th><th class="num">Frais</th><th>Arrêté</th></tr>
+            </thead>
+            <tbody>
+              {lignes.map((l) => (
+                <>
+                  <tr>
+                    <td class="num">{l.n}</td>
+                    <td class={l.action === 'erreur' ? 'perime' : undefined}>{l.action}</td>
+                    <td>{l.email}</td>
+                    <td>{l.enveloppe}</td>
+                    <td>{l.ligne}</td>
+                    <td>{l.classe}</td>
+                    <td class="num">{l.valorisation_cents === null ? '—' : euros(l.valorisation_cents)}</td>
+                    <td class="num">{l.pv_cents === null ? '—' : euros(l.pv_cents)}</td>
+                    <td class="num">{l.frais_bp === null ? '—' : pourcent(l.frais_bp)}</td>
+                    <td>{l.arrete_le ? dateCourte(l.arrete_le) : '—'}</td>
+                  </tr>
+                  {l.action === 'erreur' && (
+                    <tr><td></td><td colspan="9" class="perime">{l.motif}</td></tr>
+                  )}
+                </>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {
+          confirmable ? (
+            <form method="post" class="actions">
+              <input type="hidden" name="action" value="confirmer" />
+              <input type="hidden" name="nom" value={nom} />
+              <textarea name="csv" hidden>{csv}</textarea>
+              <button class="btn-plein" type="submit">Confirmer l'import</button>
+              <a class="btn" href="/gestionnaire/import">Annuler</a>
+            </form>
+          ) : (
+            <p class="info alerte">Corrigez le fichier et déposez-le de nouveau : aucune ligne n'est écrite tant qu'il contient une erreur.</p>
+          )
+        }
+      </>
+    )
+  }
+</Gestion>

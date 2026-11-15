@@ -1,0 +1,301 @@
+---
+export const prerender = false;
+import Gestion from '../../../layouts/Gestion.astro';
+import Champ from '../../../components/gestion/Champ.astro';
+import Cellule from '../../../components/gestion/Cellule.astro';
+import {
+  contexte, viewerDuTenant, traiter, STATUTS, CLASSES, texte, ecartAllocation, formEuros, formBp, type Erreurs,
+} from '../../../lib/gestion';
+import {
+  ficheDuViewer, enveloppesDuViewer, lignesDesEnveloppes, ciblesDuViewer, pointsDuViewer, mouvementsDuViewer,
+} from '../../../lib/db';
+import { euros, pourcent, dateCourte } from '../../../lib/format';
+
+const c = contexte(Astro);
+if (c instanceof Response) return c;
+const { db, tenant } = c;
+
+const viewer = await viewerDuTenant(db, tenant.id, Astro.params.id ?? '');
+if (!viewer) return new Response('Viewer introuvable', { status: 404 });
+const base = `/gestionnaire/viewers/${encodeURIComponent(viewer.id)}`;
+
+const ONGLETS: [string, string][] = [
+  ['fiche', 'Fiche'], ['enveloppes', 'Enveloppes'], ['lignes', 'Lignes'],
+  ['cibles', 'Allocation cible'], ['historique', 'Historique'], ['mouvements', 'Mouvements'],
+];
+let onglet = Astro.url.searchParams.get('onglet') ?? 'fiche';
+let erreurs: Erreurs = {};
+let valeurs: Record<string, string> = {};
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  valeurs = Object.fromEntries([...f].filter(([, v]) => typeof v === 'string')) as Record<string, string>;
+  const r = await traiter(db, tenant.id, viewer.id, texte(f.get('action'), 30), f);
+  onglet = r.onglet;
+  if (Object.keys(r.erreurs).length === 0) return Astro.redirect(`${base}?onglet=${r.onglet}&ok=1`, 303);
+  erreurs = r.erreurs;
+}
+if (!ONGLETS.some(([k]) => k === onglet)) onglet = 'fiche';
+
+const v = (k: string, d: string | number | null | undefined = ''): string => valeurs[k] ?? (d == null ? '' : String(d));
+const signe = (bp: number) => (bp > 0 ? `+${pourcent(bp)}` : pourcent(bp));
+const p = Astro.url.searchParams;
+
+const fiche = onglet === 'fiche' ? await ficheDuViewer(db, tenant.id, viewer.id) : null;
+const enveloppes = ['enveloppes', 'lignes', 'mouvements'].includes(onglet) ? await enveloppesDuViewer(db, viewer.id) : [];
+const lignes = ['lignes', 'cibles'].includes(onglet)
+  ? await lignesDesEnveloppes(db, (onglet === 'lignes' ? enveloppes : await enveloppesDuViewer(db, viewer.id)).map((e) => e.id))
+  : [];
+const cibles = onglet === 'cibles' ? await ciblesDuViewer(db, viewer.id) : [];
+const points = onglet === 'historique' ? (await pointsDuViewer(db, viewer.id)).reverse() : [];
+const mouvements = onglet === 'mouvements' ? await mouvementsDuViewer(db, viewer.id) : [];
+const ecarts = onglet === 'cibles' ? ecartAllocation(lignes, cibles) : [];
+const rowsCibles = [...cibles, null, null];
+let compteur = 0;
+---
+<Gestion titre={viewer.nom}>
+  <span class="etiquette">Viewer</span>
+  <h1>{viewer.nom}</h1>
+  <p class="aide">{viewer.email}</p>
+  {p.get('cree') === '1' && (
+    <p class="info">Viewer créé. {p.get('envoye') === '1' ? 'Le lien de première connexion a été envoyé.' : "L'envoi du lien a échoué : consultez le journal du serveur."}</p>
+  )}
+  {p.get('ok') === '1' && <p class="info">Enregistré.</p>}
+  {erreurs.general && <p class="info alerte">{erreurs.general}</p>}
+
+  <nav class="onglets" aria-label="Onglets du viewer">
+    {ONGLETS.map(([k, nom]) => <a href={`${base}?onglet=${k}`} aria-current={onglet === k ? 'page' : undefined}>{nom}</a>)}
+  </nav>
+
+  {onglet === 'fiche' && (
+    <form method="post">
+      <input type="hidden" name="action" value="fiche" />
+      <div class="grille">
+        <Champ nom="mandat_ref" label="Référence du mandat" valeur={v('mandat_ref', fiche?.mandat_ref)} erreur={erreurs.mandat_ref} />
+        <Champ nom="profil_risque" label="Profil de risque" valeur={v('profil_risque', fiche?.profil_risque)} erreur={erreurs.profil_risque} />
+        <Champ nom="profil_note" label="Note du profil (1 à 10)" valeur={v('profil_note', fiche?.profil_note)} erreur={erreurs.profil_note} inputmode="numeric" />
+        <Champ nom="horizon" label="Horizon" valeur={v('horizon', fiche?.horizon)} erreur={erreurs.horizon} />
+        <Champ nom="perte_max" label="Perte maximale tolérée (€)" valeur={v('perte_max', formEuros(fiche?.perte_max_cents))} erreur={erreurs.perte_max} inputmode="decimal" />
+        <Champ nom="liquidite" label="Liquidité (€)" valeur={v('liquidite', formEuros(fiche?.liquidite_cents))} erreur={erreurs.liquidite} inputmode="decimal" />
+        <Champ nom="allocation_signee_le" label="Allocation signée le" type="date" valeur={v('allocation_signee_le', fiche?.allocation_signee_le)} erreur={erreurs.allocation_signee_le} />
+        <Champ nom="prochain_point" label="Prochain point" type="date" valeur={v('prochain_point', fiche?.prochain_point)} erreur={erreurs.prochain_point} />
+      </div>
+      <Champ nom="regle_reequilibrage" label="Règle de rééquilibrage" lignes={3} valeur={v('regle_reequilibrage', fiche?.regle_reequilibrage)} erreur={erreurs.regle_reequilibrage} />
+      <Champ nom="allocation_motif" label="Motif de l'allocation" lignes={3} valeur={v('allocation_motif', fiche?.allocation_motif)} erreur={erreurs.allocation_motif} />
+      <div class="actions"><button class="btn-plein" type="submit">Enregistrer la fiche</button></div>
+    </form>
+  )}
+
+  {onglet === 'enveloppes' && (
+    <form method="post">
+      <input type="hidden" name="action" value="enveloppes" />
+      <input type="hidden" name="n" value={enveloppes.length + 1} />
+      <p class="aide">Une enveloppe qui a des lignes vaut la somme de ses lignes : sa valorisation est alors recalculée à l'enregistrement des lignes. Dernière ligne vide : ajout. Cochez « Suppr. » pour retirer une enveloppe et ses lignes.</p>
+      <div class="defile">
+        <table class="table">
+          <thead><tr><th>Libellé</th><th>Établissement</th><th>Ouverte le</th><th class="num">Valorisation (€)</th><th class="num">Perf. (%)</th><th>Arrêté le</th><th>Suppr.</th></tr></thead>
+          <tbody>
+            {[...enveloppes, null].map((e, i) => (
+              <tr>
+                <Cellule nom={`r${i}_libelle`} label="Libellé" valeur={v(`r${i}_libelle`, e?.libelle)} erreur={erreurs[`r${i}_libelle`]} />
+                <Cellule nom={`r${i}_etab`} label="Établissement" valeur={v(`r${i}_etab`, e?.etablissement)} />
+                <Cellule nom={`r${i}_ouverte`} label="Ouverte le" type="date" valeur={v(`r${i}_ouverte`, e?.ouverte_en)} erreur={erreurs[`r${i}_ouverte`]} />
+                <Cellule nom={`r${i}_valo`} label="Valorisation" num valeur={v(`r${i}_valo`, formEuros(e?.valorisation_cents))} erreur={erreurs[`r${i}_valo`]} />
+                <Cellule nom={`r${i}_perf`} label="Performance" num valeur={v(`r${i}_perf`, formBp(e?.perf_bp))} erreur={erreurs[`r${i}_perf`]} />
+                <Cellule nom={`r${i}_arrete`} label="Arrêté le" type="date" valeur={v(`r${i}_arrete`, e?.arrete_le)} erreur={erreurs[`r${i}_arrete`]} />
+                <td>
+                  <input type="hidden" name={`r${i}_id`} value={e?.id ?? ''} />
+                  {e && <input type="checkbox" name={`r${i}_suppr`} value="1" checked={v(`r${i}_suppr`) === '1'} aria-label="Supprimer" />}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div class="actions"><button class="btn-plein" type="submit">Enregistrer les enveloppes</button></div>
+    </form>
+  )}
+
+  {onglet === 'lignes' && (
+    enveloppes.length === 0 ? (
+      <p>Créez d'abord une enveloppe dans l'onglet Enveloppes.</p>
+    ) : (
+      <form method="post">
+        <input type="hidden" name="action" value="lignes" />
+        <input type="hidden" name="n" value={lignes.length + enveloppes.length} />
+        {enveloppes.map((e) => {
+          const siennes = [...lignes.filter((l) => l.enveloppe_id === e.id), null];
+          return (
+            <section style="margin-bottom: 2rem">
+              <h2>{e.libelle} <span class="aide">— {euros(e.valorisation_cents)}</span></h2>
+              <div class="defile">
+                <table class="table">
+                  <thead><tr><th>Libellé</th><th>Classe</th><th class="num">Valorisation (€)</th><th class="num">+/− value (€)</th><th class="num">Frais (%)</th><th>Arrêté le</th><th>Suppr.</th></tr></thead>
+                  <tbody>
+                    {siennes.map((l) => {
+                      const i = compteur++;
+                      return (
+                        <tr>
+                          <Cellule nom={`r${i}_libelle`} label="Libellé" valeur={v(`r${i}_libelle`, l?.libelle)} erreur={erreurs[`r${i}_libelle`]} />
+                          <Cellule nom={`r${i}_classe`} label="Classe" options={CLASSES} valeur={v(`r${i}_classe`, l?.classe)} erreur={erreurs[`r${i}_classe`]} />
+                          <Cellule nom={`r${i}_valo`} label="Valorisation" num valeur={v(`r${i}_valo`, formEuros(l?.valorisation_cents))} erreur={erreurs[`r${i}_valo`]} />
+                          <Cellule nom={`r${i}_pv`} label="Plus-value" num valeur={v(`r${i}_pv`, formEuros(l?.pv_cents))} erreur={erreurs[`r${i}_pv`]} />
+                          <Cellule nom={`r${i}_frais`} label="Frais" num valeur={v(`r${i}_frais`, formBp(l?.frais_bp))} erreur={erreurs[`r${i}_frais`]} />
+                          <Cellule nom={`r${i}_arrete`} label="Arrêté le" type="date" valeur={v(`r${i}_arrete`, l?.arrete_le)} erreur={erreurs[`r${i}_arrete`]} />
+                          <td>
+                            <input type="hidden" name={`r${i}_env`} value={e.id} />
+                            <input type="hidden" name={`r${i}_id`} value={l?.id ?? ''} />
+                            {l && <input type="checkbox" name={`r${i}_suppr`} value="1" checked={v(`r${i}_suppr`) === '1'} aria-label="Supprimer" />}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          );
+        })}
+        <div class="actions"><button class="btn-plein" type="submit">Enregistrer les lignes</button></div>
+      </form>
+    )
+  )}
+
+  {onglet === 'cibles' && (
+    <>
+      <form method="post">
+        <input type="hidden" name="action" value="cibles" />
+        <input type="hidden" name="n" value={rowsCibles.length} />
+        {erreurs.total && <p class="erreur">{erreurs.total}</p>}
+        <p class="aide">Le total des cibles doit faire 100 %. Deux lignes vides en fin de tableau pour ajouter une classe ; videz une ligne pour la retirer.</p>
+        <div class="defile">
+          <table class="table">
+            <thead><tr><th>Classe</th><th class="num">Cible (%)</th></tr></thead>
+            <tbody>
+              {rowsCibles.map((r, i) => (
+                <tr>
+                  <Cellule nom={`r${i}_classe`} label="Classe" options={CLASSES} valeur={v(`r${i}_classe`, r?.classe)} erreur={erreurs[`r${i}_classe`]} />
+                  <Cellule nom={`r${i}_pct`} label="Cible" num valeur={v(`r${i}_pct`, formBp(r?.cible_bp))} erreur={erreurs[`r${i}_pct`]} />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div class="actions"><button class="btn-plein" type="submit">Enregistrer l'allocation cible</button></div>
+      </form>
+      <hr class="filet" />
+      <h2>Écart à la cible</h2>
+      {
+        ecarts.length === 0 ? <p>Aucune cible ni ligne enregistrée.</p> : (
+          <div class="defile">
+            <table class="table">
+              <thead><tr><th>Classe</th><th class="num">Cible</th><th class="num">Actuel</th><th class="num">Écart</th></tr></thead>
+              <tbody>
+                {ecarts.map((x) => (
+                  <tr><td>{x.classe}</td><td class="num">{pourcent(x.cible_bp)}</td><td class="num">{pourcent(x.actuel_bp)}</td><td class="num">{signe(x.ecart_bp)}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </>
+  )}
+
+  {onglet === 'historique' && (
+    <>
+      <form method="post">
+        <input type="hidden" name="action" value="point" />
+        <div class="grille">
+          <Champ nom="date" label="Date du point" type="date" valeur={v('date')} erreur={erreurs.date} requis />
+          <Champ nom="valeur" label="Valeur du patrimoine (€)" valeur={v('valeur')} erreur={erreurs.valeur} inputmode="decimal" requis />
+          <Champ nom="verse" label="Versements cumulés (€)" valeur={v('verse')} erreur={erreurs.verse} inputmode="decimal" aide="Laissez vide pour 0. Un point à une date déjà saisie la remplace." />
+        </div>
+        <div class="actions"><button class="btn-plein" type="submit">Ajouter le point</button></div>
+      </form>
+      <hr class="filet" />
+      <form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="action" value="points_import" />
+        <div class="groupe">
+          <label class="etiquette" for="fichier">Importer un CSV</label>
+          {erreurs.fichier && <p class="erreur">{erreurs.fichier}</p>}
+          <input class="champ" id="fichier" name="fichier" type="file" accept=".csv,text/csv" />
+          <p class="aide">Colonnes : date;valeur_eur;versements_cumules_eur. Point-virgule, UTF-8, virgule décimale. Tout ou rien.</p>
+        </div>
+        <button class="btn" type="submit">Importer</button>
+      </form>
+      <hr class="filet" />
+      <div class="defile">
+        <table class="table">
+          <thead><tr><th>Date</th><th class="num">Valeur</th><th class="num">Versements cumulés</th><th></th></tr></thead>
+          <tbody>
+            {points.map((pt) => (
+              <tr>
+                <td>{dateCourte(pt.date)}</td><td class="num">{euros(pt.valeur_cents)}</td><td class="num">{euros(pt.versements_cumules_cents)}</td>
+                <td class="num">
+                  <form method="post"><input type="hidden" name="action" value="suppr_point" /><input type="hidden" name="id" value={pt.id} /><button class="btn" type="submit">Supprimer</button></form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )}
+
+  {onglet === 'mouvements' && (
+    <>
+      <form method="post">
+        <input type="hidden" name="action" value="mouvement" />
+        <div class="grille">
+          <Champ nom="date" label="Date" type="date" valeur={v('date')} erreur={erreurs.date} requis />
+          <Champ nom="libelle" label="Libellé" valeur={v('libelle')} erreur={erreurs.libelle} requis />
+          <div class="groupe">
+            <label class="etiquette" for="enveloppe">Enveloppe</label>
+            <select class="champ" id="enveloppe" name="enveloppe">
+              <option value="">—</option>
+              {enveloppes.map((e) => <option value={e.libelle} selected={v('enveloppe') === e.libelle}>{e.libelle}</option>)}
+            </select>
+          </div>
+          <Champ nom="montant" label="Montant (€)" valeur={v('montant')} erreur={erreurs.montant} inputmode="decimal" />
+          <div class="groupe">
+            <label class="etiquette" for="statut">Statut *</label>
+            {erreurs.statut && <p class="erreur">{erreurs.statut}</p>}
+            <select class="champ" id="statut" name="statut">
+              <option value="">—</option>
+              {STATUTS.map(([k, nom]) => <option value={k} selected={v('statut') === k}>{nom}</option>)}
+            </select>
+            <p class="aide">« Exécuté » et « Archivé » forcent En cours = non et étape = 0.</p>
+          </div>
+          <div class="groupe">
+            <label class="etiquette" for="etape">Étape</label>
+            <select class="champ" id="etape" name="etape">
+              {[1, 2, 3].map((n) => <option value={n} selected={v('etape', '1') === String(n)}>{n} sur 3</option>)}
+            </select>
+          </div>
+        </div>
+        <Champ nom="detail" label="Détail (phrase lue par le client)" lignes={2} valeur={v('detail')} />
+        <div class="groupe"><label><input type="checkbox" name="en_cours" value="1" checked={v('en_cours') === '1'} /> <span class="etiquette" style="display:inline">En cours</span></label></div>
+        <div class="actions"><button class="btn-plein" type="submit">Ajouter le mouvement</button></div>
+      </form>
+      <hr class="filet" />
+      <div class="defile">
+        <table class="table">
+          <thead><tr><th>Date</th><th>Libellé</th><th>Enveloppe</th><th class="num">Montant</th><th>Statut</th><th class="num">Étape</th><th></th></tr></thead>
+          <tbody>
+            {mouvements.map((m) => (
+              <tr>
+                <td>{dateCourte(m.date)}</td><td>{m.libelle}</td><td>{m.enveloppe ?? '—'}</td>
+                <td class="num">{m.montant_cents === null ? '—' : euros(m.montant_cents)}</td>
+                <td>{STATUTS.find(([k]) => k === m.statut)?.[1] ?? m.statut}{m.en_cours ? ' · en cours' : ''}</td><td class="num">{m.etape}/3</td>
+                <td class="num">
+                  <form method="post"><input type="hidden" name="action" value="suppr_mouvement" /><input type="hidden" name="id" value={m.id} /><button class="btn" type="submit">Supprimer</button></form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )}
+</Gestion>

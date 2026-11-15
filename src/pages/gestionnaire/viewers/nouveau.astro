@@ -1,0 +1,35 @@
+---
+export const prerender = false;
+import Gestion from '../../../layouts/Gestion.astro';
+import Champ from '../../../components/gestion/Champ.astro';
+import { contexte, creerViewer, envoyerLien, type Erreurs } from '../../../lib/gestion';
+import { demanderLien } from '../../../lib/auth';
+
+const c = contexte(Astro);
+if (c instanceof Response) return c;
+
+let erreurs: Erreurs = {};
+let nom = '';
+let email = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  nom = String(f.get('nom') ?? '');
+  email = String(f.get('email') ?? '');
+  const r = await creerViewer(c.db, c.tenant.id, f);
+  if ('erreurs' in r) erreurs = r.erreurs;
+  else {
+    const jeton = await demanderLien(c.db, c.tenant.id, r.email);
+    const envoye = jeton ? await envoyerLien(Astro.locals, r.email, nom.trim(), new URL(`/connexion/${jeton}`, Astro.url).href) : false;
+    return Astro.redirect(`/gestionnaire/viewers/${encodeURIComponent(r.id)}?cree=1&envoye=${envoye ? 1 : 0}`, 303);
+  }
+}
+---
+<Gestion titre="Nouveau viewer">
+  <h1>Nouveau viewer</h1>
+  <form method="post" style="max-width: 32rem">
+    <Champ nom="nom" label="Nom" valeur={nom} erreur={erreurs.nom} requis />
+    <Champ nom="email" label="Adresse e-mail" valeur={email} erreur={erreurs.email} type="email" requis />
+    <p class="aide">La création envoie le lien de première connexion. Aucun mot de passe à définir.</p>
+    <div class="actions"><button class="btn-plein" type="submit">Créer et envoyer le lien</button></div>
+  </form>
+</Gestion>
