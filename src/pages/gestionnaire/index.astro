@@ -10,7 +10,9 @@ if (c instanceof Response) return c;
 const viewers = await viewersResumes(c.db, c.tenant.id);
 const dernier = await dernierImport(c.db, c.tenant.id);
 const seuil = seuilArrete();
-const encours = viewers.reduce((s, v) => s + v.encours, 0);
+// Rappel calculé au chargement : viewers actifs dont l'arrêté dépasse le seuil. Ni tâche planifiée, ni e-mail.
+const enRetard = viewers.filter((v) => v.actif === 1 && (!v.arrete || v.arrete < seuil));
+const encours =viewers.reduce((s, v) => s + v.encours, 0);
 const actifs = viewers.filter((v) => v.actif === 1).length;
 const arretes = viewers.map((v) => v.arrete).filter((d): d is string => !!d).sort();
 const derniere = arretes.length ? arretes[arretes.length - 1] : null;
@@ -19,6 +21,19 @@ const importe = Astro.url.searchParams.get('importe') === '1';
 <Gestion titre="Tableau de bord">
   <h1>Tableau de bord</h1>
   {importe && <p class="info">Import enregistré.</p>}
+  {enRetard.length > 0 && (
+    <div class="info alerte" role="status">
+      <strong>{enRetard.length} viewer{enRetard.length > 1 ? 's' : ''} à mettre à jour</strong> : arrêté de plus de 45 jours ou absent.
+      <ul>
+        {enRetard.map((v) => (
+          <li>
+            <a href={`/gestionnaire/viewers/${encodeURIComponent(v.id)}?onglet=arrete`}>{v.nom}</a>
+            {' '}— {v.arrete ? `arrêté au ${dateCourte(v.arrete)}` : 'aucun arrêté'}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )}
 
   <div class="kpis">
     <div class="kpi"><span class="etiquette">Encours suivis</span><span class="chiffre">{euros(encours)}</span></div>
