@@ -3,7 +3,7 @@ import Viewer from '../../layouts/Viewer.astro';
 import { enveloppesDuViewer, lignesDesEnveloppes } from '../../lib/db';
 import { euros, pourcent } from '../../lib/format';
 import { envDe } from '../../lib/mail';
-import { journaliser, partBp, signe, signeBp, teinte } from '../../lib/espace';
+import { arrete, journaliser, partBp, signe, signeBp, teinte } from '../../lib/espace';
 
 const u = Astro.locals.utilisateur;
 if (!u) return Astro.redirect('/connexion');
@@ -26,7 +26,7 @@ const lignes = await lignesDesEnveloppes(DB, enveloppes.map((e) => e.id));
           <div>
             <h2>{e.libelle}</h2>
             <span class="etiquette">
-              {[e.etablissement, e.ouverte_en ? `ouverte en ${e.ouverte_en.slice(0, 4)}` : null].filter(Boolean).join(' · ')}
+              {[e.etablissement, e.ouverte_en ? `ouverte en ${e.ouverte_en.slice(0, 4)}` : null, `arrêtée au ${arrete(e.arrete_le)}`].filter(Boolean).join(' · ')}
             </span>
           </div>
           <div class="droite">
@@ -39,7 +39,7 @@ const lignes = await lignesDesEnveloppes(DB, enveloppes.map((e) => e.id));
             <thead>
               <tr>
                 <th>Support</th><th class="num">Valorisation</th><th class="num">Part</th>
-                <th class="num">Plus ou moins-value</th><th class="num">Frais annuels</th>
+                <th class="num">Plus ou moins-value</th><th class="num">Frais annuels</th><th class="num">Arrêté au</th>
               </tr>
             </thead>
             <tbody>
@@ -50,6 +50,7 @@ const lignes = await lignesDesEnveloppes(DB, enveloppes.map((e) => e.id));
                   <td class="num">{pourcent(partBp(l.valorisation_cents, e.valorisation_cents))}</td>
                   <td class={`num ${teinte(l.pv_cents)}`}>{l.pv_cents === null ? '—' : signe(l.pv_cents)}</td>
                   <td class="num">{l.frais_bp === null ? '—' : pourcent(l.frais_bp)}</td>
+                  <td class="num">{arrete(l.arrete_le)}</td>
                 </tr>
               ))}
             </tbody>
