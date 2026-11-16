@@ -8,7 +8,7 @@ import {
 import { dateLongue, euros, pourcent } from '../../lib/format';
 import { envDe } from '../../lib/mail';
 import {
-  arrete, courbe as calculerCourbe, indicateurs, journaliser, plusRecent,
+  arrete, courbe as calculerCourbe, indicateurs, journaliser, plusAncien,
   repartition, signe, signeBp, teinte,
 } from '../../lib/espace';
 
@@ -31,8 +31,13 @@ const ind = indicateurs(points, enveloppes, lignes);
 const classes = repartition(lignes, cibles);
 const courbe = calculerCourbe(points);
 const enCours = mouvements.filter((m) => m.en_cours === 1).slice(0, 3);
-const dateArrete = plusRecent(enveloppes.map((e) => e.arrete_le));
-const synchro = plusRecent([...lignes.map((l) => l.arrete_le), ...enveloppes.map((e) => e.arrete_le)]);
+// La plus ancienne date, jamais la plus récente : un portefeuille n'est à jour que si tout l'est.
+const dateArrete = plusAncien([...enveloppes.map((e) => e.arrete_le), ...lignes.map((l) => l.arrete_le)]);
+const synchro = plusAncien([
+  ...lignes.map((l) => l.arrete_le),
+  ...enveloppes.map((e) => e.arrete_le),
+  ...(points.length ? [points[points.length - 1].date] : []),
+]);
 const totalLignes = classes.reduce((s, c) => s + c.montant, 0);
 ---
 <Viewer titre="Tableau de bord">

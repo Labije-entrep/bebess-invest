@@ -12,6 +12,8 @@ import {
   type Base,
   type Cible,
   type Ligne,
+  type Point,
+  type Requete,
   type Tenant,
   type Utilisateur,
 } from './db';
@@ -149,7 +151,14 @@ export async function viewersResumes(db: Base, tenantId: string): Promise<Viewer
     .prepare(
       `SELECT u.id, u.nom, u.email, u.actif,
               COALESCE((SELECT SUM(e.valorisation_cents) FROM enveloppe e WHERE e.viewer_id = u.id), 0) AS encours,
-              (SELECT MAX(e.arrete_le) FROM enveloppe e WHERE e.viewer_id = u.id) AS arrete
+              -- Fraîcheur réelle : la plus ancienne date parmi les enveloppes, les lignes et le dernier point.
+              (SELECT MIN(d) FROM (
+                 SELECT e.arrete_le AS d FROM enveloppe e WHERE e.viewer_id = u.id
+                 UNION ALL
+                 SELECT l.arrete_le FROM ligne l JOIN enveloppe e ON e.id = l.enveloppe_id WHERE e.viewer_id = u.id
+                 UNION ALL
+                 SELECT MAX(p.date) FROM point p WHERE p.viewer_id = u.id
+               )) AS arrete
          FROM utilisateur u
         WHERE u.tenant_id = ? AND u.role = 'viewer'
         ORDER BY u.nom`,
@@ -238,7 +247,8 @@ export async function envoyerLien(locals: unknown, email: string, nom: string, l
 
 // ---------------------------------------------------------------- onglets d'un viewer
 
-type Retour = { onglet: string; erreurs: Erreurs };
+/** apercu : la performance du mois est à montrer et à confirmer avant toute écriture. */
+type Retour = { onglet: string; erreurs: Erreurs; apercu?: Apercu };
 
 export async function traiter(
   db: Base,
@@ -273,8 +283,14 @@ export async function traiter(
       return { onglet: 'lignes', erreurs: await enregistrerLignes(db, viewerId, f) };
     case 'cibles':
       return { onglet: 'cibles', erreurs: await enregistrerCibles(db, viewerId, f) };
-    case 'point':
-      return { onglet: 'historique', erreurs: await enregistrerPoint(db, viewerId, f) };
+    case 'point': {
+      const r = await enregistrerPoint(db, viewerId, f);
+      return { onglet: 'historique', ...r };
+    }
+    case 'arrete': {
+      const r = await enregistrerArrete(db, viewerId, f);
+      return { onglet: 'arrete', ...r };
+    }
     case 'points_import':
       return { onglet: 'historique', erreurs: await importerPoints(db, viewerId, f) };
     case 'suppr_point':
@@ -575,21 +591,196 @@ async function ecrirePoint(db: Base, viewerId: string, date: string, valeur: num
   }
 }
 
-async function enregistrerPoint(db: Base, viewerId: string, f: FormData): Promise<Erreurs> {
+// ---------------------------------------------------------------- aperçu de la performance du mois
+
+export interface PointRef {
+  date: string;
+  valeurCents: number;
+  verseCents: number;
+}
+export interface Apercu {
+  date: string;
+  valeurCents: number;
+  verseCents: number;
+  precedent: PointRef | null;
+  /** Performance du mois que le point implique, en centièmes de point ; null sans point antérieur. */
+  perfBp: number | null;
+  /** Au-delà de ±20 % : l'écran le signale, la confirmation reste possible. */
+  forte: boolean;
+  /** Un point existe déjà à cette date : il sera remplacé. */
+  remplace: boolean;
+}
+
+const SEUIL_PERF_BP = 2000;
+
+/** Le dernier point strictement antérieur à la date. */
+export async function pointPrecedent(db: Base, viewerId: string, date: string): Promise<PointRef | null> {
+  const r = await db
+    .prepare(
+      `SELECT date, valeur_cents, versements_cumules_cents FROM point
+        WHERE viewer_id = ? AND date < ? ORDER BY date DESC LIMIT 1`,
+    )
+    .bind(viewerId, date)
+    .first<{ date: string; valeur_cents: number; versements_cumules_cents: number }>();
+  return r ? { date: r.date, valeurCents: r.valeur_cents, verseCents: r.versements_cumules_cents } : null;
+}
+
+/** Même formule que performanceEnchainee : (valeur − précédente − flux) / précédente, flux = variation des versements. */
+export function perfDuMois(prec: PointRef | null, valeurCents: number, verseCents: number): number | null {
+  if (!prec || prec.valeurCents <= 0) return null;
+  const gain = valeurCents - prec.valeurCents - (verseCents - prec.verseCents);
+  return Math.round((gain * 10000) / prec.valeurCents);
+}
+
+export async function apercuPoint(
+  db: Base,
+  viewerId: string,
+  date: string,
+  valeurCents: number,
+  verseCents: number,
+): Promise<Apercu> {
+  const precedent = await pointPrecedent(db, viewerId, date);
+  const perfBp = perfDuMois(precedent, valeurCents, verseCents);
+  const existant = await db
+    .prepare('SELECT 1 AS ok FROM point WHERE viewer_id = ? AND date = ?')
+    .bind(viewerId, date)
+    .first();
+  return {
+    date, valeurCents, verseCents, precedent, perfBp,
+    forte: perfBp !== null && Math.abs(perfBp) > SEUIL_PERF_BP,
+    remplace: existant !== null,
+  };
+}
+
+/**
+ * Un champ « versements » vide signifie « inchangé depuis le point précédent », et zéro
+ * seulement s'il n'existe aucun point antérieur. Rien n'est écrit tant que la performance
+ * du mois n'a pas été affichée et confirmée (confirmer = 1).
+ */
+async function enregistrerPoint(
+  db: Base,
+  viewerId: string,
+  f: FormData,
+): Promise<{ erreurs: Erreurs; apercu?: Apercu }> {
   const e: Erreurs = {};
   const date = lireDate(texte(f.get('date'), 10));
   if (!date) e.date = MSG_DATE;
   const valeur = lireEuros(texte(f.get('valeur'), 20));
   if (valeur === null) e.valeur = MSG_EUROS;
   const verseS = texte(f.get('verse'), 20);
-  const verse = verseS ? lireEuros(verseS) : 0;
-  if (verse === null) e.verse = MSG_EUROS;
-  if (Object.keys(e).length) return e;
-  await ecrirePoint(db, viewerId, date!, valeur!, verse!);
-  return {};
+  const verseSaisi = verseS ? lireEuros(verseS) : undefined;
+  if (verseSaisi === null) e.verse = MSG_EUROS;
+  if (Object.keys(e).length) return { erreurs: e };
+  const verse = verseSaisi ?? (await pointPrecedent(db, viewerId, date!))?.verseCents ?? 0;
+  if (texte(f.get('confirmer'), 1) !== '1') {
+    return { erreurs: {}, apercu: await apercuPoint(db, viewerId, date!, valeur!, verse) };
+  }
+  await ecrirePoint(db, viewerId, date!, valeur!, verse);
+  return { erreurs: {} };
 }
 
 /** Fichier : date;valeur_eur;versements_cumules_eur. Tout ou rien. */
+// ---------------------------------------------------------------- nouvel arrêté
+
+export function pointAu(db: Base, viewerId: string, date: string): Promise<Point | null> {
+  return db
+    .prepare(
+      `SELECT id, viewer_id, date, valeur_cents, versements_cumules_cents
+         FROM point WHERE viewer_id = ? AND date = ?`,
+    )
+    .bind(viewerId, date)
+    .first<Point>();
+}
+
+/**
+ * Un arrêté mensuel en un seul formulaire : valeurs des enveloppes et des lignes, et point du
+ * mois. Les champs sont numérotés dans l'ordre de enveloppesDuViewer / lignesDesEnveloppes.
+ * Une enveloppe qui a des lignes vaut la somme de ses lignes. Rien n'est écrit sans que la
+ * performance du mois ait été montrée (perf_vue) puis confirmée ; l'écriture est une seule
+ * transaction : arrete_le des enveloppes et des lignes, et le point à cette date.
+ */
+async function enregistrerArrete(
+  db: Base,
+  viewerId: string,
+  f: FormData,
+): Promise<{ erreurs: Erreurs; apercu?: Apercu }> {
+  const e: Erreurs = {};
+  const date = lireDate(texte(f.get('date'), 10));
+  if (!date) return { erreurs: { date: MSG_DATE } };
+  const envs = await enveloppesDuViewer(db, viewerId);
+  const lignes = await lignesDesEnveloppes(db, envs.map((x) => x.id));
+  const g = (nom: string, max = 20) => texte(f.get(nom), max);
+
+  const requetes: Requete[] = [];
+  const valoEnv = new Map<string, number>();
+  lignes.forEach((l, j) => {
+    if (g(`l${j}_id`, 64) !== l.id) { e.general = 'Les données ont changé : rechargez la page.'; return; }
+    const valo = lireEuros(g(`l${j}_valo`));
+    if (valo === null) e[`l${j}_valo`] = MSG_EUROS;
+    const pvS = g(`l${j}_pv`);
+    const pv = pvS ? lireEuros(pvS) : null;
+    if (pvS && pv === null) e[`l${j}_pv`] = MSG_EUROS;
+    const fraisS = g(`l${j}_frais`);
+    const frais = fraisS ? lireBp(fraisS) : null;
+    if (fraisS && frais === null) e[`l${j}_frais`] = MSG_PCT;
+    if (valo === null) return;
+    valoEnv.set(l.enveloppe_id, (valoEnv.get(l.enveloppe_id) ?? 0) + valo);
+    requetes.push(
+      db
+        .prepare('UPDATE ligne SET valorisation_cents = ?, pv_cents = ?, frais_bp = ?, arrete_le = ? WHERE id = ? AND enveloppe_id = ?')
+        .bind(valo, pv, frais, date, l.id, l.enveloppe_id),
+    );
+  });
+  let somme = 0;
+  envs.forEach((env, i) => {
+    if (g(`e${i}_id`, 64) !== env.id) { e.general = 'Les données ont changé : rechargez la page.'; return; }
+    const perfS = g(`e${i}_perf`);
+    const perf = perfS ? lireBp(perfS) : null;
+    if (perfS && perf === null) e[`e${i}_perf`] = MSG_PCT;
+    let total: number;
+    if (lignes.some((l) => l.enveloppe_id === env.id)) total = valoEnv.get(env.id) ?? 0;
+    else {
+      const v = lireEuros(g(`e${i}_valo`));
+      if (v === null) { e[`e${i}_valo`] = MSG_EUROS; return; }
+      total = v;
+    }
+    somme += total;
+    requetes.push(
+      db
+        .prepare('UPDATE enveloppe SET valorisation_cents = ?, perf_bp = ?, arrete_le = ? WHERE id = ? AND viewer_id = ?')
+        .bind(total, perf, date, env.id, viewerId),
+    );
+  });
+
+  const existant = await pointAu(db, viewerId, date);
+  const valeurS = g('valeur');
+  // Valeur du point laissée telle que proposée, sans point existant : elle suit la somme recalculée.
+  const valeur = !existant && (valeurS === '' || valeurS === g('valeur_init')) ? somme : lireEuros(valeurS);
+  if (valeur === null) e.valeur = MSG_EUROS;
+  const verseS = g('verse');
+  const verseSaisi = verseS ? lireEuros(verseS) : undefined;
+  if (verseSaisi === null) e.verse = MSG_EUROS;
+  if (Object.keys(e).length) return { erreurs: e };
+
+  const verse = verseSaisi ?? (await pointPrecedent(db, viewerId, date))?.verseCents ?? 0;
+  const apercu = await apercuPoint(db, viewerId, date, valeur!, verse!);
+  if (g('confirmer', 1) !== '1' || g('perf_vue', 12) !== String(apercu.perfBp ?? 'nc')) {
+    return { erreurs: {}, apercu };
+  }
+  requetes.push(
+    db
+      .prepare(
+        `INSERT INTO point (id, viewer_id, date, valeur_cents, versements_cumules_cents)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(viewer_id, date) DO UPDATE SET
+           valeur_cents = excluded.valeur_cents, versements_cumules_cents = excluded.versements_cumules_cents`,
+      )
+      .bind(nouvelId(), viewerId, date, valeur, verse),
+  );
+  await db.batch(requetes);
+  return { erreurs: {} };
+}
+
 async function importerPoints(db: Base, viewerId: string, f: FormData): Promise<Erreurs> {
   const fichier = f.get('fichier');
   if (!(fichier instanceof File) || fichier.size === 0) return { fichier: 'Choisissez un fichier CSV.' };
@@ -599,18 +790,22 @@ async function importerPoints(db: Base, viewerId: string, f: FormData): Promise<
   if (rows.length === 0) return { fichier: 'Aucune ligne à importer.' };
   if (rows.length > 400) return { fichier: '400 lignes au plus par import.' };
   const problemes: string[] = [];
-  const points: [string, number, number][] = [];
+  const points: [string, number, number | undefined][] = [];
   rows.forEach((r, i) => {
     const date = lireDate(r[0] ?? '');
     const valeur = lireEuros(r[1] ?? '');
-    const verse = (r[2] ?? '').trim() ? lireEuros(r[2]) : 0;
+    // Colonne vide : versements inchangés depuis le point précédent.
+    const verse = (r[2] ?? '').trim() ? lireEuros(r[2]) : undefined;
     if (!date || valeur === null || verse === null) problemes.push(`ligne ${i + 1}`);
     else points.push([date, valeur, verse]);
   });
   if (problemes.length) {
     return { fichier: `Lignes invalides : ${problemes.slice(0, 8).join(', ')}. Colonnes : date;valeur_eur;versements_cumules_eur. Rien n'a été enregistré.` };
   }
-  for (const [d, v, c] of points) await ecrirePoint(db, viewerId, d, v, c);
+  points.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  for (const [d, v, c] of points) {
+    await ecrirePoint(db, viewerId, d, v, c ?? (await pointPrecedent(db, viewerId, d))?.verseCents ?? 0);
+  }
   return {};
 }
 
