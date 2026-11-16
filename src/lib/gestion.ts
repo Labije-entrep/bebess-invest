@@ -238,7 +238,8 @@ export async function envoyerLien(locals: unknown, email: string, nom: string, l
 
 // ---------------------------------------------------------------- onglets d'un viewer
 
-type Retour = { onglet: string; erreurs: Erreurs };
+/** apercu : la performance du mois est à montrer et à confirmer avant toute écriture. */
+type Retour = { onglet: string; erreurs: Erreurs; apercu?: Apercu };
 
 export async function traiter(
   db: Base,
@@ -273,8 +274,10 @@ export async function traiter(
       return { onglet: 'lignes', erreurs: await enregistrerLignes(db, viewerId, f) };
     case 'cibles':
       return { onglet: 'cibles', erreurs: await enregistrerCibles(db, viewerId, f) };
-    case 'point':
-      return { onglet: 'historique', erreurs: await enregistrerPoint(db, viewerId, f) };
+    case 'point': {
+      const r = await enregistrerPoint(db, viewerId, f);
+      return { onglet: 'historique', ...r };
+    }
     case 'points_import':
       return { onglet: 'historique', erreurs: await importerPoints(db, viewerId, f) };
     case 'suppr_point':
@@ -575,18 +578,92 @@ async function ecrirePoint(db: Base, viewerId: string, date: string, valeur: num
   }
 }
 
-async function enregistrerPoint(db: Base, viewerId: string, f: FormData): Promise<Erreurs> {
+// ---------------------------------------------------------------- aperçu de la performance du mois
+
+export interface PointRef {
+  date: string;
+  valeurCents: number;
+  verseCents: number;
+}
+export interface Apercu {
+  date: string;
+  valeurCents: number;
+  verseCents: number;
+  precedent: PointRef | null;
+  /** Performance du mois que le point implique, en centièmes de point ; null sans point antérieur. */
+  perfBp: number | null;
+  /** Au-delà de ±20 % : l'écran le signale, la confirmation reste possible. */
+  forte: boolean;
+  /** Un point existe déjà à cette date : il sera remplacé. */
+  remplace: boolean;
+}
+
+const SEUIL_PERF_BP = 2000;
+
+/** Le dernier point strictement antérieur à la date. */
+export async function pointPrecedent(db: Base, viewerId: string, date: string): Promise<PointRef | null> {
+  const r = await db
+    .prepare(
+      `SELECT date, valeur_cents, versements_cumules_cents FROM point
+        WHERE viewer_id = ? AND date < ? ORDER BY date DESC LIMIT 1`,
+    )
+    .bind(viewerId, date)
+    .first<{ date: string; valeur_cents: number; versements_cumules_cents: number }>();
+  return r ? { date: r.date, valeurCents: r.valeur_cents, verseCents: r.versements_cumules_cents } : null;
+}
+
+/** Même formule que performanceEnchainee : (valeur − précédente − flux) / précédente, flux = variation des versements. */
+export function perfDuMois(prec: PointRef | null, valeurCents: number, verseCents: number): number | null {
+  if (!prec || prec.valeurCents <= 0) return null;
+  const gain = valeurCents - prec.valeurCents - (verseCents - prec.verseCents);
+  return Math.round((gain * 10000) / prec.valeurCents);
+}
+
+export async function apercuPoint(
+  db: Base,
+  viewerId: string,
+  date: string,
+  valeurCents: number,
+  verseCents: number,
+): Promise<Apercu> {
+  const precedent = await pointPrecedent(db, viewerId, date);
+  const perfBp = perfDuMois(precedent, valeurCents, verseCents);
+  const existant = await db
+    .prepare('SELECT 1 AS ok FROM point WHERE viewer_id = ? AND date = ?')
+    .bind(viewerId, date)
+    .first();
+  return {
+    date, valeurCents, verseCents, precedent, perfBp,
+    forte: perfBp !== null && Math.abs(perfBp) > SEUIL_PERF_BP,
+    remplace: existant !== null,
+  };
+}
+
+/**
+ * Un champ « versements » vide signifie « inchangé depuis le point précédent », et zéro
+ * seulement s'il n'existe aucun point antérieur. Rien n'est écrit tant que la performance
+ * du mois n'a pas été affichée et confirmée (confirmer = 1).
+ */
+async function enregistrerPoint(
+  db: Base,
+  viewerId: string,
+  f: FormData,
+): Promise<{ erreurs: Erreurs; apercu?: Apercu }> {
   const e: Erreurs = {};
   const date = lireDate(texte(f.get('date'), 10));
   if (!date) e.date = MSG_DATE;
   const valeur = lireEuros(texte(f.get('valeur'), 20));
   if (valeur === null) e.valeur = MSG_EUROS;
   const verseS = texte(f.get('verse'), 20);
-  const verse = verseS ? lireEuros(verseS) : 0;
-  if (verse === null) e.verse = MSG_EUROS;
-  if (Object.keys(e).length) return e;
-  await ecrirePoint(db, viewerId, date!, valeur!, verse!);
-  return {};
+  const verseSaisi = verseS ? lireEuros(verseS) : undefined;
+  if (verseSaisi === null) e.verse = MSG_EUROS;
+  if (Object.keys(e).length) return { erreurs: e };
+  const verse = verseSaisi ?? (await pointPrecedent(db, viewerId, date!))?.verseCents ?? 0;
+  if (texte(f.get('confirmer'), 1) !== '1') {
+    return { erreurs: {}, apercu: await apercuPoint(db, viewerId, date!, valeur!, verse) };
+  }
+  await ecrirePoint(db, viewerId, date!, valeur!, verse);
+  return { erreurs: {} };
 }
 
 /** Fichier : date;valeur_eur;versements_cumules_eur. Tout ou rien. */
@@ -599,18 +676,22 @@ async function importerPoints(db: Base, viewerId: string, f: FormData): Promise<
   if (rows.length === 0) return { fichier: 'Aucune ligne à importer.' };
   if (rows.length > 400) return { fichier: '400 lignes au plus par import.' };
   const problemes: string[] = [];
-  const points: [string, number, number][] = [];
+  const points: [string, number, number | undefined][] = [];
   rows.forEach((r, i) => {
     const date = lireDate(r[0] ?? '');
     const valeur = lireEuros(r[1] ?? '');
-    const verse = (r[2] ?? '').trim() ? lireEuros(r[2]) : 0;
+    // Colonne vide : versements inchangés depuis le point précédent.
+    const verse = (r[2] ?? '').trim() ? lireEuros(r[2]) : undefined;
     if (!date || valeur === null || verse === null) problemes.push(`ligne ${i + 1}`);
     else points.push([date, valeur, verse]);
   });
   if (problemes.length) {
     return { fichier: `Lignes invalides : ${problemes.slice(0, 8).join(', ')}. Colonnes : date;valeur_eur;versements_cumules_eur. Rien n'a été enregistré.` };
   }
-  for (const [d, v, c] of points) await ecrirePoint(db, viewerId, d, v, c);
+  points.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  for (const [d, v, c] of points) {
+    await ecrirePoint(db, viewerId, d, v, c ?? (await pointPrecedent(db, viewerId, d))?.verseCents ?? 0);
+  }
   return {};
 }
 

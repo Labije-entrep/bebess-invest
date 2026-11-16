@@ -5,6 +5,7 @@ import Champ from '../../../components/gestion/Champ.astro';
 import Cellule from '../../../components/gestion/Cellule.astro';
 import {
   contexte, viewerDuTenant, traiter, STATUTS, CLASSES, texte, ecartAllocation, formEuros, formBp, type Erreurs,
+  type Apercu,
 } from '../../../lib/gestion';
 import {
   ficheDuViewer, enveloppesDuViewer, lignesDesEnveloppes, ciblesDuViewer, pointsDuViewer, mouvementsDuViewer,
@@ -26,14 +27,16 @@ const ONGLETS: [string, string][] = [
 let onglet = Astro.url.searchParams.get('onglet') ?? 'fiche';
 let erreurs: Erreurs = {};
 let valeurs: Record<string, string> = {};
+let apercu: Apercu | undefined;
 
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
   valeurs = Object.fromEntries([...f].filter(([, v]) => typeof v === 'string')) as Record<string, string>;
   const r = await traiter(db, tenant.id, viewer.id, texte(f.get('action'), 30), f);
   onglet = r.onglet;
-  if (Object.keys(r.erreurs).length === 0) return Astro.redirect(`${base}?onglet=${r.onglet}&ok=1`, 303);
+  if (Object.keys(r.erreurs).length === 0 && !r.apercu) return Astro.redirect(`${base}?onglet=${r.onglet}&ok=1`, 303);
   erreurs = r.erreurs;
+  apercu = r.apercu;
 }
 if (!ONGLETS.some(([k]) => k === onglet)) onglet = 'fiche';
 
@@ -204,15 +207,42 @@ let compteur = 0;
 
   {onglet === 'historique' && (
     <>
-      <form method="post">
-        <input type="hidden" name="action" value="point" />
-        <div class="grille">
-          <Champ nom="date" label="Date du point" type="date" valeur={v('date')} erreur={erreurs.date} requis />
-          <Champ nom="valeur" label="Valeur du patrimoine (€)" valeur={v('valeur')} erreur={erreurs.valeur} inputmode="decimal" requis />
-          <Champ nom="verse" label="Versements cumulés (€)" valeur={v('verse')} erreur={erreurs.verse} inputmode="decimal" aide="Laissez vide pour 0. Un point à une date déjà saisie la remplace." />
-        </div>
-        <div class="actions"><button class="btn-plein" type="submit">Ajouter le point</button></div>
-      </form>
+      {apercu ? (
+        <form method="post">
+          <input type="hidden" name="action" value="point" />
+          <input type="hidden" name="date" value={apercu.date} />
+          <input type="hidden" name="valeur" value={formEuros(apercu.valeurCents)} />
+          <input type="hidden" name="verse" value={formEuros(apercu.verseCents)} />
+          <input type="hidden" name="confirmer" value="1" />
+          <h2>Point du {dateCourte(apercu.date)}</h2>
+          <dl class="def">
+            <div><dt>Valeur</dt><dd class="num">{euros(apercu.valeurCents)}</dd></div>
+            <div><dt>Versements cumulés nets</dt><dd class="num">{euros(apercu.verseCents)}{apercu.precedent && apercu.verseCents === apercu.precedent.verseCents ? ' (inchangés)' : ''}</dd></div>
+            <div>
+              <dt>Performance du mois impliquée</dt>
+              <dd class={`num ${apercu.forte ? 'perime' : ''}`}>
+                {apercu.perfBp === null ? 'Non calculable : aucun point antérieur.' : `${signe(apercu.perfBp)}, depuis le point du ${dateCourte(apercu.precedent!.date)}`}
+              </dd>
+            </div>
+          </dl>
+          {apercu.forte && <p class="info alerte">Variation supérieure à 20 % en un mois. Si elle est réelle, confirmez ; sinon, corrigez la valeur ou les versements.</p>}
+          {apercu.remplace && <p class="info">Un point existe déjà à cette date : il sera remplacé.</p>}
+          <div class="actions">
+            <button class="btn-plein" type="submit">{apercu.forte ? 'Confirmer malgré la variation' : 'Confirmer l\'enregistrement'}</button>
+            <a class="btn" href={`${base}?onglet=historique`}>Modifier</a>
+          </div>
+        </form>
+      ) : (
+        <form method="post">
+          <input type="hidden" name="action" value="point" />
+          <div class="grille">
+            <Champ nom="date" label="Date du point" type="date" valeur={v('date')} erreur={erreurs.date} requis />
+            <Champ nom="valeur" label="Valeur du patrimoine (€)" valeur={v('valeur')} erreur={erreurs.valeur} inputmode="decimal" requis />
+            <Champ nom="verse" label="Versements cumulés nets (apports moins retraits)" valeur={v('verse', formEuros(points[0]?.versements_cumules_cents))} erreur={erreurs.verse} inputmode="decimal" aide={points[0] ? `Dernier point : ${euros(points[0].versements_cumules_cents)} au ${dateCourte(points[0].date)}. Laissez cette valeur, ou videz le champ, si aucun apport ni retrait depuis. Un point à une date déjà saisie la remplace.` : 'Aucun point antérieur : un champ vide vaut 0. Un point à une date déjà saisie la remplace.'} />
+          </div>
+          <div class="actions"><button class="btn-plein" type="submit">Vérifier le point</button></div>
+        </form>
+      )}
       <hr class="filet" />
       <form method="post" enctype="multipart/form-data">
         <input type="hidden" name="action" value="points_import" />
