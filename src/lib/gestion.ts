@@ -151,7 +151,14 @@ export async function viewersResumes(db: Base, tenantId: string): Promise<Viewer
     .prepare(
       `SELECT u.id, u.nom, u.email, u.actif,
               COALESCE((SELECT SUM(e.valorisation_cents) FROM enveloppe e WHERE e.viewer_id = u.id), 0) AS encours,
-              (SELECT MAX(e.arrete_le) FROM enveloppe e WHERE e.viewer_id = u.id) AS arrete
+              -- Fraîcheur réelle : la plus ancienne date parmi les enveloppes, les lignes et le dernier point.
+              (SELECT MIN(d) FROM (
+                 SELECT e.arrete_le AS d FROM enveloppe e WHERE e.viewer_id = u.id
+                 UNION ALL
+                 SELECT l.arrete_le FROM ligne l JOIN enveloppe e ON e.id = l.enveloppe_id WHERE e.viewer_id = u.id
+                 UNION ALL
+                 SELECT MAX(p.date) FROM point p WHERE p.viewer_id = u.id
+               )) AS arrete
          FROM utilisateur u
         WHERE u.tenant_id = ? AND u.role = 'viewer'
         ORDER BY u.nom`,

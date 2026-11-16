@@ -33,6 +33,11 @@ export function plusRecent(valeurs: string[]): string | null {
   return valeurs.length ? valeurs.reduce((a, b) => (a > b ? a : b)) : null;
 }
 
+/** La plus ancienne des dates : seule date d'arrêté honnête d'un ensemble de valorisations. */
+export function plusAncien(valeurs: string[]): string | null {
+  return valeurs.length ? valeurs.reduce((a, b) => (a < b ? a : b)) : null;
+}
+
 export function partBp(montant: number, total: number): number {
   return total > 0 ? Math.round((montant * 10000) / total) : 0;
 }
