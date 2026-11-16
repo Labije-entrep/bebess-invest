@@ -11,6 +11,8 @@ export interface Requete {
 }
 export interface Base {
   prepare(sql: string): Requete;
+  /** Exécute les requêtes dans une seule transaction : tout ou rien (D1). */
+  batch(requetes: Requete[]): Promise<unknown[]>;
 }
 
 export type Role = 'editeur' | 'gestionnaire' | 'viewer';

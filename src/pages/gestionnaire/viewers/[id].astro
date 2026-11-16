@@ -5,7 +5,7 @@ import Champ from '../../../components/gestion/Champ.astro';
 import Cellule from '../../../components/gestion/Cellule.astro';
 import {
   contexte, viewerDuTenant, traiter, STATUTS, CLASSES, texte, ecartAllocation, formEuros, formBp, type Erreurs,
-  type Apercu,
+  type Apercu, lireDate, pointAu, pointPrecedent,
 } from '../../../lib/gestion';
 import {
   ficheDuViewer, enveloppesDuViewer, lignesDesEnveloppes, ciblesDuViewer, pointsDuViewer, mouvementsDuViewer,
@@ -21,7 +21,7 @@ if (!viewer) return new Response('Viewer introuvable', { status: 404 });
 const base = `/gestionnaire/viewers/${encodeURIComponent(viewer.id)}`;
 
 const ONGLETS: [string, string][] = [
-  ['fiche', 'Fiche'], ['enveloppes', 'Enveloppes'], ['lignes', 'Lignes'],
+  ['arrete', 'Nouvel arrêté'], ['fiche', 'Fiche'], ['enveloppes', 'Enveloppes'], ['lignes', 'Lignes'],
   ['cibles', 'Allocation cible'], ['historique', 'Historique'], ['mouvements', 'Mouvements'],
 ];
 let onglet = Astro.url.searchParams.get('onglet') ?? 'fiche';
@@ -45,15 +45,22 @@ const signe = (bp: number) => (bp > 0 ? `+${pourcent(bp)}` : pourcent(bp));
 const p = Astro.url.searchParams;
 
 const fiche = onglet === 'fiche' ? await ficheDuViewer(db, tenant.id, viewer.id) : null;
-const enveloppes = ['enveloppes', 'lignes', 'mouvements'].includes(onglet) ? await enveloppesDuViewer(db, viewer.id) : [];
-const lignes = ['lignes', 'cibles'].includes(onglet)
-  ? await lignesDesEnveloppes(db, (onglet === 'lignes' ? enveloppes : await enveloppesDuViewer(db, viewer.id)).map((e) => e.id))
+const enveloppes = ['enveloppes', 'lignes', 'mouvements', 'arrete'].includes(onglet) ? await enveloppesDuViewer(db, viewer.id) : [];
+const lignes = ['lignes', 'cibles', 'arrete'].includes(onglet)
+  ? await lignesDesEnveloppes(db, (onglet === 'lignes' || onglet === 'arrete' ? enveloppes : await enveloppesDuViewer(db, viewer.id)).map((e) => e.id))
   : [];
 const cibles = onglet === 'cibles' ? await ciblesDuViewer(db, viewer.id) : [];
 const points = onglet === 'historique' ? (await pointsDuViewer(db, viewer.id)).reverse() : [];
 const mouvements = onglet === 'mouvements' ? await mouvementsDuViewer(db, viewer.id) : [];
 const ecarts = onglet === 'cibles' ? ecartAllocation(lignes, cibles) : [];
-const rowsCibles = [...cibles, null, null];
+
+// Nouvel arrêté : la date choisie (par défaut aujourd'hui) ; un point déjà présent à cette date est chargé.
+const dateArrete = lireDate(valeurs.date ?? p.get('date') ?? '') ?? new Date().toISOString().slice(0, 10);
+const pointExistant = onglet === 'arrete' ? await pointAu(db, viewer.id, dateArrete) : null;
+const precedent = onglet === 'arrete' ? await pointPrecedent(db, viewer.id, dateArrete) : null;
+const sommeEnveloppes = enveloppes.reduce((s, e) => s + e.valorisation_cents, 0);
+const valeurProposee = formEuros(pointExistant ? pointExistant.valeur_cents : sommeEnveloppes);
+const verseProposee = formEuros(pointExistant ? pointExistant.versements_cumules_cents : precedent?.verseCents);const rowsCibles = [...cibles, null, null];
 let compteur = 0;
 ---
 <Gestion titre={viewer.nom}>
@@ -69,6 +76,99 @@ let compteur = 0;
   <nav class="onglets" aria-label="Onglets du viewer">
     {ONGLETS.map(([k, nom]) => <a href={`${base}?onglet=${k}`} aria-current={onglet === k ? 'page' : undefined}>{nom}</a>)}
   </nav>
+
+  {onglet === 'arrete' && (
+    <>
+      <form method="get" class="actions" style="margin: 0 0 var(--espace-l)">
+        <input type="hidden" name="onglet" value="arrete" />
+        <div class="groupe" style="margin: 0">
+          <label class="etiquette" for="date_arrete">Date de l'arrêté</label>
+          <input class="champ" id="date_arrete" name="date" type="date" value={dateArrete} />
+        </div>
+        <button class="btn" type="submit">Charger cette date</button>
+      </form>
+      {pointExistant && <p class="info">Un point existe déjà au {dateCourte(dateArrete)} : il est chargé pour modification.</p>}
+      {enveloppes.length === 0 ? (
+        <p>Créez d'abord une enveloppe dans l'onglet Enveloppes.</p>
+      ) : (
+        <form method="post">
+          <input type="hidden" name="action" value="arrete" />
+          <input type="hidden" name="date" value={dateArrete} />
+          <input type="hidden" name="valeur_init" value={v('valeur_init', valeurProposee)} />
+          {apercu && <input type="hidden" name="perf_vue" value={String(apercu.perfBp ?? 'nc')} />}
+          <p class="aide">Toutes les valeurs ci-dessous sont celles du dernier arrêté. Modifiez ce qui a changé : la date d'arrêté de chaque enveloppe et de chaque ligne passe au {dateCourte(dateArrete)}. Une enveloppe qui a des lignes vaut la somme de ses lignes.</p>
+          {enveloppes.map((e, i) => {
+            const siennes = lignes.filter((l) => l.enveloppe_id === e.id);
+            return (
+              <section style="margin-bottom: 2rem">
+                <input type="hidden" name={`e${i}_id`} value={e.id} />
+                <h2>{e.libelle}</h2>
+                <div class="defile">
+                  <table class="table">
+                    <thead><tr><th>Support</th><th class="num">Valorisation (€)</th><th class="num">+/− value (€)</th><th class="num">Frais (%)</th><th class="num">Perf. (%)</th></tr></thead>
+                    <tbody>
+                      {siennes.length === 0 ? (
+                        <tr>
+                          <td>Enveloppe entière</td>
+                          <Cellule nom={`e${i}_valo`} label={`Valorisation de ${e.libelle}`} num valeur={v(`e${i}_valo`, formEuros(e.valorisation_cents))} erreur={erreurs[`e${i}_valo`]} />
+                          <td></td><td></td>
+                          <Cellule nom={`e${i}_perf`} label={`Performance de ${e.libelle}`} num valeur={v(`e${i}_perf`, formBp(e.perf_bp))} erreur={erreurs[`e${i}_perf`]} />
+                        </tr>
+                      ) : (
+                        siennes.map((l, k) => {
+                          const j = lignes.indexOf(l);
+                          return (
+                            <tr>
+                              <td>
+                                <input type="hidden" name={`l${j}_id`} value={l.id} />
+                                {l.libelle}
+                              </td>
+                              <Cellule nom={`l${j}_valo`} label={`Valorisation de ${l.libelle}`} num valeur={v(`l${j}_valo`, formEuros(l.valorisation_cents))} erreur={erreurs[`l${j}_valo`]} />
+                              <Cellule nom={`l${j}_pv`} label={`Plus-value de ${l.libelle}`} num valeur={v(`l${j}_pv`, formEuros(l.pv_cents))} erreur={erreurs[`l${j}_pv`]} />
+                              <Cellule nom={`l${j}_frais`} label={`Frais de ${l.libelle}`} num valeur={v(`l${j}_frais`, formBp(l.frais_bp))} erreur={erreurs[`l${j}_frais`]} />
+                              {k === 0 ? <Cellule nom={`e${i}_perf`} label={`Performance de ${e.libelle}`} num valeur={v(`e${i}_perf`, formBp(e.perf_bp))} erreur={erreurs[`e${i}_perf`]} /> : <td></td>}
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            );
+          })}
+
+          <h2>Point du mois</h2>
+          <div class="grille">
+            <Champ nom="valeur" label="Valeur du patrimoine (€)" valeur={v('valeur', valeurProposee)} erreur={erreurs.valeur} inputmode="decimal" aide="Proposée : somme des enveloppes. Modifiable." />
+            <Champ nom="verse" label="Versements cumulés nets (apports moins retraits)" valeur={v('verse', verseProposee)} erreur={erreurs.verse} inputmode="decimal" aide={precedent ? `Point précédent : ${euros(precedent.verseCents)} au ${dateCourte(precedent.date)}. Videz le champ ou laissez cette valeur si rien n'a été apporté ni retiré.` : 'Aucun point antérieur : un champ vide vaut 0.'} />
+          </div>
+
+          {apercu && (
+            <>
+              <dl class="def">
+                <div><dt>Valeur du point</dt><dd class="num">{euros(apercu.valeurCents)}</dd></div>
+                <div><dt>Versements cumulés nets</dt><dd class="num">{euros(apercu.verseCents)}{apercu.precedent && apercu.verseCents === apercu.precedent.verseCents ? ' (inchangés)' : ''}</dd></div>
+                <div>
+                  <dt>Performance du mois impliquée</dt>
+                  <dd class={`num ${apercu.forte ? 'perime' : ''}`}>{apercu.perfBp === null ? 'Non calculable : aucun point antérieur.' : `${signe(apercu.perfBp)}, depuis le point du ${dateCourte(apercu.precedent!.date)}`}</dd>
+                </div>
+              </dl>
+              {apercu.forte && <p class="info alerte">Variation supérieure à 20 % en un mois. Si elle est réelle, confirmez ; sinon, corrigez la valeur ou les versements.</p>}
+              {apercu.remplace && <p class="info">Un point existe déjà à cette date : il sera remplacé.</p>}
+            </>
+          )}
+          <div class="actions">
+            {apercu ? (
+              <button class="btn-plein" type="submit" name="confirmer" value="1">{apercu.forte ? 'Confirmer malgré la variation' : "Confirmer l'arrêté"}</button>
+            ) : (
+              <button class="btn-plein" type="submit">Vérifier l'arrêté</button>
+            )}
+          </div>
+        </form>
+      )}
+    </>
+  )}
 
   {onglet === 'fiche' && (
     <form method="post">

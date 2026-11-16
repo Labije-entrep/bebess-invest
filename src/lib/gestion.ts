@@ -12,6 +12,8 @@ import {
   type Base,
   type Cible,
   type Ligne,
+  type Point,
+  type Requete,
   type Tenant,
   type Utilisateur,
 } from './db';
@@ -277,6 +279,10 @@ export async function traiter(
     case 'point': {
       const r = await enregistrerPoint(db, viewerId, f);
       return { onglet: 'historique', ...r };
+    }
+    case 'arrete': {
+      const r = await enregistrerArrete(db, viewerId, f);
+      return { onglet: 'arrete', ...r };
     }
     case 'points_import':
       return { onglet: 'historique', erreurs: await importerPoints(db, viewerId, f) };
@@ -667,6 +673,107 @@ async function enregistrerPoint(
 }
 
 /** Fichier : date;valeur_eur;versements_cumules_eur. Tout ou rien. */
+// ---------------------------------------------------------------- nouvel arrêté
+
+export function pointAu(db: Base, viewerId: string, date: string): Promise<Point | null> {
+  return db
+    .prepare(
+      `SELECT id, viewer_id, date, valeur_cents, versements_cumules_cents
+         FROM point WHERE viewer_id = ? AND date = ?`,
+    )
+    .bind(viewerId, date)
+    .first<Point>();
+}
+
+/**
+ * Un arrêté mensuel en un seul formulaire : valeurs des enveloppes et des lignes, et point du
+ * mois. Les champs sont numérotés dans l'ordre de enveloppesDuViewer / lignesDesEnveloppes.
+ * Une enveloppe qui a des lignes vaut la somme de ses lignes. Rien n'est écrit sans que la
+ * performance du mois ait été montrée (perf_vue) puis confirmée ; l'écriture est une seule
+ * transaction : arrete_le des enveloppes et des lignes, et le point à cette date.
+ */
+async function enregistrerArrete(
+  db: Base,
+  viewerId: string,
+  f: FormData,
+): Promise<{ erreurs: Erreurs; apercu?: Apercu }> {
+  const e: Erreurs = {};
+  const date = lireDate(texte(f.get('date'), 10));
+  if (!date) return { erreurs: { date: MSG_DATE } };
+  const envs = await enveloppesDuViewer(db, viewerId);
+  const lignes = await lignesDesEnveloppes(db, envs.map((x) => x.id));
+  const g = (nom: string, max = 20) => texte(f.get(nom), max);
+
+  const requetes: Requete[] = [];
+  const valoEnv = new Map<string, number>();
+  lignes.forEach((l, j) => {
+    if (g(`l${j}_id`, 64) !== l.id) { e.general = 'Les données ont changé : rechargez la page.'; return; }
+    const valo = lireEuros(g(`l${j}_valo`));
+    if (valo === null) e[`l${j}_valo`] = MSG_EUROS;
+    const pvS = g(`l${j}_pv`);
+    const pv = pvS ? lireEuros(pvS) : null;
+    if (pvS && pv === null) e[`l${j}_pv`] = MSG_EUROS;
+    const fraisS = g(`l${j}_frais`);
+    const frais = fraisS ? lireBp(fraisS) : null;
+    if (fraisS && frais === null) e[`l${j}_frais`] = MSG_PCT;
+    if (valo === null) return;
+    valoEnv.set(l.enveloppe_id, (valoEnv.get(l.enveloppe_id) ?? 0) + valo);
+    requetes.push(
+      db
+        .prepare('UPDATE ligne SET valorisation_cents = ?, pv_cents = ?, frais_bp = ?, arrete_le = ? WHERE id = ? AND enveloppe_id = ?')
+        .bind(valo, pv, frais, date, l.id, l.enveloppe_id),
+    );
+  });
+  let somme = 0;
+  envs.forEach((env, i) => {
+    if (g(`e${i}_id`, 64) !== env.id) { e.general = 'Les données ont changé : rechargez la page.'; return; }
+    const perfS = g(`e${i}_perf`);
+    const perf = perfS ? lireBp(perfS) : null;
+    if (perfS && perf === null) e[`e${i}_perf`] = MSG_PCT;
+    let total: number;
+    if (lignes.some((l) => l.enveloppe_id === env.id)) total = valoEnv.get(env.id) ?? 0;
+    else {
+      const v = lireEuros(g(`e${i}_valo`));
+      if (v === null) { e[`e${i}_valo`] = MSG_EUROS; return; }
+      total = v;
+    }
+    somme += total;
+    requetes.push(
+      db
+        .prepare('UPDATE enveloppe SET valorisation_cents = ?, perf_bp = ?, arrete_le = ? WHERE id = ? AND viewer_id = ?')
+        .bind(total, perf, date, env.id, viewerId),
+    );
+  });
+
+  const existant = await pointAu(db, viewerId, date);
+  const valeurS = g('valeur');
+  // Valeur du point laissée telle que proposée, sans point existant : elle suit la somme recalculée.
+  const valeur = !existant && (valeurS === '' || valeurS === g('valeur_init')) ? somme : lireEuros(valeurS);
+  if (valeur === null) e.valeur = MSG_EUROS;
+  const verseS = g('verse');
+  const verseSaisi = verseS ? lireEuros(verseS) : undefined;
+  if (verseSaisi === null) e.verse = MSG_EUROS;
+  if (Object.keys(e).length) return { erreurs: e };
+
+  const verse = verseSaisi ?? (await pointPrecedent(db, viewerId, date))?.verseCents ?? 0;
+  const apercu = await apercuPoint(db, viewerId, date, valeur!, verse!);
+  if (g('confirmer', 1) !== '1' || g('perf_vue', 12) !== String(apercu.perfBp ?? 'nc')) {
+    return { erreurs: {}, apercu };
+  }
+  requetes.push(
+    db
+      .prepare(
+        `INSERT INTO point (id, viewer_id, date, valeur_cents, versements_cumules_cents)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(viewer_id, date) DO UPDATE SET
+           valeur_cents = excluded.valeur_cents, versements_cumules_cents = excluded.versements_cumules_cents`,
+      )
+      .bind(nouvelId(), viewerId, date, valeur, verse),
+  );
+  await db.batch(requetes);
+  return { erreurs: {} };
+}
+
 async function importerPoints(db: Base, viewerId: string, f: FormData): Promise<Erreurs> {
   const fichier = f.get('fichier');
   if (!(fichier instanceof File) || fichier.size === 0) return { fichier: 'Choisissez un fichier CSV.' };
