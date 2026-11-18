@@ -21,9 +21,11 @@ pas. Reprends leurs colonnes actuelles à l'identique pour le reste.
   liste des valeurs admises.
 - `version.ts` : `incrementerVersion(db, tenantId)`, appelée par toute écriture du
   module, et `versionDe(db, tenantId)`.
-- `listes-defaut.ts` : les valeurs par défaut d'un nouveau cabinet — types de
-  contact, métiers, étapes, types d'échange, statuts de sujet, catégories de
-  documents, classes d'actifs, statuts de mouvement, types de portefeuille.
+- `listes-defaut.ts` : les valeurs par défaut d'un nouveau cabinet. **Les neuf listes
+  sont données dans `chantier/21-listes-defaut.md`** : reprends ses clés, libellés et
+  ordres tels quels. `classe_actif` et `statut_mouvement` doivent reproduire
+  exactement `CLASSES` et `STATUTS` de `src/lib/gestion.ts`, dont dépendent les seeds
+  et l'import CSV.
 
 ## 3. Raccordement
 
