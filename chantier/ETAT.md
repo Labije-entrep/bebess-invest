@@ -16,7 +16,7 @@ Un lot dont le prérequis n'est pas coché ne démarre pas.
 | Lot | Titre | Prérequis | Statut | Commit |
 | --- | --- | --- | --- | --- |
 | 00 | Préalable : fusion et correctifs de saisie | P1 | fait | 6785f12 |
-| 01 | Socle de données et listes de référence | P1 | fait | d6238dd |
+| 01 | Socle de données et listes de référence | P1 | fait | 3a8c238 |
 | 02 | API JSON et synchronisation | — | à faire | |
 | 03 | Module de suivi : la liste des contacts | — | à faire | |
 | 04 | Module de suivi : la fiche | — | à faire | |
