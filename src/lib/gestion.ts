@@ -15,6 +15,7 @@ import {
   type Cible,
   type Ligne,
   type Point,
+  type Portefeuille,
   type Requete,
   type Tenant,
   type Utilisateur,
@@ -148,8 +149,8 @@ export interface ViewerResume {
   arrete: string | null;
 }
 
-/** Tous les portefeuilles du viewer `u`, bornés à son locataire. */
-const PFS = '(SELECT id FROM portefeuille WHERE viewer_id = u.id AND tenant_id = u.tenant_id)';
+/** Portefeuilles actifs du viewer `u`, bornés à son locataire : un portefeuille archivé ne compte pas. */
+const PFS = '(SELECT id FROM portefeuille WHERE viewer_id = u.id AND tenant_id = u.tenant_id AND archive = 0)';
 
 export async function viewersResumes(db: Base, tenantId: string): Promise<ViewerResume[]> {
   const { results } = await db
@@ -248,7 +249,7 @@ export async function creerViewer(
 /** Envoie le lien de première connexion par le pilote de mail.ts. Renvoie false en cas d'échec. */
 export async function envoyerLien(locals: unknown, email: string, nom: string, lien: string): Promise<boolean> {
   try {
-    await creerMailer(envDe(locals)).envoyer(
+    await creerMailer(envDe(locals), new URL(lien).hostname).envoyer(
       email,
       'Votre accès à votre espace client',
       `Bonjour ${nom},\n\nVoici votre lien de première connexion, valable 15 minutes et utilisable une seule fois :\n\n${lien}\n\nAucun mot de passe n'est nécessaire.`,
@@ -295,9 +296,13 @@ export async function traiter(
   let pf = '';
   if (PAR_PORTEFEUILLE.includes(action)) {
     const demande = texte(f.get('pf'), 64);
-    const siens = await portefeuillesDuViewer(db, tenantId, viewerId);
-    const choisi = demande ? siens.find((x) => x.id === demande) : siens[0];
+    const siens = await portefeuillesDuViewer(db, tenantId, viewerId, true);
+    const choisi = demande ? siens.find((x) => x.id === demande) : siens.find((x) => !x.archive);
     if (!choisi) return { onglet: 'portefeuilles', erreurs: { general: 'Portefeuille inconnu pour ce viewer.' } };
+    // Un portefeuille archivé se consulte, il ne reçoit ni arrêté, ni import, ni saisie.
+    if (choisi.archive) {
+      return { onglet: 'portefeuilles', erreurs: { general: `Le portefeuille « ${choisi.libelle} » est archivé : désarchivez-le avant d'y écrire.` }, pf: choisi.id };
+    }
     pf = choisi.id;
   }
   switch (action) {
@@ -331,6 +336,10 @@ export async function traiter(
       return { onglet: 'portefeuilles', erreurs: await majPortefeuilles(db, tenantId, viewerId, f) };
     case 'pf_suppr':
       return { onglet: 'portefeuilles', erreurs: await supprimerPortefeuille(db, tenantId, viewerId, f) };
+    case 'pf_archiver':
+      return { onglet: 'portefeuilles', erreurs: await archiverPortefeuille(db, tenantId, viewerId, f, true) };
+    case 'pf_desarchiver':
+      return { onglet: 'portefeuilles', erreurs: await archiverPortefeuille(db, tenantId, viewerId, f, false) };
     case 'mouvement':
       return { onglet: 'mouvements', erreurs: await enregistrerMouvement(db, tenantId, viewerId, f) };
     case 'suppr_mouvement':
@@ -370,7 +379,7 @@ async function creerPortefeuille(db: Base, tenantId: string, viewerId: string, f
 async function majPortefeuilles(db: Base, tenantId: string, viewerId: string, f: FormData): Promise<Erreurs> {
   const e: Erreurs = {};
   const types = await validateurDe(db, tenantId, 'type_portefeuille');
-  const siens = new Set((await portefeuillesDuViewer(db, tenantId, viewerId)).map((x) => x.id));
+  const siens = new Set((await portefeuillesDuViewer(db, tenantId, viewerId, true)).map((x) => x.id));
   const n = entier(f.get('n'), 0, 50);
   const maj: unknown[][] = [];
   for (let i = 0; i < n; i++) {
@@ -402,9 +411,12 @@ async function majPortefeuilles(db: Base, tenantId: string, viewerId: string, f:
  */
 async function supprimerPortefeuille(db: Base, tenantId: string, viewerId: string, f: FormData): Promise<Erreurs> {
   const id = texte(f.get('id'), 64);
-  const siens = await portefeuillesDuViewer(db, tenantId, viewerId);
-  if (!siens.some((x) => x.id === id)) return { general: 'Portefeuille inconnu pour ce viewer.' };
-  if (siens.length <= 1) return { general: 'Un viewer garde toujours au moins un portefeuille : le dernier ne se supprime pas.' };
+  const siens = await portefeuillesDuViewer(db, tenantId, viewerId, true);
+  const cible = siens.find((x) => x.id === id);
+  if (!cible) return { general: 'Portefeuille inconnu pour ce viewer.' };
+  if (!cible.archive && siens.filter((x) => !x.archive).length <= 1) {
+    return { general: 'Un viewer garde toujours au moins un portefeuille actif : le dernier ne se supprime pas.' };
+  }
   const contenu = await db
     .prepare(
       `SELECT (SELECT COUNT(*) FROM enveloppe WHERE portefeuille_id = ?)
@@ -417,6 +429,26 @@ async function supprimerPortefeuille(db: Base, tenantId: string, viewerId: strin
     return { general: 'Ce portefeuille contient des enveloppes, des points ou des cibles : videz-le avant de le supprimer.' };
   }
   await db.prepare('DELETE FROM portefeuille WHERE id = ? AND viewer_id = ? AND tenant_id = ?').bind(id, viewerId, tenantId).run();
+  return {};
+}
+
+/**
+ * Archive (ou désarchive) un portefeuille. Archivé, il sort du sélecteur du viewer, de « Tout » et
+ * des totaux, reste consultable par le gestionnaire, et ne reçoit plus ni import ni arrêté.
+ * Le dernier portefeuille actif d'un viewer ne s'archive pas.
+ */
+async function archiverPortefeuille(db: Base, tenantId: string, viewerId: string, f: FormData, archiver: boolean): Promise<Erreurs> {
+  const id = texte(f.get('id'), 64);
+  const siens = await portefeuillesDuViewer(db, tenantId, viewerId, true);
+  const cible = siens.find((x) => x.id === id);
+  if (!cible) return { general: 'Portefeuille inconnu pour ce viewer.' };
+  if (archiver && !cible.archive && siens.filter((x) => !x.archive).length <= 1) {
+    return { general: 'Un viewer garde toujours au moins un portefeuille actif : le dernier ne s\'archive pas.' };
+  }
+  await db
+    .prepare('UPDATE portefeuille SET archive = ? WHERE id = ? AND viewer_id = ? AND tenant_id = ?')
+    .bind(archiver ? 1 : 0, id, viewerId, tenantId)
+    .run();
   return {};
 }
 
@@ -945,6 +977,8 @@ async function enregistrerMouvement(db: Base, tenantId: string, viewerId: string
 export const COLONNES_IMPORT = [
   'viewer_email', 'enveloppe', 'ligne', 'classe', 'valorisation_eur', 'pv_eur', 'frais_pct', 'arrete_le',
 ];
+/** Neuvième colonne, facultative : libellé du portefeuille visé. */
+export const COLONNE_PORTEFEUILLE = 'portefeuille';
 const IMPORT_MAX_LIGNES = 250;
 
 export interface LigneImport {
@@ -955,12 +989,14 @@ export interface LigneImport {
   enveloppe: string;
   ligne: string;
   classe: string;
+  /** Libellé lu dans la colonne facultative `portefeuille` ('' si absente ou vide). */
+  portefeuille: string;
   valorisation_cents: number | null;
   pv_cents: number | null;
   frais_bp: number | null;
   arrete_le: string | null;
   viewerId: string | null;
-  /** Le fichier ne désigne pas de portefeuille : c'est le premier du viewer (ordre, puis id). */
+  /** Portefeuille visé : celui de la colonne `portefeuille`, ou l'unique portefeuille actif du viewer. */
   portefeuilleId: string | null;
   enveloppeId: string | null;
   ligneId: string | null;
@@ -972,9 +1008,14 @@ export async function analyserImport(
   source: string,
 ): Promise<{ fatal?: string; lignes: LigneImport[] }> {
   let rows = lireCsv(source);
+  // Largeurs admises pour une ligne : 8 colonnes, ou 9 avec `portefeuille`. Un en-tête fixe la largeur.
+  let largeurs = [COLONNES_IMPORT.length, COLONNES_IMPORT.length + 1];
   if (rows.length && rows[0][0].trim().toLowerCase() === 'viewer_email') {
-    const ok = COLONNES_IMPORT.every((c, i) => (rows[0][i] ?? '').trim().toLowerCase() === c);
-    if (!ok) return { fatal: `En-tête attendu : ${COLONNES_IMPORT.join(';')}`, lignes: [] };
+    const entete = rows[0].map((x) => x.trim().toLowerCase());
+    const ok = COLONNES_IMPORT.every((c, i) => entete[i] === c)
+      && (entete.length === COLONNES_IMPORT.length || (entete.length === COLONNES_IMPORT.length + 1 && entete[COLONNES_IMPORT.length] === COLONNE_PORTEFEUILLE));
+    if (!ok) return { fatal: `En-tête attendu : ${COLONNES_IMPORT.join(';')}, puis éventuellement ${COLONNE_PORTEFEUILLE}`, lignes: [] };
+    largeurs = [entete.length];
     rows = rows.slice(1);
   }
   const classes = await validateurDe(db, tenantId, 'classe_actif');
@@ -989,19 +1030,27 @@ export async function analyserImport(
     .all<{ id: string; email: string }>();
   const parEmail = new Map(viewers.map((v) => [v.email.toLowerCase(), v.id]));
 
-  const cache = new Map<string, { pf: string | null; envs: Map<string, string>; lignes: Map<string, string> }>();
-  const etatViewer = async (viewerId: string) => {
-    let c = cache.get(viewerId);
+  // Portefeuilles actifs de chaque viewer : un portefeuille archivé n'est jamais une cible d'import.
+  const pfsCache = new Map<string, Portefeuille[]>();
+  const portefeuillesDe = async (viewerId: string) => {
+    let c = pfsCache.get(viewerId);
     if (!c) {
-      const pf = (await portefeuillesDuViewer(db, tenantId, viewerId))[0]?.id ?? null;
-      const envs = pf ? await enveloppesDuViewer(db, tenantId, viewerId, pf) : [];
+      c = await portefeuillesDuViewer(db, tenantId, viewerId);
+      pfsCache.set(viewerId, c);
+    }
+    return c;
+  };
+  const cache = new Map<string, { envs: Map<string, string>; lignes: Map<string, string> }>();
+  const etatPortefeuille = async (viewerId: string, pf: string) => {
+    let c = cache.get(pf);
+    if (!c) {
+      const envs = await enveloppesDuViewer(db, tenantId, viewerId, pf);
       const lignes = await lignesDesEnveloppes(db, envs.map((x) => x.id));
       c = {
-        pf,
         envs: new Map(envs.map((x) => [norm(x.libelle), x.id])),
         lignes: new Map(lignes.map((l) => [`${l.enveloppe_id}|${norm(l.libelle)}`, l.id])),
       };
-      cache.set(viewerId, c);
+      cache.set(pf, c);
     }
     return c;
   };
@@ -1013,11 +1062,14 @@ export async function analyserImport(
     const l: LigneImport = {
       n: i + 1, action: 'erreur', motif: '',
       email: (r[0] ?? '').toLowerCase(), enveloppe: r[1] ?? '', ligne: r[2] ?? '', classe: r[3] ?? '',
+      portefeuille: r[8] ?? '',
       valorisation_cents: null, pv_cents: null, frais_bp: null, arrete_le: null,
       viewerId: null, portefeuilleId: null, enveloppeId: null, ligneId: null,
     };
     const motifs: string[] = [];
-    if (r.length !== COLONNES_IMPORT.length) motifs.push(`${COLONNES_IMPORT.length} colonnes attendues, ${r.length} reçues`);
+    if (!largeurs.includes(r.length)) {
+      motifs.push(`${largeurs.length === 1 ? largeurs[0] : `${largeurs[0]} ou ${largeurs[1]}`} colonnes attendues, ${r.length} reçues`);
+    }
     l.viewerId = parEmail.get(l.email) ?? null;
     if (!l.viewerId) motifs.push('viewer inconnu dans ce tenant');
     if (!l.enveloppe) motifs.push('enveloppe vide');
@@ -1036,13 +1088,26 @@ export async function analyserImport(
     }
     l.arrete_le = lireDate(r[7] ?? '');
     if (!l.arrete_le) motifs.push('date d\'arrêté invalide');
-    if (!motifs.length && l.viewerId) {
-      const cle = `${l.viewerId}|${norm(l.enveloppe)}|${norm(l.ligne)}`;
+    // Portefeuille visé. Jamais de devinette : sans colonne, seul un viewer à un seul portefeuille actif est accepté.
+    if (l.viewerId) {
+      const siens = await portefeuillesDe(l.viewerId);
+      const liste = siens.map((x) => `« ${x.libelle} »`).join(', ');
+      if (siens.length === 0) motifs.push('viewer sans portefeuille actif');
+      else if (norm(l.portefeuille) === '') {
+        if (siens.length === 1) l.portefeuilleId = siens[0].id;
+        else motifs.push(`${l.email} a ${siens.length} portefeuilles (${liste}) : indiquez lequel dans la colonne ${COLONNE_PORTEFEUILLE}`);
+      } else {
+        const trouves = siens.filter((x) => norm(x.libelle) === norm(l.portefeuille));
+        if (trouves.length === 1) l.portefeuilleId = trouves[0].id;
+        else if (trouves.length > 1) motifs.push(`portefeuille « ${l.portefeuille} » ambigu pour ${l.email} : plusieurs portent ce libellé`);
+        else motifs.push(`portefeuille « ${l.portefeuille} » inconnu pour ${l.email} (admis : ${liste})`);
+      }
+    }
+    if (!motifs.length && l.viewerId && l.portefeuilleId) {
+      const cle = `${l.portefeuilleId}|${norm(l.enveloppe)}|${norm(l.ligne)}`;
       if (vues.has(cle)) motifs.push('doublon dans le fichier');
       vues.add(cle);
-      const etat = await etatViewer(l.viewerId);
-      l.portefeuilleId = etat.pf;
-      if (!etat.pf) motifs.push('viewer sans portefeuille');
+      const etat = await etatPortefeuille(l.viewerId, l.portefeuilleId);
       l.enveloppeId = etat.envs.get(norm(l.enveloppe)) ?? null;
       l.ligneId = l.enveloppeId ? (etat.lignes.get(`${l.enveloppeId}|${norm(l.ligne)}`) ?? null) : null;
     }
@@ -1066,10 +1131,10 @@ export async function appliquerImport(
   if (a.lignes.some((l) => l.action === 'erreur')) {
     return { erreur: 'Le fichier contient des erreurs : corrigez-le et déposez-le de nouveau.' };
   }
-  const nouvelles = new Map<string, string>(); // viewer|enveloppe -> id créé pendant l'import
+  const nouvelles = new Map<string, string>(); // portefeuille|enveloppe -> id créé pendant l'import
   const touchees = new Set<string>();
   for (const l of a.lignes) {
-    let envId = l.enveloppeId ?? nouvelles.get(`${l.viewerId}|${norm(l.enveloppe)}`) ?? null;
+    let envId = l.enveloppeId ?? nouvelles.get(`${l.portefeuilleId}|${norm(l.enveloppe)}`) ?? null;
     if (!envId) {
       envId = nouvelId();
       await db
@@ -1081,7 +1146,7 @@ export async function appliquerImport(
         )
         .bind(envId, l.portefeuilleId, l.enveloppe, l.arrete_le, l.portefeuilleId)
         .run();
-      nouvelles.set(`${l.viewerId}|${norm(l.enveloppe)}`, envId);
+      nouvelles.set(`${l.portefeuilleId}|${norm(l.enveloppe)}`, envId);
     }
     touchees.add(envId);
     if (l.ligneId) {

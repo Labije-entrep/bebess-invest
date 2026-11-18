@@ -1,7 +1,7 @@
 ---
 export const prerender = false;
 import Gestion from '../../layouts/Gestion.astro';
-import { contexte, analyserImport, appliquerImport, texte, COLONNES_IMPORT, type LigneImport } from '../../lib/gestion';
+import { contexte, analyserImport, appliquerImport, texte, COLONNES_IMPORT, COLONNE_PORTEFEUILLE, type LigneImport } from '../../lib/gestion';
 import { euros, pourcent, dateCourte } from '../../lib/format';
 
 const c = contexte(Astro);
@@ -43,7 +43,9 @@ const confirmable = apercu && !apercu.fatal && lignes.length > 0 && nbErreurs ==
 ---
 <Gestion titre="Import CSV">
   <h1>Import CSV</h1>
-  <p>Colonnes, dans cet ordre : <code>{COLONNES_IMPORT.join(';')}</code>. Séparateur point-virgule, UTF-8, décimale virgule, dates AAAA-MM-JJ. Rien n'est écrit avant votre confirmation.</p>
+  <p>Colonnes, dans cet ordre : <code>{COLONNES_IMPORT.join(';')}</code>, puis, facultative, <code>{COLONNE_PORTEFEUILLE}</code>. Séparateur point-virgule, UTF-8, décimale virgule, dates AAAA-MM-JJ. Rien n'est écrit avant votre confirmation.</p>
+  <p class="aide">La colonne <code>{COLONNE_PORTEFEUILLE}</code> donne le libellé du portefeuille visé (casse et espaces de bord ignorés). Vous pouvez l'omettre pour un viewer qui n'a qu'un seul portefeuille actif ; pour un viewer qui en a plusieurs, elle est obligatoire et la ligne est refusée sans elle. Un portefeuille archivé ne reçoit aucun import.</p>
+  <p class="aide">Exemple : <code>{COLONNES_IMPORT.join(';')};{COLONNE_PORTEFEUILLE}</code><br /><code>claire@demo.local;PEA;Actions Europe;actions;25000,00;1200,00;0,40;2026-10-31;Holding familiale</code></p>
   {erreur && <p class="info alerte">{erreur}</p>}
   {apercu?.fatal && <p class="info alerte">{apercu.fatal}</p>}
 
@@ -69,7 +71,7 @@ const confirmable = apercu && !apercu.fatal && lignes.length > 0 && nbErreurs ==
         <div class="defile">
           <table class="table">
             <thead>
-              <tr><th class="num">N°</th><th>Action</th><th>Viewer</th><th>Enveloppe</th><th>Ligne</th><th>Classe</th><th class="num">Valorisation</th><th class="num">PV</th><th class="num">Frais</th><th>Arrêté</th></tr>
+              <tr><th class="num">N°</th><th>Action</th><th>Viewer</th><th>Portefeuille</th><th>Enveloppe</th><th>Ligne</th><th>Classe</th><th class="num">Valorisation</th><th class="num">PV</th><th class="num">Frais</th><th>Arrêté</th></tr>
             </thead>
             <tbody>
               {lignes.map((l) => (
@@ -78,6 +80,7 @@ const confirmable = apercu && !apercu.fatal && lignes.length > 0 && nbErreurs ==
                     <td class="num">{l.n}</td>
                     <td class={l.action === 'erreur' ? 'perime' : undefined}>{l.action}</td>
                     <td>{l.email}</td>
+                    <td>{l.portefeuille || '—'}</td>
                     <td>{l.enveloppe}</td>
                     <td>{l.ligne}</td>
                     <td>{l.classe}</td>
@@ -87,7 +90,7 @@ const confirmable = apercu && !apercu.fatal && lignes.length > 0 && nbErreurs ==
                     <td>{l.arrete_le ? dateCourte(l.arrete_le) : '—'}</td>
                   </tr>
                   {l.action === 'erreur' && (
-                    <tr><td></td><td colspan="9" class="perime">{l.motif}</td></tr>
+                    <tr><td></td><td colspan="10" class="perime">{l.motif}</td></tr>
                   )}
                 </>
               ))}

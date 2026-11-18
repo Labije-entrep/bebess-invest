@@ -81,7 +81,7 @@ export async function traiterContact(
       '',
       v.message,
     ].join('\n');
-    await creerMailer(env).envoyer(destinataire, `Contact : ${v.objet.replace(/\s+/g, ' ')}`, texte);
+    await creerMailer(env, a.url.hostname).envoyer(destinataire, `Contact : ${v.objet.replace(/\s+/g, ' ')}`, texte);
     etat.redirection = retour;
   } catch {
     etat.general = l.eEnvoi;

@@ -183,3 +183,44 @@ INSERT INTO note_marche (id, tenant_id, slug, langue, titre, chapeau, corps_md, 
    'Un mois calme.', 'Peu de mouvements sur les taux, volatilité contenue.', '2026-09-30', 1),
   ('nm_3', 'tnt_demo', 'note-en-preparation', 'fr', 'Note en préparation',
    NULL, 'Brouillon non diffusé.', '2026-11-12', 0);
+
+-- ---------------------------------------------------------------------------
+-- Second cabinet (lot 01c) : rend le test de cloisonnement jouable. Hôte distinct ;
+-- en local, `curl -H 'Host: cabinet2.localhost'`. Données fictives, sans lien avec le premier.
+-- ---------------------------------------------------------------------------
+INSERT INTO tenant (id, nom, domaine, cree_le) VALUES
+  ('tnt_autre', 'Cabinet Delmas', 'cabinet2.localhost', '2025-01-10T09:00:00Z');
+
+INSERT INTO utilisateur (id, tenant_id, email, nom, role, actif, cree_le) VALUES
+  ('usr_autre_gest',   'tnt_autre', 'gestionnaire@delmas.local', 'Paul Delmas',  'gestionnaire', 1, '2025-01-10T09:00:00Z'),
+  ('usr_autre_viewer', 'tnt_autre', 'viewer@delmas.local',       'Irène Fabre',  'viewer',       1, '2025-01-10T09:00:00Z');
+
+INSERT INTO liste_valeur (tenant_id, liste, cle, libelle, ordre, actif) VALUES
+  ('tnt_autre', 'classe_actif', 'actions', 'Actions', 1, 1),
+  ('tnt_autre', 'classe_actif', 'obligations', 'Obligations', 2, 1),
+  ('tnt_autre', 'classe_actif', 'liquidites', 'Liquidités', 3, 1),
+  ('tnt_autre', 'statut_mouvement', 'en_preparation', 'En préparation', 1, 1),
+  ('tnt_autre', 'statut_mouvement', 'execute', 'Exécuté', 2, 1),
+  ('tnt_autre', 'type_portefeuille', 'personne', 'Personne physique', 1, 1),
+  ('tnt_autre', 'type_portefeuille', 'holding', 'Holding', 2, 1);
+
+INSERT INTO portefeuille (id, tenant_id, viewer_id, libelle, type, ordre, cree_le) VALUES
+  ('pf_autre', 'tnt_autre', 'usr_autre_viewer', 'Patrimoine', 'personne', 0, '2025-01-10T09:00:00Z');
+
+INSERT INTO enveloppe (id, portefeuille_id, libelle, etablissement, ouverte_en, valorisation_cents, perf_bp, arrete_le, rang) VALUES
+  ('env_autre', 'pf_autre', 'Compte-titres', 'Banque Delmas', '2022-06', 20000000, 450, '2026-10-31', 1);
+
+INSERT INTO ligne (id, enveloppe_id, libelle, classe, valorisation_cents, pv_cents, frais_bp, arrete_le, rang) VALUES
+  ('lig_autre_1', 'env_autre', 'Actions monde',   'actions',     12000000, 1500000, 30, '2026-10-31', 1),
+  ('lig_autre_2', 'env_autre', 'Obligations 2030', 'obligations', 8000000,  100000, 20, '2026-10-31', 2);
+
+INSERT INTO point (id, portefeuille_id, date, valeur_cents, versements_cumules_cents) VALUES
+  ('pt_autre_1', 'pf_autre', '2026-09-30', 19700000, 18000000),
+  ('pt_autre_2', 'pf_autre', '2026-10-31', 20000000, 18000000);
+
+INSERT INTO document (id, viewer_id, titre, categorie, date, cle_fichier, envoye_le) VALUES
+  ('doc_autre', 'usr_autre_viewer', 'Rapport Delmas, troisième trimestre 2026', 'rapport', '2026-10-15', 'fabre/rapport-2026-t3.pdf', '2026-10-15T08:30:00Z');
+
+INSERT INTO page_contenu (id, tenant_id, cle, langue, titre, contenu_json, maj_le) VALUES
+  ('pc_autre_accueil', 'tnt_autre', 'accueil', 'fr', 'Cabinet Delmas',
+   '{"accroche":"Un cabinet indépendant.","texte":"Page d''accueil du second cabinet."}', '2026-11-01');

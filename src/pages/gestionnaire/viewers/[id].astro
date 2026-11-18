@@ -52,8 +52,10 @@ const v = (k: string, d: string | number | null | undefined = ''): string => val
 const signe = (bp: number) => (bp > 0 ? `+${pourcent(bp)}` : pourcent(bp));
 const p = Astro.url.searchParams;
 
-const portefeuilles = await portefeuillesDuViewer(db, tenant.id, viewer.id);
-const pf = portefeuilles.find((x) => x.id === pfDemande) ?? portefeuilles[0];
+// Le gestionnaire voit aussi les portefeuilles archivés (consultation seule).
+const portefeuilles = await portefeuillesDuViewer(db, tenant.id, viewer.id, true);
+const actifs = portefeuilles.filter((x) => !x.archive);
+const pf = portefeuilles.find((x) => x.id === pfDemande) ?? actifs[0] ?? portefeuilles[0];
 const SUIVI = ['arrete', 'enveloppes', 'lignes', 'cibles', 'historique'];
 const parPf = SUIVI.includes(onglet);
 const lien = (k: string) => `${base}?onglet=${k}${parPf && SUIVI.includes(k) && pf ? `&pf=${encodeURIComponent(pf.id)}` : ''}`;
@@ -61,13 +63,13 @@ const libelleType = (t: string) => TYPES_PF.find(([k]) => k === t)?.[1] ?? t;
 
 const fiche = onglet === 'fiche' ? await ficheDuViewer(db, tenant.id, viewer.id) : null;
 // Les onglets de suivi lisent le portefeuille choisi ; Mouvements propose toutes les enveloppes du viewer.
-const enveloppes = ['enveloppes', 'lignes', 'arrete'].includes(onglet) ? await enveloppesDuViewer(db, tenant.id, viewer.id, pf?.id)
+const enveloppes = ['enveloppes', 'lignes', 'arrete'].includes(onglet) ? await enveloppesDuViewer(db, tenant.id, viewer.id, pf?.id, true)
   : onglet === 'mouvements' ? await enveloppesDuViewer(db, tenant.id, viewer.id) : [];
 const lignes = ['lignes', 'cibles', 'arrete'].includes(onglet)
-  ? await lignesDesEnveloppes(db, (onglet === 'cibles' ? await enveloppesDuViewer(db, tenant.id, viewer.id, pf?.id) : enveloppes).map((e) => e.id))
+  ? await lignesDesEnveloppes(db, (onglet === 'cibles' ? await enveloppesDuViewer(db, tenant.id, viewer.id, pf?.id, true) : enveloppes).map((e) => e.id))
   : [];
-const cibles = onglet === 'cibles' ? await ciblesDuViewer(db, tenant.id, viewer.id, pf?.id) : [];
-const points = onglet === 'historique' ? (await pointsDuViewer(db, tenant.id, viewer.id, pf?.id)).reverse() : [];
+const cibles = onglet === 'cibles' ? await ciblesDuViewer(db, tenant.id, viewer.id, pf?.id, true) : [];
+const points = onglet === 'historique' ? (await pointsDuViewer(db, tenant.id, viewer.id, pf?.id, true)).reverse() : [];
 const mouvements = onglet === 'mouvements' ? await mouvementsDuViewer(db, viewer.id) : [];
 const ecarts = onglet === 'cibles' ? ecartAllocation(lignes, cibles) : [];
 
@@ -96,7 +98,7 @@ let compteur = 0;
 
   {parPf && onglet !== 'arrete' && portefeuilles.length > 1 && pf && (
     <nav class="filtres" aria-label="Portefeuille concerné">
-      {portefeuilles.map((x) => <a href={`${base}?onglet=${onglet}&pf=${encodeURIComponent(x.id)}`} aria-current={x.id === pf.id ? 'true' : undefined}>{x.libelle}</a>)}
+      {portefeuilles.map((x) => <a href={`${base}?onglet=${onglet}&pf=${encodeURIComponent(x.id)}`} aria-current={x.id === pf.id ? 'true' : undefined}>{x.libelle}{x.archive ? ' (archivé)' : ''}</a>)}
     </nav>
   )}
 
@@ -108,7 +110,7 @@ let compteur = 0;
           <div class="groupe" style="margin: 0">
             <label class="etiquette" for="pf_arrete">Portefeuille</label>
             <select class="champ" id="pf_arrete" name="pf">
-              {portefeuilles.map((x) => <option value={x.id} selected={x.id === pf.id}>{x.libelle}</option>)}
+              {actifs.map((x) => <option value={x.id} selected={x.id === pf.id}>{x.libelle}</option>)}
             </select>
           </div>
         )}
@@ -205,20 +207,20 @@ let compteur = 0;
 
   {onglet === 'portefeuilles' && (
     <>
-      <p class="aide">Un viewer garde toujours au moins un portefeuille. L'ordre fixe celui qui s'affiche en premier ; un portefeuille qui contient des enveloppes, des points ou des cibles doit être vidé avant d'être supprimé.</p>
+      <p class="aide">Un viewer garde toujours au moins un portefeuille actif. L'ordre fixe celui qui s'affiche en premier. Un portefeuille archivé disparaît de l'espace du viewer et de ses totaux, reste consultable ici, et ne reçoit ni import ni arrêté. Un portefeuille qui contient des enveloppes, des points ou des cibles ne se supprime pas : archivez-le.</p>
       <form method="post">
         <input type="hidden" name="action" value="pf_maj" />
         <input type="hidden" name="n" value={portefeuilles.length} />
         <div class="defile">
           <table class="table">
-            <thead><tr><th>Libellé</th><th>Type</th><th class="num">Ordre</th><th></th></tr></thead>
+            <thead><tr><th>Libellé</th><th>Type</th><th class="num">Ordre</th><th>État</th></tr></thead>
             <tbody>
               {portefeuilles.map((x, i) => (
                 <tr>
                   <Cellule nom={`r${i}_libelle`} label="Libellé" valeur={v(`r${i}_libelle`, x.libelle)} erreur={erreurs[`r${i}_libelle`]} />
                   <Cellule nom={`r${i}_type`} label="Type" options={TYPES_PF} valeur={v(`r${i}_type`, x.type)} erreur={erreurs[`r${i}_type`]} />
                   <Cellule nom={`r${i}_ordre`} label="Ordre" num valeur={v(`r${i}_ordre`, x.ordre)} erreur={erreurs[`r${i}_ordre`]} />
-                  <td><input type="hidden" name={`r${i}_id`} value={x.id} /></td>
+                  <td>{x.archive ? 'Archivé' : 'Actif'}<input type="hidden" name={`r${i}_id`} value={x.id} /></td>
                 </tr>
               ))}
             </tbody>
@@ -229,15 +231,16 @@ let compteur = 0;
       {portefeuilles.length > 1 && (
         <>
           <hr class="filet" />
-          <h2>Supprimer un portefeuille</h2>
+          <h2>Archiver ou supprimer un portefeuille</h2>
           <div class="defile">
             <table class="table">
               <tbody>
                 {portefeuilles.map((x) => (
                   <tr>
-                    <td>{x.libelle}</td>
+                    <td>{x.libelle}{x.archive ? ' (archivé)' : ''}</td>
                     <td class="num">
-                      <form method="post"><input type="hidden" name="action" value="pf_suppr" /><input type="hidden" name="id" value={x.id} /><button class="btn" type="submit">Supprimer</button></form>
+                      <form method="post" style="display:inline"><input type="hidden" name="action" value={x.archive ? 'pf_desarchiver' : 'pf_archiver'} /><input type="hidden" name="id" value={x.id} /><button class="btn" type="submit">{x.archive ? 'Désarchiver' : 'Archiver'}</button></form>
+                      <form method="post" style="display:inline"><input type="hidden" name="action" value="pf_suppr" /><input type="hidden" name="id" value={x.id} /><button class="btn" type="submit">Supprimer</button></form>
                     </td>
                   </tr>
                 ))}
