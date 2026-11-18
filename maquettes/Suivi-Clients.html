@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Suivi — Liste</title>
+<!-- Maquette de reference, lecture seule. Ne pas importer, ne pas copier de lien
+     externe depuis ce fichier : dans le produit les polices viennent de @fontsource
+     et aucune requete du navigateur ne sort du domaine. -->
+<style>
+    body { margin: 0; background: #070A10; color: #E6E1D6; font-family: "IBM Plex Sans", system-ui, sans-serif; font-weight: 300; }
+    a { color: #DCBF88; }
+    a:hover { color: #F0DCB2; }
+    * { box-sizing: border-box; }
+  </style>
+</head>
+<body>
+<div style="background: #070A10; color: #E6E1D6; min-height: 100%; font-family: 'IBM Plex Sans', system-ui, sans-serif;">
+
+  <!-- EN-TETE -->
+  <header style="border-bottom: 1px solid rgba(230,225,214,0.10); background: #0A1018;">
+    <div style="max-width: 1320px; margin: 0 auto; padding: 18px 40px; display: flex; flex-wrap: wrap; align-items: center; gap: 24px;">
+      <span style="display: flex; align-items: center; gap: 12px; margin-right: 12px;">
+        <span aria-hidden="true" style="width: 34px; height: 34px; flex: none; border: 1px solid #B99455; display: grid; place-items: center; font-family: 'Newsreader', Georgia, serif; font-size: 15px; color: #DCBF88;">B</span>
+        <span>
+          <span style="display: block; font-family: 'Newsreader', Georgia, serif; font-size: 18px;">BeBess&rsquo;Invest</span>
+          <span style="display: block; font-family: 'IBM Plex Mono', monospace; font-size: 8px; letter-spacing: 0.2em; text-transform: uppercase; color: #B99455; margin-top: 1px;">Espace gestionnaire</span>
+        </span>
+      </span>
+      <nav aria-label="Navigation de l'espace gestionnaire" style="display: flex; gap: 2px; flex-wrap: wrap; margin-right: auto;">
+        <a href="Suivi-Clients.dc.html" style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; color: #DCBF88; padding: 10px 14px; border-bottom: 1px solid #B99455;">Suivi</a>
+        <a href="Admin-Conseiller.dc.html" style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; color: #98A2B2; padding: 10px 14px;">Viewers</a>
+        <a href="Admin-Conseiller.dc.html" style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; color: #98A2B2; padding: 10px 14px;">Valorisations</a>
+        <a href="Admin-Conseiller.dc.html" style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; color: #98A2B2; padding: 10px 14px;">Contenus du site</a>
+      </nav>
+      <span style="display: flex; align-items: center; gap: 10px;">
+        <span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: #4FB08D;"></span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #98A2B2;">Soumaya &middot; &agrave; jour</span>
+      </span>
+    </div>
+  </header>
+
+  <div style="max-width: 1320px; margin: 0 auto; padding: 36px 40px 60px;">
+
+    <!-- INDICATEURS CLIQUABLES -->
+    <section aria-label="Indicateurs du suivi" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 30px;">
+      <button style="flex: 1 1 140px; min-width: 0; text-align: left; background: rgba(185,148,85,0.10); border: 1px solid #B99455; padding: 14px 16px; cursor: pointer; font-family: inherit; color: inherit;">
+        <span style="display: block; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums;">9 <span style="font-size: 14px; color: #98A2B2;">/ 38</span></span>
+        <span style="display: block; margin-top: 7px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #DCBF88;">Vus aujourd&rsquo;hui</span>
+      </button>
+      <button style="flex: 1 1 140px; min-width: 0; text-align: left; background: transparent; border: 1px solid rgba(230,225,214,0.12); padding: 14px 16px; cursor: pointer; font-family: inherit; color: inherit;">
+        <span style="display: block; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums;">23</span>
+        <span style="display: block; margin-top: 7px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #98A2B2;">Sujets ouverts</span>
+      </button>
+      <button style="flex: 1 1 140px; min-width: 0; text-align: left; background: transparent; border: 1px solid rgba(230,225,214,0.12); padding: 14px 16px; cursor: pointer; font-family: inherit; color: inherit;">
+        <span style="display: block; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums;">8</span>
+        <span style="display: block; margin-top: 7px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #98A2B2;">En cours</span>
+      </button>
+      <button style="flex: 1 1 140px; min-width: 0; text-align: left; background: transparent; border: 1px solid rgba(230,225,214,0.12); padding: 14px 16px; cursor: pointer; font-family: inherit; color: inherit;">
+        <span style="display: block; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums;">5</span>
+        <span style="display: block; margin-top: 7px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #98A2B2;">En attente</span>
+      </button>
+      <button style="flex: 1 1 140px; min-width: 0; text-align: left; background: rgba(194,97,79,0.08); border: 1px solid rgba(194,97,79,0.45); padding: 14px 16px; cursor: pointer; font-family: inherit; color: inherit;">
+        <span style="display: block; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums; color: #C2614F;">3</span>
+        <span style="display: block; margin-top: 7px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #C2614F;">En retard</span>
+      </button>
+      <button style="flex: 1 1 140px; min-width: 0; text-align: left; background: rgba(194,97,79,0.08); border: 1px solid rgba(194,97,79,0.45); padding: 14px 16px; cursor: pointer; font-family: inherit; color: inherit;">
+        <span style="display: block; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums; color: #C2614F;">4</span>
+        <span style="display: block; margin-top: 7px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #C2614F;">&Agrave; rappeler sous 7 j</span>
+      </button>
+      <button style="flex: 1 1 140px; min-width: 0; text-align: left; background: rgba(194,97,79,0.08); border: 1px solid rgba(194,97,79,0.45); padding: 14px 16px; cursor: pointer; font-family: inherit; color: inherit;">
+        <span style="display: block; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums; color: #C2614F;">6</span>
+        <span style="display: block; margin-top: 7px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #C2614F;">Sans &eacute;change 60 j</span>
+      </button>
+      <button style="flex: 1 1 180px; min-width: 0; text-align: left; background: transparent; border: 1px solid rgba(230,225,214,0.12); padding: 14px 16px; cursor: pointer; font-family: inherit; color: inherit;">
+        <span style="display: block; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums;">11,4 M&euro;</span>
+        <span style="display: block; margin-top: 7px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #98A2B2;">Avoirs suivis &middot; 14 fiches</span>
+      </button>
+    </section>
+
+    <!-- BARRE D'OUTILS -->
+    <section aria-label="Filtres" style="display: flex; flex-wrap: wrap; gap: 14px; align-items: center; padding-bottom: 24px; border-bottom: 1px solid rgba(230,225,214,0.10);">
+      <span style="flex: 1 1 280px; min-width: 0; display: flex; align-items: center; gap: 10px; border: 1px solid rgba(230,225,214,0.14); padding: 11px 14px;">
+        <span aria-hidden="true" style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #98A2B2;">&#8981;</span>
+        <span style="font-size: 14px; color: #98A2B2;">Rechercher un nom, une structure, un sujet&hellip;</span>
+      </span>
+      <span style="display: flex; gap: 2px; border: 1px solid rgba(230,225,214,0.14);">
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #140F05; background: #B99455; padding: 11px 14px;">Liste</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #98A2B2; padding: 11px 14px;">Kanban</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #98A2B2; padding: 11px 14px;">Parcours</span>
+      </span>
+      <span style="display: flex; gap: 8px; align-items: center;">
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #98A2B2;">En charge</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid #B99455; color: #DCBF88; padding: 8px 12px; font-size: 12px;"><b style="width: 16px; height: 16px; border-radius: 50%; background: #B99455; color: #140F05; display: grid; place-items: center; font-size: 9px; font-weight: 500;">F</b>Florent</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(230,225,214,0.14); color: #98A2B2; padding: 8px 12px; font-size: 12px;"><b style="width: 16px; height: 16px; border-radius: 50%; background: rgba(230,225,214,0.18); color: #E6E1D6; display: grid; place-items: center; font-size: 9px; font-weight: 500;">T</b>Thomas</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(230,225,214,0.14); color: #98A2B2; padding: 8px 12px; font-size: 12px;"><b style="width: 16px; height: 16px; border-radius: 50%; background: rgba(230,225,214,0.18); color: #E6E1D6; display: grid; place-items: center; font-size: 9px; font-weight: 500;">S</b>Soumaya</span>
+      </span>
+      <a href="Suivi-Fiche.dc.html" style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.13em; text-transform: uppercase; text-decoration: none; background: #B99455; color: #140F05; padding: 12px 18px;">Nouveau contact</a>
+    </section>
+
+    <!-- LISTE -->
+    <table style="width: 100%; border-collapse: collapse; margin-top: 8px;">
+      <thead>
+        <tr>
+          <th style="text-align: left; padding: 16px 12px 12px 0; font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 400; letter-spacing: 0.14em; text-transform: uppercase; color: #98A2B2; border-bottom: 1px solid rgba(230,225,214,0.10);">Contact</th>
+          <th style="text-align: left; padding: 16px 12px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 400; letter-spacing: 0.14em; text-transform: uppercase; color: #98A2B2; border-bottom: 1px solid rgba(230,225,214,0.10);">Type</th>
+          <th style="text-align: left; padding: 16px 12px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 400; letter-spacing: 0.14em; text-transform: uppercase; color: #98A2B2; border-bottom: 1px solid rgba(230,225,214,0.10);">En charge</th>
+          <th style="text-align: right; padding: 16px 12px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 400; letter-spacing: 0.14em; text-transform: uppercase; color: #98A2B2; border-bottom: 1px solid rgba(230,225,214,0.10);">Avoirs</th>
+          <th style="text-align: left; padding: 16px 12px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 400; letter-spacing: 0.14em; text-transform: uppercase; color: #98A2B2; border-bottom: 1px solid rgba(230,225,214,0.10);">Dernier &eacute;change</th>
+          <th style="text-align: left; padding: 16px 12px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 400; letter-spacing: 0.14em; text-transform: uppercase; color: #98A2B2; border-bottom: 1px solid rgba(230,225,214,0.10);">Relance</th>
+          <th style="text-align: left; padding: 16px 0 12px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 400; letter-spacing: 0.14em; text-transform: uppercase; color: #98A2B2; border-bottom: 1px solid rgba(230,225,214,0.10);">Sujets</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding: 16px 12px 16px 0; border-bottom: 1px solid rgba(230,225,214,0.07);">
+            <a href="Suivi-Fiche.dc.html" style="text-decoration: none; color: #E6E1D6; font-size: 15px;">VASSEUR Claire</a>
+            <span style="display: block; margin-top: 3px; font-size: 12px; color: #98A2B2;">Holding Vasseur &amp; Fils</span>
+          </td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07);">
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #DCBF88; border: 1px solid rgba(185,148,85,0.45); padding: 4px 8px;">Client</span>
+            <span style="display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: #4FB08D;"><span aria-hidden="true" style="width: 5px; height: 5px; border-radius: 50%; background: #4FB08D;"></span>Portail</span>
+          </td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #98A2B2;"><b style="display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: #B99455; color: #140F05; font-size: 9px; font-weight: 500; margin-right: 7px; vertical-align: middle;">F</b>Florent</td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); text-align: right; font-variant-numeric: tabular-nums; font-size: 15px;">842 150 &euro;<span style="display: block; margin-top: 3px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; color: #98A2B2;">au 31 oct.</span></td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #98A2B2;">RDV, 4 nov.</td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #98A2B2;">12 d&eacute;c.</td>
+          <td style="padding: 16px 0 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px;"><span style="color: #C2614F;">2 ouverts</span></td>
+        </tr>
+        <tr>
+          <td style="padding: 16px 12px 16px 0; border-bottom: 1px solid rgba(230,225,214,0.07);">
+            <a href="Suivi-Fiche.dc.html" style="text-decoration: none; color: #E6E1D6; font-size: 15px;">MARCHAND Henri</a>
+            <span style="display: block; margin-top: 3px; font-size: 12px; color: #98A2B2;">SCI des Quatre Vents</span>
+          </td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07);">
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #DCBF88; border: 1px solid rgba(185,148,85,0.45); padding: 4px 8px;">Client</span>
+            <span style="display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: #4FB08D;"><span aria-hidden="true" style="width: 5px; height: 5px; border-radius: 50%; background: #4FB08D;"></span>Portail</span>
+          </td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #98A2B2;"><b style="display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: rgba(230,225,214,0.18); color: #E6E1D6; font-size: 9px; font-weight: 500; margin-right: 7px; vertical-align: middle;">T</b>Thomas</td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); text-align: right; font-variant-numeric: tabular-nums; font-size: 15px;">1 240 000 &euro;<span style="display: block; margin-top: 3px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; color: #C2614F;">au 31 ao&ucirc;t</span></td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #98A2B2;">Appel, 2 sept.</td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #C2614F;">8 nov. &middot; en retard</td>
+          <td style="padding: 16px 0 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px;"><span style="color: #C2614F;">1 en retard</span></td>
+        </tr>
+        <tr>
+          <td style="padding: 16px 12px 16px 0; border-bottom: 1px solid rgba(230,225,214,0.07);">
+            <a href="Suivi-Fiche.dc.html" style="text-decoration: none; color: #E6E1D6; font-size: 15px;">ROUSSEL Jean-Marc</a>
+            <span style="display: block; margin-top: 3px; font-size: 12px; color: #98A2B2;">Notaire &middot; &Eacute;tude Roussel</span>
+          </td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07);">
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #98A2B2; border: 1px solid rgba(230,225,214,0.16); padding: 4px 8px;">Prescripteur</span>
+          </td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #98A2B2;"><b style="display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: #B99455; color: #140F05; font-size: 9px; font-weight: 500; margin-right: 7px; vertical-align: middle;">F</b>Florent</td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); text-align: right; font-size: 13px; color: #98A2B2;">3 apports<span style="display: block; margin-top: 3px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em;">2,1 M&euro;</span></td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #98A2B2;">D&eacute;jeuner, 28 oct.</td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #98A2B2;">&mdash;</td>
+          <td style="padding: 16px 0 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #98A2B2;">&mdash;</td>
+        </tr>
+        <tr>
+          <td style="padding: 16px 12px 16px 0; border-bottom: 1px solid rgba(230,225,214,0.07);">
+            <a href="Suivi-Fiche.dc.html" style="text-decoration: none; color: #E6E1D6; font-size: 15px;">LEFEBVRE Camille</a>
+            <span style="display: block; margin-top: 3px; font-size: 12px; color: #98A2B2;">Dirigeante &middot; cession en cours</span>
+          </td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07);">
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #98A2B2; border: 1px solid rgba(230,225,214,0.16); padding: 4px 8px;">Prospect &middot; Proposition</span>
+          </td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #98A2B2;"><b style="display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: rgba(230,225,214,0.18); color: #E6E1D6; font-size: 9px; font-weight: 500; margin-right: 7px; vertical-align: middle;">S</b>Soumaya</td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); text-align: right; font-variant-numeric: tabular-nums; font-size: 15px; color: #98A2B2;">~ 600 000 &euro;<span style="display: block; margin-top: 3px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em;">estim&eacute;, saisi</span></td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #98A2B2;">Visio, 11 nov.</td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #DCBF88;">20 nov.</td>
+          <td style="padding: 16px 0 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #98A2B2;">3 ouverts</td>
+        </tr>
+        <tr>
+          <td style="padding: 16px 12px 16px 0; border-bottom: 1px solid rgba(230,225,214,0.07);">
+            <a href="Suivi-Fiche.dc.html" style="text-decoration: none; color: #E6E1D6; font-size: 15px;">DELAUNAY Sophie</a>
+            <span style="display: block; margin-top: 3px; font-size: 12px; color: #98A2B2;">Profession lib&eacute;rale</span>
+          </td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07);">
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #DCBF88; border: 1px solid rgba(185,148,85,0.45); padding: 4px 8px;">Client</span>
+            <span style="display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: #98A2B2;">&Agrave; promouvoir</span>
+          </td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #98A2B2;"><b style="display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: rgba(230,225,214,0.18); color: #E6E1D6; font-size: 9px; font-weight: 500; margin-right: 7px; vertical-align: middle;">T</b>Thomas</td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); text-align: right; font-variant-numeric: tabular-nums; font-size: 15px; color: #98A2B2;">310 000 &euro;<span style="display: block; margin-top: 3px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em;">saisi &agrave; la main</span></td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #98A2B2;">E-mail, 9 nov.</td>
+          <td style="padding: 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #98A2B2;">&mdash;</td>
+          <td style="padding: 16px 0 16px 12px; border-bottom: 1px solid rgba(230,225,214,0.07); font-size: 13px; color: #98A2B2;">1 ouvert</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p style="margin: 26px 0 0; font-size: 12px; line-height: 1.8; color: #98A2B2; max-width: 760px;">Les avoirs d&rsquo;un contact rattach&eacute; au portail viennent de ses enveloppes et portent la date de son dernier arr&ecirc;t&eacute;&nbsp;; ils ne sont plus saisis ici. Une date en rouge signale un arr&ecirc;t&eacute; de plus de quarante-cinq jours.</p>
+
+  </div>
+</div>
+</body>
+</html>

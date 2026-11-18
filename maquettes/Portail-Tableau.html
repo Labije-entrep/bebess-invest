@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Espace client — Tableau de bord</title>
+<!-- Maquette de reference, lecture seule. Ne pas importer, ne pas copier de lien
+     externe depuis ce fichier : dans le produit les polices viennent de @fontsource
+     et aucune requete du navigateur ne sort du domaine. -->
+<style>
+    body { margin: 0; background: #070A10; color: #E6E1D6; font-family: "IBM Plex Sans", system-ui, sans-serif; font-weight: 300; }
+    a { color: #DCBF88; }
+    a:hover { color: #F0DCB2; }
+    * { box-sizing: border-box; }
+  </style>
+</head>
+<body>
+<div style="background: #070A10; color: #E6E1D6; min-height: 100%; font-family: 'IBM Plex Sans', system-ui, sans-serif;">
+
+  <!-- BARRE PORTAIL -->
+  <header style="border-bottom: 1px solid rgba(230,225,214,0.10); background: #0A1018;">
+    <div style="max-width: 1320px; margin: 0 auto; padding: 18px 40px; display: flex; flex-wrap: wrap; align-items: center; gap: 24px;">
+      <a href="Portail-Tableau.dc.html" style="display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; margin-right: 12px;">
+        <span aria-hidden="true" style="width: 34px; height: 34px; flex: none; border: 1px solid #B99455; display: grid; place-items: center; font-family: 'Newsreader', Georgia, serif; font-size: 15px; color: #DCBF88;">B</span>
+        <span style="font-family: 'Newsreader', Georgia, serif; font-size: 18px;">BeBess&rsquo;Invest</span>
+      </a>
+      <nav aria-label="Navigation de l'espace client" style="display: flex; gap: 2px; flex-wrap: wrap; margin-right: auto;">
+        <a href="Portail-Tableau.dc.html" style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; color: #DCBF88; padding: 10px 14px; border-bottom: 1px solid #B99455;">Tableau de bord</a>
+        <a href="Portail-Portefeuille.dc.html" style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; color: #98A2B2; padding: 10px 14px;">Portefeuille</a>
+        <a href="Portail-Ordres.dc.html" style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; color: #98A2B2; padding: 10px 14px;">Mouvements</a>
+        <a href="Portail-Rapports.dc.html" style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; color: #98A2B2; padding: 10px 14px;">Stratégie &amp; rapports</a>
+      </nav>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #98A2B2;">Claire Vasseur</span>
+      <a href="Portail-Connexion.dc.html" style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; text-decoration: none; color: #98A2B2; border: 1px solid rgba(230,225,214,0.14); padding: 9px 14px;">Déconnexion</a>
+    </div>
+  </header>
+
+  <div style="max-width: 1320px; margin: 0 auto; padding: 44px 40px 60px;">
+
+    <!-- EN-TETE -->
+    <div style="display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-end; justify-content: space-between; padding-bottom: 36px; border-bottom: 1px solid rgba(230,225,214,0.10);">
+      <div>
+        <p style="margin: 0 0 12px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: #B99455;">Mandat de conseil &mdash; n&deg; 2024-0118</p>
+        <h1 style="margin: 0; font-family: 'Newsreader', Georgia, serif; font-weight: 200; font-size: 40px; line-height: 1.15; letter-spacing: -0.02em;">Bonsoir, Claire Vasseur</h1>
+      </div>
+      <div style="text-align: right;">
+        <p style="margin: 0 0 8px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #98A2B2;">Valorisation arrêtée au</p>
+        <p style="margin: 0; font-size: 15px; font-variant-numeric: tabular-nums;">13 novembre 2026, 18 h 05</p>
+      </div>
+    </div>
+
+    <!-- CHIFFRES CLES -->
+    <section aria-label="Chiffres clés" style="display: flex; flex-wrap: wrap; gap: 0; margin-top: 40px;">
+      <div style="flex: 1 1 240px; min-width: 0; padding: 4px 40px 4px 0;">
+        <p style="margin: 0 0 14px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #98A2B2;">Valorisation totale</p>
+        <p style="margin: 0 0 8px; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 40px; line-height: 1; font-variant-numeric: tabular-nums;">842 150 &euro;</p>
+        <p style="margin: 0; font-size: 13px; color: #98A2B2;">4 enveloppes</p>
+      </div>
+      <div style="flex: 1 1 240px; min-width: 0; padding: 4px 40px; border-left: 1px solid rgba(230,225,214,0.10);">
+        <p style="margin: 0 0 14px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #98A2B2;">Performance 2026, nette</p>
+        <p style="margin: 0 0 8px; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 40px; line-height: 1; font-variant-numeric: tabular-nums; color: #4FB08D;">+ 6,4 %</p>
+        <p style="margin: 0; font-size: 13px; color: #98A2B2;">Référence : + 5,1 %</p>
+      </div>
+      <div style="flex: 1 1 240px; min-width: 0; padding: 4px 40px; border-left: 1px solid rgba(230,225,214,0.10);">
+        <p style="margin: 0 0 14px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #98A2B2;">Plus-value latente</p>
+        <p style="margin: 0 0 8px; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 40px; line-height: 1; font-variant-numeric: tabular-nums; color: #4FB08D;">+ 112 480 &euro;</p>
+        <p style="margin: 0; font-size: 13px; color: #98A2B2;">Depuis l&rsquo;origine du mandat</p>
+      </div>
+      <div style="flex: 1 1 240px; min-width: 0; padding: 4px 0 4px 40px; border-left: 1px solid rgba(230,225,214,0.10);">
+        <p style="margin: 0 0 14px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #98A2B2;">Versements nets 2026</p>
+        <p style="margin: 0 0 8px; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 40px; line-height: 1; font-variant-numeric: tabular-nums;">+ 40 000 &euro;</p>
+        <p style="margin: 0; font-size: 13px; color: #98A2B2;">Dernier le 2 octobre</p>
+      </div>
+    </section>
+
+    <!-- COURBE -->
+    <section aria-label="Évolution de la valorisation" style="margin-top: 56px; border: 1px solid rgba(230,225,214,0.10); background: #0D1829; padding: 32px 36px 28px;">
+      <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; justify-content: space-between; margin-bottom: 26px;">
+        <div>
+          <h2 style="margin: 0 0 10px; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 24px;">Évolution depuis l&rsquo;origine</h2>
+          <p style="margin: 0; font-size: 13px; color: #98A2B2;">Base 100 au 2 novembre 2023, nette de frais de gestion.</p>
+        </div>
+        <div role="group" aria-label="Période affichée" style="display: flex; gap: 2px; flex-wrap: wrap;">
+          <button type="button" style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; background: none; border: 1px solid rgba(230,225,214,0.14); color: #98A2B2; padding: 9px 14px; cursor: pointer;">1 mois</button>
+          <button type="button" style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; background: none; border: 1px solid rgba(230,225,214,0.14); color: #98A2B2; padding: 9px 14px; cursor: pointer;">1 an</button>
+          <button type="button" aria-pressed="true" style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; background: rgba(185,148,85,0.16); border: 1px solid #B99455; color: #DCBF88; padding: 9px 14px; cursor: pointer;">Origine</button>
+        </div>
+      </div>
+
+      <svg viewBox="0 0 1080 268" width="100%" role="img" aria-label="Courbe de valorisation du portefeuille, base 100 au 2 novembre 2023, atteignant 127,4 au 13 novembre 2026, contre 120,8 pour l'indice de référence." style="display: block; overflow: visible;">
+        <line x1="72" y1="216.4" x2="1062" y2="216.4" stroke="rgba(230,225,214,0.09)" stroke-width="1"></line>
+        <line x1="72" y1="164.4" x2="1062" y2="164.4" stroke="rgba(230,225,214,0.09)" stroke-width="1"></line>
+        <line x1="72" y1="112.4" x2="1062" y2="112.4" stroke="rgba(230,225,214,0.09)" stroke-width="1"></line>
+        <line x1="72" y1="60.4" x2="1062" y2="60.4" stroke="rgba(230,225,214,0.09)" stroke-width="1"></line>
+        <text x="60" y="220" text-anchor="end" fill="#98A2B2" font-family="IBM Plex Mono, monospace" font-size="11">95</text>
+        <text x="60" y="168" text-anchor="end" fill="#98A2B2" font-family="IBM Plex Mono, monospace" font-size="11">105</text>
+        <text x="60" y="116" text-anchor="end" fill="#98A2B2" font-family="IBM Plex Mono, monospace" font-size="11">115</text>
+        <text x="60" y="64" text-anchor="end" fill="#98A2B2" font-family="IBM Plex Mono, monospace" font-size="11">125</text>
+
+        <polygon points="72.0,190.4 100.3,186.2 128.6,182.1 156.9,189.4 185.1,198.7 213.4,210.7 241.7,204.4 270.0,195.6 298.3,188.3 326.6,180.5 354.9,173.8 383.1,169.1 411.4,164.4 439.7,168.6 468.0,176.9 496.3,170.1 524.6,158.7 552.9,149.8 581.1,143.6 609.4,137.4 637.7,141.5 666.0,131.6 694.3,122.8 722.6,116.6 750.9,111.9 779.1,105.1 807.4,111.4 835.7,102.0 864.0,92.1 892.3,84.8 920.6,78.1 948.9,82.2 977.1,71.3 1005.4,62.5 1033.7,54.7 1062.0,47.9 1062.0,232.0 72.0,232.0" fill="rgba(185,148,85,0.10)"></polygon>
+
+        <polyline points="72.0,190.4 100.3,187.8 128.6,184.2 156.9,193.5 185.1,206.0 213.4,220.6 241.7,213.3 270.0,203.9 298.3,197.7 326.6,189.9 354.9,185.2 383.1,181.0 411.4,177.9 439.7,184.2 468.0,192.5 496.3,185.2 524.6,173.8 552.9,166.5 581.1,162.3 609.4,157.6 637.7,163.9 666.0,155.0 694.3,147.8 722.6,143.1 750.9,139.4 779.1,133.7 807.4,141.5 835.7,133.2 864.0,124.9 892.3,118.6 920.6,112.9 948.9,118.1 977.1,108.2 1005.4,100.4 1033.7,91.6 1062.0,82.2" fill="none" stroke="#7C8AA0" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round" stroke-linecap="round"></polyline>
+
+        <polyline points="72.0,190.4 100.3,186.2 128.6,182.1 156.9,189.4 185.1,198.7 213.4,210.7 241.7,204.4 270.0,195.6 298.3,188.3 326.6,180.5 354.9,173.8 383.1,169.1 411.4,164.4 439.7,168.6 468.0,176.9 496.3,170.1 524.6,158.7 552.9,149.8 581.1,143.6 609.4,137.4 637.7,141.5 666.0,131.6 694.3,122.8 722.6,116.6 750.9,111.9 779.1,105.1 807.4,111.4 835.7,102.0 864.0,92.1 892.3,84.8 920.6,78.1 948.9,82.2 977.1,71.3 1005.4,62.5 1033.7,54.7 1062.0,47.9" fill="none" stroke="#DCBF88" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
+
+        <circle cx="1062" cy="47.9" r="4.5" fill="#DCBF88" stroke="#0D1829" stroke-width="2"></circle>
+        <circle cx="1062" cy="82.2" r="4" fill="#7C8AA0" stroke="#0D1829" stroke-width="2"></circle>
+        <text x="1050" y="38" text-anchor="end" fill="#DCBF88" font-family="IBM Plex Mono, monospace" font-size="12">Portefeuille 127,4</text>
+        <text x="1050" y="96" text-anchor="end" fill="#98A2B2" font-family="IBM Plex Mono, monospace" font-size="12">Référence 120,8</text>
+
+        <text x="72" y="252" fill="#98A2B2" font-family="IBM Plex Mono, monospace" font-size="11">nov. 2023</text>
+        <text x="411" y="252" text-anchor="middle" fill="#98A2B2" font-family="IBM Plex Mono, monospace" font-size="11">nov. 2024</text>
+        <text x="750" y="252" text-anchor="middle" fill="#98A2B2" font-family="IBM Plex Mono, monospace" font-size="11">nov. 2025</text>
+        <text x="1062" y="252" text-anchor="end" fill="#98A2B2" font-family="IBM Plex Mono, monospace" font-size="11">nov. 2026</text>
+      </svg>
+    </section>
+
+    <!-- REPARTITION + ORDRES -->
+    <div style="display: flex; flex-wrap: wrap; gap: 28px; margin-top: 28px;">
+
+      <!-- REPARTITION -->
+      <section aria-label="Répartition d'actifs" style="flex: 999 1 560px; min-width: 0; border: 1px solid rgba(230,225,214,0.10); padding: 32px 36px;">
+        <h2 style="margin: 0 0 8px; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 24px;">Répartition d&rsquo;actifs</h2>
+        <p style="margin: 0 0 28px; font-size: 13px; color: #98A2B2;">Cible de l&rsquo;allocation signée le 18 janvier 2026, et écart constaté.</p>
+
+        <div style="display: flex; gap: 2px; height: 14px; margin-bottom: 26px;">
+          <div style="flex: 42; background: #B9862B;" title="Actions 42 %"></div>
+          <div style="flex: 24; background: #4E9BD6;" title="Obligations 24 %"></div>
+          <div style="flex: 16; background: #C9684E;" title="Immobilier 16 %"></div>
+          <div style="flex: 11; background: #3FA98A;" title="Non coté 11 %"></div>
+          <div style="flex: 7; background: #9B7BD4;" title="Liquidités 7 %"></div>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums;">
+          <thead>
+            <tr>
+              <th scope="col" style="text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #98A2B2; font-weight: 400; padding: 0 0 12px;">Classe d&rsquo;actifs</th>
+              <th scope="col" style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #98A2B2; font-weight: 400; padding: 0 0 12px;">Montant</th>
+              <th scope="col" style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #98A2B2; font-weight: 400; padding: 0 0 12px;">Part</th>
+              <th scope="col" style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #98A2B2; font-weight: 400; padding: 0 0 12px;">Cible</th>
+              <th scope="col" style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #98A2B2; font-weight: 400; padding: 0 0 12px;">Écart</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px;"><span aria-hidden="true" style="display: inline-block; width: 10px; height: 10px; background: #B9862B; margin-right: 12px;"></span>Actions internationales</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right;">353 703 &euro;</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right;">42,0 %</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right; color: #98A2B2;">40,0 %</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right; color: #DCBF88;">+ 2,0</td>
+            </tr>
+            <tr>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px;"><span aria-hidden="true" style="display: inline-block; width: 10px; height: 10px; background: #4E9BD6; margin-right: 12px;"></span>Obligations</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right;">202 116 &euro;</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right;">24,0 %</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right; color: #98A2B2;">25,0 %</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right; color: #98A2B2;">&minus; 1,0</td>
+            </tr>
+            <tr>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px;"><span aria-hidden="true" style="display: inline-block; width: 10px; height: 10px; background: #C9684E; margin-right: 12px;"></span>Immobilier (SCPI)</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right;">134 744 &euro;</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right;">16,0 %</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right; color: #98A2B2;">15,0 %</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right; color: #DCBF88;">+ 1,0</td>
+            </tr>
+            <tr>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px;"><span aria-hidden="true" style="display: inline-block; width: 10px; height: 10px; background: #3FA98A; margin-right: 12px;"></span>Non coté</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right;">92 637 &euro;</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right;">11,0 %</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right; color: #98A2B2;">10,0 %</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right; color: #DCBF88;">+ 1,0</td>
+            </tr>
+            <tr>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); border-bottom: 1px solid rgba(230,225,214,0.08); font-size: 14px;"><span aria-hidden="true" style="display: inline-block; width: 10px; height: 10px; background: #9B7BD4; margin-right: 12px;"></span>Liquidités</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); border-bottom: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right;">58 950 &euro;</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); border-bottom: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right;">7,0 %</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); border-bottom: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right; color: #98A2B2;">10,0 %</td>
+              <td style="padding: 14px 0; border-top: 1px solid rgba(230,225,214,0.08); border-bottom: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right; color: #98A2B2;">&minus; 3,0</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p style="margin: 22px 0 0; font-size: 13px; line-height: 1.7; color: #98A2B2;">Un rééquilibrage vers les liquidités est proposé au point du 15 décembre. <a href="Portail-Rapports.dc.html" style="text-decoration: underline;">Voir la stratégie en vigueur</a></p>
+      </section>
+
+      <!-- ORDRES -->
+      <section aria-label="Ordres en cours" style="flex: 1 1 320px; min-width: 0; border: 1px solid rgba(185,148,85,0.26); background: #0D1829; padding: 32px 30px;">
+        <h2 style="margin: 0 0 8px; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 24px;">Ordres en cours</h2>
+        <p style="margin: 0 0 26px; font-size: 13px; color: #98A2B2;">Trois opérations en attente d&rsquo;exécution.</p>
+
+        <ul style="margin: 0 0 26px; padding: 0; list-style: none; display: grid; gap: 0;">
+          <li style="padding: 18px 0; border-top: 1px solid rgba(230,225,214,0.08);">
+            <div style="display: flex; justify-content: space-between; gap: 14px; margin-bottom: 7px;">
+              <span style="font-size: 14px;">Souscription &mdash; ETF MSCI World</span>
+              <span style="font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap;">15 000 &euro;</span>
+            </div>
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #DCBF88;">En cours &mdash; transmis le 12/11</span>
+          </li>
+          <li style="padding: 18px 0; border-top: 1px solid rgba(230,225,214,0.08);">
+            <div style="display: flex; justify-content: space-between; gap: 14px; margin-bottom: 7px;">
+              <span style="font-size: 14px;">Arbitrage &mdash; Fonds euros vers UC</span>
+              <span style="font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap;">22 500 &euro;</span>
+            </div>
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #98A2B2;">Chez l&rsquo;assureur &mdash; depuis le 09/11</span>
+          </li>
+          <li style="padding: 18px 0; border-top: 1px solid rgba(230,225,214,0.08); border-bottom: 1px solid rgba(230,225,214,0.08);">
+            <div style="display: flex; justify-content: space-between; gap: 14px; margin-bottom: 7px;">
+              <span style="font-size: 14px;">Rachat partiel &mdash; PEA</span>
+              <span style="font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap;">8 000 &euro;</span>
+            </div>
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #98A2B2;">Signature attendue</span>
+          </li>
+        </ul>
+
+        <a href="Portail-Ordres.dc.html" style="display: inline-block; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.13em; text-transform: uppercase; text-decoration: none; color: #DCBF88; border: 1px solid rgba(185,148,85,0.45); padding: 13px 20px;">Tous les mouvements</a>
+
+        <div style="margin-top: 34px; padding-top: 24px; border-top: 1px solid rgba(230,225,214,0.08);">
+          <p style="margin: 0 0 10px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #B99455;">Prochain point</p>
+          <p style="margin: 0 0 6px; font-size: 15px;">Lundi 15 décembre, 10 h 00</p>
+          <p style="margin: 0; font-size: 13px; line-height: 1.7; color: #98A2B2;">Revue trimestrielle et arbitrage de fin d&rsquo;année.</p>
+        </div>
+      </section>
+    </div>
+
+    <!-- MENTION -->
+    <p style="margin: 40px 0 0; padding-top: 24px; border-top: 1px solid rgba(230,225,214,0.10); font-size: 12px; line-height: 1.85; color: #98A2B2; max-width: 100ch;">Les valorisations sont indicatives, transmises par les dépositaires et l&rsquo;assureur, et ne se substituent pas aux relevés officiels. Les performances passées ne préjugent pas des performances futures. Les investissements présentent un risque de perte en capital. Dernière synchronisation des données : 13 novembre 2026 à 18 h 05.</p>
+
+  </div>
+</div>
+</body>
+</html>
