@@ -19,7 +19,7 @@ Un lot dont le prérequis n'est pas coché ne démarre pas.
 | 01 | Socle de données et listes de référence | P1 | fait | 3a8c238 |
 | 01b | Correctif : espace viewer sur tous ses portefeuilles | — | fait | eb64adc |
 | 01c | Finitions : import, pilote mail, archivage, second locataire | — | fait | 3408e9b |
-| 02 | API JSON et synchronisation | — | fait | (voir journal) |
+| 02 | API JSON et synchronisation | — | fait | 42a9443 |
 | 03 | Module de suivi : la liste des contacts | — | à faire | |
 | 04 | Module de suivi : la fiche | — | à faire | |
 | 05 | Kanban et parcours | — | à faire | |
