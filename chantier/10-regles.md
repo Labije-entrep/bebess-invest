@@ -49,6 +49,9 @@ Ouvre-les avant de coder, et lis `maquettes/LISEZMOI.md`.
 
 ## Vérification
 
+`astro check` doit passer avant tout commit. Si `@astrojs/check` manque, installe-le
+en dépendance de développement.
+
 La vérification se fait sur le résultat de `npm run build` servi par `wrangler dev`,
 pas sur le serveur de développement : la CSP à nonce et le regroupement des scripts
 ne s'y comportent pas pareil.
