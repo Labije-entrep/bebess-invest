@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Espace gestionnaire</title>
+<!-- Maquette de reference, lecture seule. Ne pas importer, ne pas copier de lien
+     externe depuis ce fichier : dans le produit les polices viennent de @fontsource
+     et aucune requete du navigateur ne sort du domaine. -->
+<style>
+    body { margin: 0; background: #070A10; color: #E6E1D6; font-family: "IBM Plex Sans", system-ui, sans-serif; font-weight: 300; }
+    a { color: #DCBF88; }
+    a:hover { color: #F0DCB2; }
+    * { box-sizing: border-box; }
+  </style>
+</head>
+<body>
+<div style="background: #070A10; color: #E6E1D6; min-height: 100%; font-family: 'IBM Plex Sans', system-ui, sans-serif;">
+
+  <header style="border-bottom: 1px solid rgba(230,225,214,0.10); background: #0A1018;">
+    <div style="max-width: 1320px; margin: 0 auto; padding: 18px 40px; display: flex; flex-wrap: wrap; align-items: center; gap: 24px;">
+      <span style="display: flex; align-items: center; gap: 12px; margin-right: 12px;">
+        <span aria-hidden="true" style="width: 34px; height: 34px; flex: none; border: 1px solid #B99455; display: grid; place-items: center; font-family: 'Newsreader', Georgia, serif; font-size: 15px; color: #DCBF88;">B</span>
+        <span>
+          <span style="display: block; font-family: 'Newsreader', Georgia, serif; font-size: 18px;">BeBess&rsquo;Invest</span>
+          <span style="display: block; font-family: 'IBM Plex Mono', monospace; font-size: 8px; letter-spacing: 0.2em; text-transform: uppercase; color: #B99455; margin-top: 1px;">Espace gestionnaire</span>
+        </span>
+      </span>
+      <nav aria-label="Navigation de l'espace gestionnaire" style="display: flex; gap: 2px; flex-wrap: wrap; margin-right: auto;">
+        <a href="Admin-Conseiller.dc.html" style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; color: #DCBF88; padding: 10px 14px; border-bottom: 1px solid #B99455;">Viewers</a>
+        <a href="Admin-Conseiller.dc.html" style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; color: #98A2B2; padding: 10px 14px;">Valorisations</a>
+        <a href="Admin-Conseiller.dc.html" style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; color: #98A2B2; padding: 10px 14px;">Contenus du site</a>
+        <a href="Admin-Conseiller.dc.html" style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; color: #98A2B2; padding: 10px 14px;">Réglages</a>
+      </nav>
+      <a href="Main.dc.html" style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; text-decoration: none; color: #98A2B2; border: 1px solid rgba(230,225,214,0.14); padding: 9px 14px;">Voir le site public</a>
+    </div>
+  </header>
+
+  <div style="max-width: 1320px; margin: 0 auto; padding: 40px 40px 60px;">
+
+    <!-- INDICATEURS -->
+    <section aria-label="Indicateurs du cabinet" style="display: flex; flex-wrap: wrap; gap: 0; padding-bottom: 32px; border-bottom: 1px solid rgba(230,225,214,0.10);">
+      <div style="flex: 1 1 200px; min-width: 0; padding-right: 36px;">
+        <p style="margin: 0 0 10px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #98A2B2;">Encours suivis</p>
+        <p style="margin: 0; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 32px; line-height: 1; font-variant-numeric: tabular-nums;">11,4 M&euro;</p>
+      </div>
+      <div style="flex: 1 1 200px; min-width: 0; padding: 0 36px; border-left: 1px solid rgba(230,225,214,0.10);">
+        <p style="margin: 0 0 10px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #98A2B2;">Mandats actifs</p>
+        <p style="margin: 0; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 32px; line-height: 1; font-variant-numeric: tabular-nums;">14</p>
+      </div>
+      <div style="flex: 1 1 200px; min-width: 0; padding: 0 36px; border-left: 1px solid rgba(230,225,214,0.10);">
+        <p style="margin: 0 0 10px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #98A2B2;">Accès portail actifs</p>
+        <p style="margin: 0; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 32px; line-height: 1; font-variant-numeric: tabular-nums;">11 <span style="font-size: 18px; color: #98A2B2;">/ 14</span></p>
+      </div>
+      <div style="flex: 1 1 200px; min-width: 0; padding-left: 36px; border-left: 1px solid rgba(230,225,214,0.10);">
+        <p style="margin: 0 0 10px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #98A2B2;">Dernière valorisation</p>
+        <p style="margin: 0; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 32px; line-height: 1;">Hier, 18 h</p>
+      </div>
+    </section>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 32px; margin-top: 40px;">
+
+      <!-- LISTE CLIENTS -->
+      <section style="flex: 999 1 600px; min-width: 0;">
+        <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: baseline; justify-content: space-between; margin-bottom: 22px;">
+          <h1 style="margin: 0; font-family: 'Newsreader', Georgia, serif; font-weight: 200; font-size: 32px; letter-spacing: -0.02em;">Vos viewers</h1>
+          <a href="Admin-Conseiller.dc.html" style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.13em; text-transform: uppercase; text-decoration: none; background: #B99455; color: #140F05; padding: 13px 20px;">Créer un viewer</a>
+        </div>
+
+        <div style="overflow-x: auto;">
+          <table style="width: 100%; min-width: 660px; border-collapse: collapse; font-variant-numeric: tabular-nums;">
+            <thead>
+              <tr>
+                <th scope="col" style="text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #98A2B2; font-weight: 400; padding: 0 0 12px;">Client</th>
+                <th scope="col" style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #98A2B2; font-weight: 400; padding: 0 0 12px;">Encours</th>
+                <th scope="col" style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #98A2B2; font-weight: 400; padding: 0 0 12px;">Valorisé le</th>
+                <th scope="col" style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #98A2B2; font-weight: 400; padding: 0 0 12px;">Accès portail</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px;">Claire Vasseur</td>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right;">842 150 &euro;</td>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right; color: #98A2B2;">13/11</td>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 13px; text-align: right; color: #4FB08D;">Actif</td>
+              </tr>
+              <tr>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px;">Marc Toussaint</td>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right;">1 940 300 &euro;</td>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right; color: #98A2B2;">13/11</td>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 13px; text-align: right; color: #4FB08D;">Actif</td>
+              </tr>
+              <tr>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px;">SCI Les Tilleuls</td>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right;">612 800 &euro;</td>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right; color: #98A2B2;">13/11</td>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 13px; text-align: right; color: #DCBF88;">Invitation envoyée</td>
+              </tr>
+              <tr>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px;">Hélène Brunet</td>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right;">458 900 &euro;</td>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right; color: #C9684E;">30/09</td>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); font-size: 13px; text-align: right; color: #4FB08D;">Actif</td>
+              </tr>
+              <tr>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); border-bottom: 1px solid rgba(230,225,214,0.08); font-size: 14px;">Famille Royer</td>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); border-bottom: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right;">2 310 450 &euro;</td>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); border-bottom: 1px solid rgba(230,225,214,0.08); font-size: 14px; text-align: right; color: #98A2B2;">13/11</td>
+                <td style="padding: 15px 0; border-top: 1px solid rgba(230,225,214,0.08); border-bottom: 1px solid rgba(230,225,214,0.08); font-size: 13px; text-align: right; color: #98A2B2;">Non ouvert</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p style="margin: 18px 0 0; font-size: 13px; line-height: 1.75; color: #98A2B2;">Une valorisation en retard apparaît en terre cuite : le portail affiche alors la date du dernier arrêté, jamais une valeur périmée présentée comme actuelle.</p>
+      </section>
+
+      <!-- ALIMENTATION DES DONNEES -->
+      <aside style="flex: 1 1 360px; min-width: 0;">
+        <div style="border: 1px solid rgba(185,148,85,0.3); background: #0D1829; padding: 30px 30px 26px;">
+          <h2 style="margin: 0 0 8px; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 24px;">Alimenter les valorisations</h2>
+          <p style="margin: 0 0 26px; font-size: 13px; line-height: 1.75; color: #98A2B2;">C&rsquo;est la seule tâche récurrente du gestionnaire. Trois voies, selon ce dont vous disposez déjà.</p>
+
+          <div style="padding: 18px 0; border-top: 1px solid rgba(230,225,214,0.08);">
+            <div style="display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 7px;">
+              <span style="font-size: 15px;">Import d&rsquo;un fichier dépositaire</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #4FB08D;">Inclus</span>
+            </div>
+            <p style="margin: 0 0 12px; font-size: 13px; line-height: 1.7; color: #98A2B2;">Déposez le CSV ou le relevé de l&rsquo;assureur. Les lignes sont rapprochées automatiquement, les écarts signalés.</p>
+            <a href="Admin-Conseiller.dc.html" style="display: inline-block; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; text-decoration: none; color: #DCBF88; border: 1px solid rgba(185,148,85,0.45); padding: 11px 16px;">Déposer un fichier</a>
+          </div>
+
+          <div style="padding: 18px 0; border-top: 1px solid rgba(230,225,214,0.08);">
+            <div style="display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 7px;">
+              <span style="font-size: 15px;">Saisie manuelle d&rsquo;une ligne</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #4FB08D;">Inclus</span>
+            </div>
+            <p style="margin: 0; font-size: 13px; line-height: 1.7; color: #98A2B2;">Pour le non coté et tout ce qui n&rsquo;a pas de flux : valorisation et date d&rsquo;arrêté.</p>
+          </div>
+
+          <div style="padding: 18px 0 0; border-top: 1px solid rgba(230,225,214,0.08);">
+            <div style="display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 7px;">
+              <span style="font-size: 15px;">Flux de votre agrégateur</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #98A2B2;">Votre contrat</span>
+            </div>
+            <p style="margin: 0; font-size: 13px; line-height: 1.7; color: #98A2B2;">Si vous avez déjà un agrégateur ou un outil de gestion, nous branchons son export. Le contrat et le consentement restent les vôtres.</p>
+          </div>
+        </div>
+
+        <div style="margin-top: 24px; border: 1px solid rgba(230,225,214,0.12); padding: 24px 26px;">
+          <p style="margin: 0 0 16px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #B99455;">Dernier import</p>
+          <p style="margin: 0 0 6px; font-size: 14px;">generali_valos_13112026.csv</p>
+          <p style="margin: 0 0 14px; font-size: 13px; color: #98A2B2;">13 novembre, 18 h 05 &mdash; 42 lignes traitées</p>
+          <p style="margin: 0; font-size: 13px; color: #DCBF88;">2 lignes en écart, à vérifier</p>
+        </div>
+      </aside>
+    </div>
+
+    <p style="margin: 40px 0 0; padding-top: 24px; border-top: 1px solid rgba(230,225,214,0.10); font-size: 12px; line-height: 1.85; color: #98A2B2; max-width: 100ch;">Trois rôles, trois périmètres : l&rsquo;éditeur administre la plateforme et les gabarits ; vous, gestionnaire, alimentez l&rsquo;éditorial du site, créez les viewers et saisissez les éléments de leur tableau de bord ; le viewer consulte, et ne modifie jamais rien.</p>
+
+  </div>
+</div>
+</body>
+</html>

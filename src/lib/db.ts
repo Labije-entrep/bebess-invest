@@ -48,9 +48,50 @@ export interface Fiche {
   prochain_point: string | null;
 }
 
+export interface Portefeuille {
+  id: string;
+  tenant_id: string;
+  viewer_id: string;
+  libelle: string;
+  type: string;
+  ordre: number;
+  /** 1 = archivé : hors du viewer, de « Tout » et des totaux ; en lecture seule pour le gestionnaire. */
+  archive: number;
+  cree_le: string;
+}
+
+export const COLONNES_PORTEFEUILLE = 'id, tenant_id, viewer_id, libelle, type, ordre, archive, cree_le';
+
+/**
+ * Filtre sur les portefeuilles d'un viewer, toujours bornés au locataire. Sans portefeuilleId :
+ * tous ses portefeuilles. Avec : celui-là seulement, et seulement s'il est bien à ce viewer
+ * et à ce locataire. Les « ? » sont à lier dans l'ordre de `valeurs`.
+ */
+export function dansPortefeuilles(
+  tenantId: string,
+  viewerId: string,
+  portefeuilleId?: string | null,
+  archives = false,
+): { sql: string; valeurs: string[] } {
+  // Les portefeuilles archivés sont exclus, sauf demande expresse (écrans du gestionnaire).
+  const tous = `(SELECT id FROM portefeuille WHERE viewer_id = ? AND tenant_id = ?${archives ? '' : ' AND archive = 0'})`;
+  return portefeuilleId
+    ? { sql: `portefeuille_id = ? AND portefeuille_id IN ${tous}`, valeurs: [portefeuilleId, viewerId, tenantId] }
+    : { sql: `portefeuille_id IN ${tous}`, valeurs: [viewerId, tenantId] };
+}
+
+/** Portefeuilles actifs du viewer ; avec `archives`, tous (écrans du gestionnaire). */
+export async function portefeuillesDuViewer(db: Base, tenantId: string, viewerId: string, archives = false): Promise<Portefeuille[]> {
+  const { results } = await db
+    .prepare(`SELECT ${COLONNES_PORTEFEUILLE} FROM portefeuille WHERE tenant_id = ? AND viewer_id = ?${archives ? '' : ' AND archive = 0'} ORDER BY ordre, id`)
+    .bind(tenantId, viewerId)
+    .all<Portefeuille>();
+  return results;
+}
+
 export interface Enveloppe {
   id: string;
-  viewer_id: string;
+  portefeuille_id: string;
   libelle: string;
   etablissement: string | null;
   ouverte_en: string | null;
@@ -74,7 +115,7 @@ export interface Ligne {
 
 export interface Cible {
   id: string;
-  viewer_id: string;
+  portefeuille_id: string;
   classe: string;
   cible_bp: number;
   rang: number;
@@ -82,7 +123,7 @@ export interface Cible {
 
 export interface Point {
   id: string;
-  viewer_id: string;
+  portefeuille_id: string;
   date: string;
   valeur_cents: number;
   versements_cumules_cents: number;
@@ -186,16 +227,24 @@ export function ficheDuViewer(db: Base, tenantId: string, viewerId: string): Pro
     .first<Fiche>();
 }
 
-export async function enveloppesDuViewer(db: Base, viewerId: string): Promise<Enveloppe[]> {
+/** Enveloppes de tous les portefeuilles du viewer, ou d'un seul si portefeuilleId est donné. */
+export async function enveloppesDuViewer(
+  db: Base,
+  tenantId: string,
+  viewerId: string,
+  portefeuilleId?: string | null,
+  archives = false,
+): Promise<Enveloppe[]> {
+  const f = dansPortefeuilles(tenantId, viewerId, portefeuilleId, archives);
   const { results } = await db
     .prepare(
-      `SELECT id, viewer_id, libelle, etablissement, ouverte_en, valorisation_cents,
+      `SELECT id, portefeuille_id, libelle, etablissement, ouverte_en, valorisation_cents,
               perf_bp, arrete_le, rang
          FROM enveloppe
-        WHERE viewer_id = ?
-        ORDER BY rang, id`,
+        WHERE ${f.sql}
+        ORDER BY portefeuille_id, rang, id`,
     )
-    .bind(viewerId)
+    .bind(...f.valeurs)
     .all<Enveloppe>();
   return results;
 }
@@ -217,24 +266,43 @@ export async function lignesDesEnveloppes(db: Base, enveloppeIds: string[]): Pro
   return results;
 }
 
-export async function ciblesDuViewer(db: Base, viewerId: string): Promise<Cible[]> {
+export async function ciblesDuViewer(
+  db: Base,
+  tenantId: string,
+  viewerId: string,
+  portefeuilleId?: string | null,
+  archives = false,
+): Promise<Cible[]> {
+  const f = dansPortefeuilles(tenantId, viewerId, portefeuilleId, archives);
   const { results } = await db
-    .prepare('SELECT id, viewer_id, classe, cible_bp, rang FROM cible WHERE viewer_id = ? ORDER BY rang, id')
-    .bind(viewerId)
+    .prepare(`SELECT id, portefeuille_id, classe, cible_bp, rang FROM cible
+        WHERE ${f.sql} ORDER BY portefeuille_id, rang, id`)
+    .bind(...f.valeurs)
     .all<Cible>();
   return results;
 }
 
-/** Courbe mensuelle, du plus ancien au plus récent. */
-export async function pointsDuViewer(db: Base, viewerId: string): Promise<Point[]> {
+/**
+ * Points de tous les portefeuilles du viewer (ou d'un seul), du plus ancien au plus récent.
+ * Sur plusieurs portefeuilles, un même jour peut apparaître plusieurs fois : c'est
+ * `pointsConsolides` (espace.ts) qui en fait une courbe unique.
+ */
+export async function pointsDuViewer(
+  db: Base,
+  tenantId: string,
+  viewerId: string,
+  portefeuilleId?: string | null,
+  archives = false,
+): Promise<Point[]> {
+  const f = dansPortefeuilles(tenantId, viewerId, portefeuilleId, archives);
   const { results } = await db
     .prepare(
-      `SELECT id, viewer_id, date, valeur_cents, versements_cumules_cents
+      `SELECT id, portefeuille_id, date, valeur_cents, versements_cumules_cents
          FROM point
-        WHERE viewer_id = ?
-        ORDER BY date`,
+        WHERE ${f.sql}
+        ORDER BY date, portefeuille_id`,
     )
-    .bind(viewerId)
+    .bind(...f.valeurs)
     .all<Point>();
   return results;
 }

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Espace client — Mobile</title>
+<!-- Maquette de reference, lecture seule. Ne pas importer, ne pas copier de lien
+     externe depuis ce fichier : dans le produit les polices viennent de @fontsource
+     et aucune requete du navigateur ne sort du domaine. -->
+<style>
+    body { margin: 0; background: #070A10; color: #E6E1D6; font-family: "IBM Plex Sans", system-ui, sans-serif; font-weight: 300; }
+    a { color: #DCBF88; }
+    a:hover { color: #F0DCB2; }
+    * { box-sizing: border-box; }
+  </style>
+</head>
+<body>
+<div style="width: 390px; height: 844px; background: #070A10; color: #E6E1D6; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden;">
+
+  <!-- EN-TETE -->
+  <header style="padding: 22px 22px 18px; border-bottom: 1px solid rgba(230,225,214,0.10); display: flex; align-items: center; gap: 12px;">
+    <span aria-hidden="true" style="width: 30px; height: 30px; flex: none; border: 1px solid #B99455; display: grid; place-items: center; font-family: 'Newsreader', Georgia, serif; font-size: 13px; color: #DCBF88;">B</span>
+    <span style="flex: 1; min-width: 0;">
+      <span style="display: block; font-family: 'Newsreader', Georgia, serif; font-size: 16px;">BeBess&rsquo;Invest</span>
+      <span style="display: block; font-family: 'IBM Plex Mono', monospace; font-size: 8px; letter-spacing: 0.18em; text-transform: uppercase; color: #98A2B2; margin-top: 1px;">Espace client</span>
+    </span>
+    <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #98A2B2;">C. Vasseur</span>
+  </header>
+
+  <!-- CORPS -->
+  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 24px 22px 0;">
+
+    <p style="margin: 0 0 10px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: #98A2B2;">Valorisation au 13 nov.</p>
+    <p style="margin: 0 0 10px; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 42px; line-height: 1; font-variant-numeric: tabular-nums;">842 150 &euro;</p>
+    <p style="margin: 0 0 22px; font-size: 14px; color: #4FB08D; font-variant-numeric: tabular-nums;">+ 6,4 % en 2026 &nbsp;<span style="color: #98A2B2;">&middot; référence + 5,1 %</span></p>
+
+    <!-- COURBE CONDENSEE -->
+    <svg viewBox="0 0 346 96" width="100%" role="img" aria-label="Évolution du portefeuille depuis l'origine, de 100 à 127,4." style="display: block; margin-bottom: 26px;">
+      <polygon points="0,62 23,59 46,56 69,61 92,68 115,76 138,72 161,66 184,61 207,56 230,51 253,48 276,44 299,38 322,32 346,26 346,96 0,96" fill="rgba(185,148,85,0.10)"></polygon>
+      <polyline points="0,62 23,59 46,56 69,61 92,68 115,76 138,72 161,66 184,61 207,56 230,51 253,48 276,44 299,38 322,32 346,26" fill="none" stroke="#DCBF88" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
+      <circle cx="346" cy="26" r="3.5" fill="#DCBF88"></circle>
+    </svg>
+
+    <!-- REPARTITION -->
+    <p style="margin: 0 0 12px; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: #98A2B2;">Répartition</p>
+    <div style="display: flex; gap: 2px; height: 10px; margin-bottom: 14px;">
+      <div style="flex: 42; background: #B9862B;"></div>
+      <div style="flex: 24; background: #4E9BD6;"></div>
+      <div style="flex: 16; background: #C9684E;"></div>
+      <div style="flex: 11; background: #3FA98A;"></div>
+      <div style="flex: 7; background: #9B7BD4;"></div>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 26px;">
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; color: #98A2B2;"><span aria-hidden="true" style="display: inline-block; width: 7px; height: 7px; background: #B9862B; margin-right: 6px;"></span>Actions 42 %</span>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; color: #98A2B2;"><span aria-hidden="true" style="display: inline-block; width: 7px; height: 7px; background: #4E9BD6; margin-right: 6px;"></span>Oblig. 24 %</span>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; color: #98A2B2;"><span aria-hidden="true" style="display: inline-block; width: 7px; height: 7px; background: #C9684E; margin-right: 6px;"></span>Immo. 16 %</span>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; color: #98A2B2;"><span aria-hidden="true" style="display: inline-block; width: 7px; height: 7px; background: #3FA98A; margin-right: 6px;"></span>Non coté 11 %</span>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; color: #98A2B2;"><span aria-hidden="true" style="display: inline-block; width: 7px; height: 7px; background: #9B7BD4; margin-right: 6px;"></span>Liquid. 7 %</span>
+    </div>
+
+    <!-- ORDRES -->
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px;">
+      <p style="margin: 0; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: #98A2B2;">Ordres en cours</p>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #DCBF88;">3</span>
+    </div>
+    <div style="padding: 13px 0; border-top: 1px solid rgba(230,225,214,0.08); display: flex; justify-content: space-between; gap: 12px;">
+      <span style="font-size: 13px; min-width: 0;">Souscription ETF World</span>
+      <span style="font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap;">15 000 &euro;</span>
+    </div>
+    <div style="padding: 13px 0; border-top: 1px solid rgba(230,225,214,0.08); border-bottom: 1px solid rgba(230,225,214,0.08); display: flex; justify-content: space-between; gap: 12px;">
+      <span style="font-size: 13px; min-width: 0;">Arbitrage fonds euros</span>
+      <span style="font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap;">22 500 &euro;</span>
+    </div>
+
+    <p style="margin: 20px 0 0; font-size: 11px; line-height: 1.7; color: #98A2B2;">Valorisations indicatives. Risque de perte en capital.</p>
+  </div>
+
+  <!-- NAVIGATION BASSE -->
+  <nav aria-label="Navigation" style="flex: none; display: flex; border-top: 1px solid rgba(230,225,214,0.12); background: #0A1018;">
+    <a href="Portail-Mobile.dc.html" style="flex: 1; text-align: center; padding: 16px 4px 22px; text-decoration: none; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: #DCBF88; border-top: 2px solid #B99455; margin-top: -1px;">Synthèse</a>
+    <a href="Portail-Portefeuille.dc.html" style="flex: 1; text-align: center; padding: 16px 4px 22px; text-decoration: none; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: #98A2B2;">Portefeuille</a>
+    <a href="Portail-Ordres.dc.html" style="flex: 1; text-align: center; padding: 16px 4px 22px; text-decoration: none; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: #98A2B2;">Mouvements</a>
+    <a href="Portail-Rapports.dc.html" style="flex: 1; text-align: center; padding: 16px 4px 22px; text-decoration: none; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: #98A2B2;">Rapports</a>
+  </nav>
+
+</div>
+</body>
+</html>

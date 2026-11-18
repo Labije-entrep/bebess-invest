@@ -1,7 +1,7 @@
 // Calculs de l'espace viewer. Déterministe, entiers pour l'argent (centimes) et les parts
 // (centièmes de point). Seules les coordonnées du graphique sont décimales.
 
-import type { Base, Cible, Enveloppe, Ligne, Point } from './db';
+import type { Base, Cible, Enveloppe, Ligne, Point, Portefeuille } from './db';
 import { dateLongue, euros, moisAn, pourcent } from './format';
 
 /** Une ligne par page vue, jamais purgée. */
@@ -40,6 +40,59 @@ export function plusAncien(valeurs: string[]): string | null {
 
 export function partBp(montant: number, total: number): number {
   return total > 0 ? Math.round((montant * 10000) / total) : 0;
+}
+
+// ---------- Choix du portefeuille ----------
+
+export interface Choix {
+  /** Portefeuille choisi ; null = « Tout ». */
+  portefeuille: Portefeuille | null;
+  /** Plusieurs portefeuilles et aucun choisi : chiffres consolidés, cibles non comparées. */
+  consolide: boolean;
+  /** Le sélecteur ne s'affiche que s'il y a de quoi choisir. */
+  selecteur: boolean;
+}
+
+/**
+ * Le choix vient du paramètre `p` de l'adresse, jamais d'un état en mémoire. Un identifiant
+ * qui n'est pas l'un des portefeuilles du viewer vaut « Tout » ; avec un seul portefeuille,
+ * le paramètre est sans effet.
+ */
+export function choixPortefeuille(portefeuilles: Portefeuille[], param: string | null): Choix {
+  if (portefeuilles.length <= 1) return { portefeuille: null, consolide: false, selecteur: false };
+  const choisi = portefeuilles.find((p) => p.id === param) ?? null;
+  return { portefeuille: choisi, consolide: choisi === null, selecteur: true };
+}
+
+/**
+ * Courbe unique de plusieurs portefeuilles : à chaque date de l'union des dates, valeurs et
+ * versements cumulés sont additionnés. Un portefeuille sans point à une date compte pour sa
+ * dernière valeur connue (valeur et versements reportés), et pour zéro avant son premier point.
+ * On additionne des montants, jamais des performances : l'enchaînement se fait ensuite sur
+ * ces totaux, avec performanceEnchainee.
+ */
+export function pointsConsolides(points: Point[]): Point[] {
+  const parPf = new Map<string, Point[]>();
+  for (const p of points) {
+    const l = parPf.get(p.portefeuille_id);
+    if (l) l.push(p); else parPf.set(p.portefeuille_id, [p]);
+  }
+  if (parPf.size <= 1) return points;
+  const listes = [...parPf.values()].map((l) => [...l].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)));
+  const dates = [...new Set(points.map((p) => p.date))].sort();
+  const curseur = listes.map(() => -1);
+  return dates.map((date) => {
+    let valeur = 0;
+    let verse = 0;
+    listes.forEach((l, k) => {
+      while (curseur[k] + 1 < l.length && l[curseur[k] + 1].date <= date) curseur[k]++;
+      if (curseur[k] >= 0) {
+        valeur += l[curseur[k]].valeur_cents;
+        verse += l[curseur[k]].versements_cumules_cents;
+      }
+    });
+    return { id: `tout:${date}`, portefeuille_id: 'tout', date, valeur_cents: valeur, versements_cumules_cents: verse };
+  });
 }
 
 // ---------- Chiffres clés ----------

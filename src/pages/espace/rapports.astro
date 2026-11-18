@@ -1,9 +1,10 @@
 ---
 import Viewer from '../../layouts/Viewer.astro';
-import { documentsDuViewer, ficheDuViewer } from '../../lib/db';
+import Selecteur from '../../components/espace/Selecteur.astro';
+import { documentsDuViewer, ficheDuViewer, portefeuillesDuViewer } from '../../lib/db';
 import { dateCourte, dateLongue, euros } from '../../lib/format';
 import { envDe } from '../../lib/mail';
-import { journaliser } from '../../lib/espace';
+import { choixPortefeuille, journaliser } from '../../lib/espace';
 
 const u = Astro.locals.utilisateur;
 const tenant = Astro.locals.tenant;
@@ -11,6 +12,9 @@ if (!u || !tenant) return Astro.redirect('/connexion');
 const { DB } = envDe(Astro.locals);
 await journaliser(DB, u.id, Astro.url.pathname);
 
+// Fiche et documents sont ceux du client : le sélecteur ne filtre rien ici, il garde le choix.
+const portefeuilles = await portefeuillesDuViewer(DB, tenant.id, u.id);
+const choix = choixPortefeuille(portefeuilles, Astro.url.searchParams.get('p'));
 const [fiche, documents] = await Promise.all([ficheDuViewer(DB, tenant.id, u.id), documentsDuViewer(DB, u.id)]);
 
 const lignes: [string, string | null][] = fiche
@@ -26,6 +30,7 @@ const lignes: [string, string | null][] = fiche
 ---
 <Viewer titre="Stratégie et rapports">
   <h1>Stratégie et rapports</h1>
+  <Selecteur portefeuilles={portefeuilles} choisi={choix.portefeuille?.id ?? null} afficher={choix.selecteur} />
 
   <div class="tb">
     <section>

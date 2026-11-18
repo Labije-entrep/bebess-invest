@@ -21,14 +21,25 @@ export function envDe(locals: unknown): Env {
   return (locals as { runtime: { env: Env } }).runtime.env;
 }
 
-const pilotConsole: Mailer = {
-  async envoyer(destinataire, sujet, texte) {
-    // Développement seulement : en production, le pilote console n'écrit rien (ni adresse, ni lien).
-    if (import.meta.env.DEV) {
+/** Hôtes de développement, sans le port. Hors d'eux, le pilote console refuse d'écrire. */
+const HOTES_LOCAUX = ['localhost', '127.0.0.1'];
+
+function pilotConsole(hote: string): Mailer {
+  return {
+    async envoyer(destinataire, sujet, texte) {
+      // Ce pilote n'est choisi qu'en développement (`astro dev`), ou par MAIL_DRIVER=console posé
+      // exprès pour essayer un build en local. Hors localhost, il lève : une production mal
+      // configurée n'envoie plus aucun courriel (panne visible) au lieu d'écrire dans les journaux
+      // de Cloudflare des liens de connexion encore valables (fuite silencieuse).
+      if (!HOTES_LOCAUX.includes(hote.toLowerCase())) {
+        throw new Error(
+          `MAIL_DRIVER=console refusé sur l'hôte « ${hote} » : ce pilote ne sert qu'en local (localhost, 127.0.0.1). Aucun e-mail envoyé, rien écrit.`,
+        );
+      }
       console.log(`\n[mail:console] À : ${destinataire}\n[mail:console] Sujet : ${sujet}\n${texte}\n`);
-    }
-  },
-};
+    },
+  };
+}
 
 function pilotScaleway(env: Env): Mailer {
   return {
@@ -59,9 +70,10 @@ function pilotScaleway(env: Env): Mailer {
   };
 }
 
-export function creerMailer(env: Env): Mailer {
+/** `hote` : nom d'hôte de la requête en cours, sans le port (Astro.url.hostname). */
+export function creerMailer(env: Env, hote: string): Mailer {
   const pilote = env.MAIL_DRIVER ?? (import.meta.env.DEV ? 'console' : 'scaleway');
-  if (pilote === 'console') return pilotConsole;
+  if (pilote === 'console') return pilotConsole(hote);
   if (pilote === 'scaleway') return pilotScaleway(env);
   throw new Error(`MAIL_DRIVER inconnu : ${pilote}`);
 }

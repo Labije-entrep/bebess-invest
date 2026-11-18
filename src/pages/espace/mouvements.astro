@@ -1,15 +1,21 @@
 ---
 import Viewer from '../../layouts/Viewer.astro';
-import { mouvementsDuViewer } from '../../lib/db';
+import Selecteur from '../../components/espace/Selecteur.astro';
+import { mouvementsDuViewer, portefeuillesDuViewer } from '../../lib/db';
 import { dateCourte, euros } from '../../lib/format';
 import { envDe } from '../../lib/mail';
-import { journaliser } from '../../lib/espace';
+import { choixPortefeuille, journaliser } from '../../lib/espace';
 
 const u = Astro.locals.utilisateur;
-if (!u) return Astro.redirect('/connexion');
+const tenant = Astro.locals.tenant;
+if (!u || !tenant) return Astro.redirect('/connexion');
 const { DB } = envDe(Astro.locals);
 await journaliser(DB, u.id, Astro.url.pathname);
 
+// Mouvements et documents sont ceux du client, pas d'un portefeuille : le sélecteur ne filtre
+// rien ici, il garde le choix d'une page à l'autre.
+const portefeuilles = await portefeuillesDuViewer(DB, tenant.id, u.id);
+const choix = choixPortefeuille(portefeuilles, Astro.url.searchParams.get('p'));
 const tous = await mouvementsDuViewer(DB, u.id);
 const enCours = tous.filter((m) => m.en_cours === 1);
 const historique = tous.filter((m) => m.en_cours !== 1);
@@ -17,10 +23,14 @@ const historique = tous.filter((m) => m.en_cours !== 1);
 const annees = [...new Set(historique.map((m) => m.date.slice(0, 4)))].sort().reverse();
 const demande = Astro.url.searchParams.get('annee') ?? '';
 const annee = annees.includes(demande) ? demande : '';
+// Les liens d'année gardent le portefeuille choisi.
+const pChoisi = choix.portefeuille ? `p=${encodeURIComponent(choix.portefeuille.id)}` : '';
+const lienAnnee = (a: string) => { const q = [a ? `annee=${a}` : '', pChoisi].filter(Boolean).join('&'); return `/espace/mouvements${q ? `?${q}` : ''}`; };
 const visibles = annee ? historique.filter((m) => m.date.startsWith(annee)) : historique;
 ---
 <Viewer titre="Mouvements">
   <h1>Mouvements</h1>
+  <Selecteur portefeuilles={portefeuilles} choisi={choix.portefeuille?.id ?? null} afficher={choix.selecteur} />
 
   <section class="bloc">
     <span class="etiquette">En cours</span>
@@ -45,8 +55,8 @@ const visibles = annee ? historique.filter((m) => m.date.startsWith(annee)) : hi
   <section class="bloc">
     <span class="etiquette">Historique</span>
     <nav class="filtres" aria-label="Filtre par année">
-      <a href="/espace/mouvements" aria-current={annee === '' ? 'true' : undefined}>Toutes</a>
-      {annees.map((a) => <a href={`/espace/mouvements?annee=${a}`} aria-current={annee === a ? 'true' : undefined}>{a}</a>)}
+      <a href={lienAnnee('')} aria-current={annee === '' ? 'true' : undefined}>Toutes</a>
+      {annees.map((a) => <a href={lienAnnee(a)} aria-current={annee === a ? 'true' : undefined}>{a}</a>)}
     </nav>
     <div class="defile">
       <table class="table table-large">

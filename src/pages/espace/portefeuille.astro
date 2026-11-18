@@ -1,20 +1,27 @@
 ---
 import Viewer from '../../layouts/Viewer.astro';
-import { enveloppesDuViewer, lignesDesEnveloppes } from '../../lib/db';
+import Selecteur from '../../components/espace/Selecteur.astro';
+import { enveloppesDuViewer, lignesDesEnveloppes, portefeuillesDuViewer } from '../../lib/db';
 import { euros, pourcent } from '../../lib/format';
 import { envDe } from '../../lib/mail';
-import { arrete, journaliser, partBp, signe, signeBp, teinte } from '../../lib/espace';
+import { arrete, choixPortefeuille, journaliser, partBp, signe, signeBp, teinte } from '../../lib/espace';
 
 const u = Astro.locals.utilisateur;
-if (!u) return Astro.redirect('/connexion');
+const tenant = Astro.locals.tenant;
+if (!u || !tenant) return Astro.redirect('/connexion');
 const { DB } = envDe(Astro.locals);
 await journaliser(DB, u.id, Astro.url.pathname);
 
-const enveloppes = await enveloppesDuViewer(DB, u.id);
+const portefeuilles = await portefeuillesDuViewer(DB, tenant.id, u.id);
+const choix = choixPortefeuille(portefeuilles, Astro.url.searchParams.get('p'));
+const pf = choix.portefeuille?.id ?? null;
+const enveloppes = await enveloppesDuViewer(DB, tenant.id, u.id, pf);
+const libelleDe = new Map(portefeuilles.map((x) => [x.id, x.libelle]));
 const lignes = await lignesDesEnveloppes(DB, enveloppes.map((e) => e.id));
 ---
 <Viewer titre="Portefeuille">
   <h1>Portefeuille</h1>
+  <Selecteur portefeuilles={portefeuilles} choisi={pf} afficher={choix.selecteur} />
 
   {enveloppes.length === 0 && <p class="aide">Aucune enveloppe à afficher.</p>}
 
@@ -26,7 +33,7 @@ const lignes = await lignesDesEnveloppes(DB, enveloppes.map((e) => e.id));
           <div>
             <h2>{e.libelle}</h2>
             <span class="etiquette">
-              {[e.etablissement, e.ouverte_en ? `ouverte en ${e.ouverte_en.slice(0, 4)}` : null, `arrêtée au ${arrete(e.arrete_le)}`].filter(Boolean).join(' · ')}
+              {[choix.consolide ? libelleDe.get(e.portefeuille_id) : null, e.etablissement, e.ouverte_en ? `ouverte en ${e.ouverte_en.slice(0, 4)}` : null, `arrêtée au ${arrete(e.arrete_le)}`].filter(Boolean).join(' · ')}
             </span>
           </div>
           <div class="droite">

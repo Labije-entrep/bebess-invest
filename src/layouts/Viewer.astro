@@ -13,6 +13,10 @@ const liens: [string, string][] = [
   ['/espace/rapports', 'Stratégie et rapports'],
 ];
 const ici = Astro.url.pathname.replace(/\/$/, '');
+// Le choix de portefeuille (?p=) suit le viewer d'une page à l'autre ; la page elle-même
+// ignore un identifiant qui n'est pas l'un des siens.
+const choix = Astro.url.searchParams.get('p');
+const suite = choix && /^[\w-]{1,64}$/.test(choix) ? `?p=${encodeURIComponent(choix)}` : '';
 ---
 <!doctype html>
 <html lang="fr">
@@ -27,7 +31,7 @@ const ici = Astro.url.pathname.replace(/\/$/, '');
       <div class="wrap esp-barre">
         <button class="btn esp-burger" type="button" aria-expanded="false" aria-controls="esp-menu" data-menu>Menu</button>
         <nav id="esp-menu" class="esp-menu" aria-label="Navigation">
-          {liens.map(([href, libelle]) => <a href={href} aria-current={ici === href ? 'page' : undefined}>{libelle}</a>)}
+          {liens.map(([href, libelle]) => <a href={`${href}${suite}`} aria-current={ici === href ? 'page' : undefined}>{libelle}</a>)}
         </nav>
         <div class="esp-utilisateur">
           <span>{nom}</span>
