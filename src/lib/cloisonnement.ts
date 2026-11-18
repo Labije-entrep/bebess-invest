@@ -6,7 +6,8 @@
 import type { Base } from './db';
 
 export type Ressource =
-  | 'viewer' | 'enveloppe' | 'ligne' | 'cible' | 'point' | 'mouvement' | 'document' | 'note';
+  | 'viewer' | 'enveloppe' | 'ligne' | 'cible' | 'point' | 'mouvement' | 'document' | 'note'
+  | 'contact' | 'sujet' | 'echange' | 'membre';
 
 // enveloppe, cible et point sont rattachées au portefeuille, qui porte le tenant.
 const VIA_PORTEFEUILLE = (table: string) =>
@@ -27,6 +28,11 @@ const REQUETES: Record<Ressource, string> = {
             JOIN portefeuille p ON p.id = e.portefeuille_id
            WHERE l.id = ? AND p.tenant_id = ?`,
   note: 'SELECT 1 AS ok FROM note_marche WHERE id = ? AND tenant_id = ?',
+  // Module de suivi : ces tables portent directement le locataire.
+  contact: 'SELECT 1 AS ok FROM contact WHERE id = ? AND tenant_id = ?',
+  sujet: 'SELECT 1 AS ok FROM sujet WHERE id = ? AND tenant_id = ?',
+  echange: 'SELECT 1 AS ok FROM echange WHERE id = ? AND tenant_id = ?',
+  membre: 'SELECT 1 AS ok FROM membre WHERE id = ? AND tenant_id = ?',
 };
 
 export class AccesRefuse extends Error {

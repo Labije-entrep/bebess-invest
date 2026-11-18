@@ -47,7 +47,8 @@ const GARDES: { prefixe: string; roles: Role[] }[] = [
 ];
 
 // Jamais en cache partagé : pages authentifiées, et pages qui lisent ou posent le cookie.
-const PRIVES = [...GARDES.map((g) => g.prefixe), '/connexion', '/deconnexion'];
+// L'API du suivi n'est pas une « garde » : elle répond 401/403 en JSON au lieu de rediriger (src/lib/api-suivi.ts).
+const PRIVES = [...GARDES.map((g) => g.prefixe), '/connexion', '/deconnexion', '/api/suivi'];
 
 function sous(chemin: string, prefixe: string): boolean {
   return chemin === prefixe || chemin.startsWith(`${prefixe}/`);
