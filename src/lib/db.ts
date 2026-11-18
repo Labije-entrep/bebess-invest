@@ -58,15 +58,23 @@ export interface Portefeuille {
   cree_le: string;
 }
 
-/**
- * Portefeuille affiché par le portail : le premier du viewer (ordre, puis id). Un viewer
- * peut en avoir plusieurs ; le portail n'en montre qu'un tant que le module de suivi ne
- * les distingue pas. Fragment SQL : un seul « ? », à lier à l'identifiant du viewer.
- */
-export const PORTEFEUILLE_DU_VIEWER =
-  '(SELECT id FROM portefeuille WHERE viewer_id = ? ORDER BY ordre, id LIMIT 1)';
-
 export const COLONNES_PORTEFEUILLE = 'id, tenant_id, viewer_id, libelle, type, ordre, cree_le';
+
+/**
+ * Filtre sur les portefeuilles d'un viewer, toujours bornés au locataire. Sans portefeuilleId :
+ * tous ses portefeuilles. Avec : celui-là seulement, et seulement s'il est bien à ce viewer
+ * et à ce locataire. Les « ? » sont à lier dans l'ordre de `valeurs`.
+ */
+export function dansPortefeuilles(
+  tenantId: string,
+  viewerId: string,
+  portefeuilleId?: string | null,
+): { sql: string; valeurs: string[] } {
+  const tous = '(SELECT id FROM portefeuille WHERE viewer_id = ? AND tenant_id = ?)';
+  return portefeuilleId
+    ? { sql: `portefeuille_id = ? AND portefeuille_id IN ${tous}`, valeurs: [portefeuilleId, viewerId, tenantId] }
+    : { sql: `portefeuille_id IN ${tous}`, valeurs: [viewerId, tenantId] };
+}
 
 export async function portefeuillesDuViewer(db: Base, tenantId: string, viewerId: string): Promise<Portefeuille[]> {
   const { results } = await db
@@ -214,16 +222,23 @@ export function ficheDuViewer(db: Base, tenantId: string, viewerId: string): Pro
     .first<Fiche>();
 }
 
-export async function enveloppesDuViewer(db: Base, viewerId: string): Promise<Enveloppe[]> {
+/** Enveloppes de tous les portefeuilles du viewer, ou d'un seul si portefeuilleId est donné. */
+export async function enveloppesDuViewer(
+  db: Base,
+  tenantId: string,
+  viewerId: string,
+  portefeuilleId?: string | null,
+): Promise<Enveloppe[]> {
+  const f = dansPortefeuilles(tenantId, viewerId, portefeuilleId);
   const { results } = await db
     .prepare(
       `SELECT id, portefeuille_id, libelle, etablissement, ouverte_en, valorisation_cents,
               perf_bp, arrete_le, rang
          FROM enveloppe
-        WHERE portefeuille_id = ${PORTEFEUILLE_DU_VIEWER}
-        ORDER BY rang, id`,
+        WHERE ${f.sql}
+        ORDER BY portefeuille_id, rang, id`,
     )
-    .bind(viewerId)
+    .bind(...f.valeurs)
     .all<Enveloppe>();
   return results;
 }
@@ -245,25 +260,41 @@ export async function lignesDesEnveloppes(db: Base, enveloppeIds: string[]): Pro
   return results;
 }
 
-export async function ciblesDuViewer(db: Base, viewerId: string): Promise<Cible[]> {
+export async function ciblesDuViewer(
+  db: Base,
+  tenantId: string,
+  viewerId: string,
+  portefeuilleId?: string | null,
+): Promise<Cible[]> {
+  const f = dansPortefeuilles(tenantId, viewerId, portefeuilleId);
   const { results } = await db
     .prepare(`SELECT id, portefeuille_id, classe, cible_bp, rang FROM cible
-        WHERE portefeuille_id = ${PORTEFEUILLE_DU_VIEWER} ORDER BY rang, id`)
-    .bind(viewerId)
+        WHERE ${f.sql} ORDER BY portefeuille_id, rang, id`)
+    .bind(...f.valeurs)
     .all<Cible>();
   return results;
 }
 
-/** Courbe mensuelle, du plus ancien au plus récent. */
-export async function pointsDuViewer(db: Base, viewerId: string): Promise<Point[]> {
+/**
+ * Points de tous les portefeuilles du viewer (ou d'un seul), du plus ancien au plus récent.
+ * Sur plusieurs portefeuilles, un même jour peut apparaître plusieurs fois : c'est
+ * `pointsConsolides` (espace.ts) qui en fait une courbe unique.
+ */
+export async function pointsDuViewer(
+  db: Base,
+  tenantId: string,
+  viewerId: string,
+  portefeuilleId?: string | null,
+): Promise<Point[]> {
+  const f = dansPortefeuilles(tenantId, viewerId, portefeuilleId);
   const { results } = await db
     .prepare(
       `SELECT id, portefeuille_id, date, valeur_cents, versements_cumules_cents
          FROM point
-        WHERE portefeuille_id = ${PORTEFEUILLE_DU_VIEWER}
-        ORDER BY date`,
+        WHERE ${f.sql}
+        ORDER BY date, portefeuille_id`,
     )
-    .bind(viewerId)
+    .bind(...f.valeurs)
     .all<Point>();
   return results;
 }

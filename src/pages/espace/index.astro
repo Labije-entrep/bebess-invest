@@ -1,15 +1,16 @@
 ---
 import Viewer from '../../layouts/Viewer.astro';
 import Courbe from '../../components/espace/Courbe.astro';
+import Selecteur from '../../components/espace/Selecteur.astro';
 import {
   ciblesDuViewer, enveloppesDuViewer, ficheDuViewer, lignesDesEnveloppes,
-  mouvementsDuViewer, pointsDuViewer,
+  mouvementsDuViewer, pointsDuViewer, portefeuillesDuViewer,
 } from '../../lib/db';
 import { dateLongue, euros, pourcent } from '../../lib/format';
 import { envDe } from '../../lib/mail';
 import {
-  arrete, courbe as calculerCourbe, indicateurs, journaliser, plusAncien,
-  repartition, signe, signeBp, teinte,
+  arrete, choixPortefeuille, courbe as calculerCourbe, indicateurs, journaliser, plusAncien,
+  pointsConsolides, repartition, signe, signeBp, teinte,
 } from '../../lib/espace';
 
 const u = Astro.locals.utilisateur;
@@ -18,13 +19,18 @@ if (!u || !tenant) return Astro.redirect('/connexion');
 const { DB } = envDe(Astro.locals);
 await journaliser(DB, u.id, Astro.url.pathname);
 
-const [fiche, enveloppes, cibles, points, mouvements] = await Promise.all([
+const portefeuilles = await portefeuillesDuViewer(DB, tenant.id, u.id);
+const choix = choixPortefeuille(portefeuilles, Astro.url.searchParams.get('p'));
+const pf = choix.portefeuille?.id ?? null;
+const [fiche, enveloppes, cibles, pointsBruts, mouvements] = await Promise.all([
   ficheDuViewer(DB, tenant.id, u.id),
-  enveloppesDuViewer(DB, u.id),
-  ciblesDuViewer(DB, u.id),
-  pointsDuViewer(DB, u.id),
+  enveloppesDuViewer(DB, tenant.id, u.id, pf),
+  // Les cibles se définissent par portefeuille : rien à lire sur « Tout » quand il y en a plusieurs.
+  choix.consolide ? Promise.resolve([]) : ciblesDuViewer(DB, tenant.id, u.id, pf),
+  pointsDuViewer(DB, tenant.id, u.id, pf),
   mouvementsDuViewer(DB, u.id),
 ]);
+const points = pointsConsolides(pointsBruts);
 const lignes = await lignesDesEnveloppes(DB, enveloppes.map((e) => e.id));
 
 const ind = indicateurs(points, enveloppes, lignes);
@@ -41,6 +47,7 @@ const synchro = plusAncien([
 const totalLignes = classes.reduce((s, c) => s + c.montant, 0);
 ---
 <Viewer titre="Tableau de bord">
+  <Selecteur portefeuilles={portefeuilles} choisi={pf} afficher={choix.selecteur} />
   <div class="esp-entete">
     <div>
       <span class="etiquette">{fiche?.mandat_ref ? `Mandat ${fiche.mandat_ref}` : 'Mandat'}</span>
@@ -96,7 +103,7 @@ const totalLignes = classes.reduce((s, c) => s + c.montant, 0);
         <div class="defile">
           <table class="table table-large">
             <thead>
-              <tr><th>Classe</th><th class="num">Montant</th><th class="num">Part</th><th class="num">Cible</th><th class="num">Écart</th></tr>
+              <tr><th>Classe</th><th class="num">Montant</th><th class="num">Part</th>{!choix.consolide && <><th class="num">Cible</th><th class="num">Écart</th></>}</tr>
             </thead>
             <tbody>
               {classes.map((c) => (
@@ -104,13 +111,18 @@ const totalLignes = classes.reduce((s, c) => s + c.montant, 0);
                   <td><span class="pastille" style={`background: ${c.couleur};`}></span>{c.classe}</td>
                   <td class="num">{euros(c.montant)}</td>
                   <td class="num">{pourcent(c.partBp)}</td>
-                  <td class="num">{c.cibleBp === null ? '—' : pourcent(c.cibleBp)}</td>
-                  <td class={`num ${c.ecartBp !== null && c.ecartBp > 0 ? 'laiton' : 'sec'}`}>{c.ecartBp === null ? '—' : signeBp(c.ecartBp)}</td>
+                  {!choix.consolide && (
+                    <>
+                      <td class="num">{c.cibleBp === null ? '—' : pourcent(c.cibleBp)}</td>
+                      <td class={`num ${c.ecartBp !== null && c.ecartBp > 0 ? 'laiton' : 'sec'}`}>{c.ecartBp === null ? '—' : signeBp(c.ecartBp)}</td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        {choix.consolide && <p class="aide">Les cibles sont définies par portefeuille.</p>}
       </section>
     </div>
 

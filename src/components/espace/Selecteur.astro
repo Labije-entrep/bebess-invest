@@ -1,0 +1,26 @@
+---
+// Sélecteur de portefeuille de l'espace viewer. Rien ne s'affiche s'il n'y a pas de quoi choisir.
+// Le choix est dans l'adresse (?p=), donc un lien partagé rouvre la même vue.
+import type { Portefeuille } from '../../lib/db';
+
+interface Props {
+  portefeuilles: Portefeuille[];
+  /** Identifiant choisi ; null = « Tout ». */
+  choisi: string | null;
+  afficher: boolean;
+}
+const { portefeuilles, choisi, afficher } = Astro.props;
+const vers = (id: string | null) => {
+  const u = new URL(Astro.url);
+  if (id) u.searchParams.set('p', id); else u.searchParams.delete('p');
+  return `${u.pathname}${u.search}`;
+};
+---
+{afficher && (
+  <nav class="filtres" aria-label="Portefeuille">
+    <a href={vers(null)} aria-current={choisi === null ? 'true' : undefined}>Tout</a>
+    {portefeuilles.map((p) => (
+      <a href={vers(p.id)} aria-current={choisi === p.id ? 'true' : undefined}>{p.libelle}</a>
+    ))}
+  </nav>
+)}
