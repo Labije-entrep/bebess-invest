@@ -20,7 +20,7 @@ Un lot dont le prérequis n'est pas coché ne démarre pas.
 | 01b | Correctif : espace viewer sur tous ses portefeuilles | — | fait | eb64adc |
 | 01c | Finitions : import, pilote mail, archivage, second locataire | — | fait | 3408e9b |
 | 02 | API JSON et synchronisation | — | fait | 42a9443 |
-| 03 | Module de suivi : la liste des contacts | — | fait | (voir journal) |
+| 03 | Module de suivi : la liste des contacts | — | fait | 1357619 |
 | 04 | Module de suivi : la fiche | — | à faire | |
 | 05 | Kanban et parcours | — | à faire | |
 | 06 | Actus, bibliothèque, cours | — | à faire | |
