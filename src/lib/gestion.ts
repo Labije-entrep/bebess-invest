@@ -6,8 +6,10 @@
 import { accueilDuRole } from './auth';
 import { AccesRefuse, appartient, exiger } from './cloisonnement';
 import { creerMailer, envDe } from './mail';
+import { validateurDe } from './listes';
 import {
   enveloppesDuViewer,
+  PORTEFEUILLE_DU_VIEWER as PF,
   lignesDesEnveloppes,
   type Base,
   type Cible,
@@ -150,14 +152,14 @@ export async function viewersResumes(db: Base, tenantId: string): Promise<Viewer
   const { results } = await db
     .prepare(
       `SELECT u.id, u.nom, u.email, u.actif,
-              COALESCE((SELECT SUM(e.valorisation_cents) FROM enveloppe e WHERE e.viewer_id = u.id), 0) AS encours,
+              COALESCE((SELECT SUM(e.valorisation_cents) FROM enveloppe e WHERE e.portefeuille_id = (SELECT id FROM portefeuille WHERE viewer_id = u.id ORDER BY ordre, id LIMIT 1)), 0) AS encours,
               -- Fraîcheur réelle : la plus ancienne date parmi les enveloppes, les lignes et le dernier point.
               (SELECT MIN(d) FROM (
-                 SELECT e.arrete_le AS d FROM enveloppe e WHERE e.viewer_id = u.id
+                 SELECT e.arrete_le AS d FROM enveloppe e WHERE e.portefeuille_id = (SELECT id FROM portefeuille WHERE viewer_id = u.id ORDER BY ordre, id LIMIT 1)
                  UNION ALL
-                 SELECT l.arrete_le FROM ligne l JOIN enveloppe e ON e.id = l.enveloppe_id WHERE e.viewer_id = u.id
+                 SELECT l.arrete_le FROM ligne l JOIN enveloppe e ON e.id = l.enveloppe_id WHERE e.portefeuille_id = (SELECT id FROM portefeuille WHERE viewer_id = u.id ORDER BY ordre, id LIMIT 1)
                  UNION ALL
-                 SELECT MAX(p.date) FROM point p WHERE p.viewer_id = u.id
+                 SELECT MAX(p.date) FROM point p WHERE p.portefeuille_id = (SELECT id FROM portefeuille WHERE viewer_id = u.id ORDER BY ordre, id LIMIT 1)
                )) AS arrete
          FROM utilisateur u
         WHERE u.tenant_id = ? AND u.role = 'viewer'
@@ -220,13 +222,22 @@ export async function creerViewer(
   }
   if (Object.keys(erreurs).length) return { erreurs };
   const id = nouvelId();
-  await db
-    .prepare(
-      `INSERT INTO utilisateur (id, tenant_id, email, nom, role, actif, cree_le)
-       VALUES (?, ?, ?, ?, 'viewer', 1, ?)`,
-    )
-    .bind(id, tenantId, email, nom, maintenant())
-    .run();
+  const now = maintenant();
+  // Un viewer sans portefeuille n'existe pas : les deux lignes sont écrites ensemble.
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO utilisateur (id, tenant_id, email, nom, role, actif, cree_le)
+         VALUES (?, ?, ?, ?, 'viewer', 1, ?)`,
+      )
+      .bind(id, tenantId, email, nom, now),
+    db
+      .prepare(
+        `INSERT INTO portefeuille (id, tenant_id, viewer_id, libelle, type, ordre, cree_le)
+         VALUES (?, ?, ?, 'Patrimoine', 'personne', 0, ?)`,
+      )
+      .bind(nouvelId(), tenantId, id, now),
+  ]);
   return { id, email };
 }
 
@@ -280,9 +291,9 @@ export async function traiter(
     case 'enveloppes':
       return { onglet: 'enveloppes', erreurs: await enregistrerEnveloppes(db, viewerId, f) };
     case 'lignes':
-      return { onglet: 'lignes', erreurs: await enregistrerLignes(db, viewerId, f) };
+      return { onglet: 'lignes', erreurs: await enregistrerLignes(db, tenantId, viewerId, f) };
     case 'cibles':
-      return { onglet: 'cibles', erreurs: await enregistrerCibles(db, viewerId, f) };
+      return { onglet: 'cibles', erreurs: await enregistrerCibles(db, tenantId, viewerId, f) };
     case 'point': {
       const r = await enregistrerPoint(db, viewerId, f);
       return { onglet: 'historique', ...r };
@@ -295,12 +306,12 @@ export async function traiter(
       return { onglet: 'historique', erreurs: await importerPoints(db, viewerId, f) };
     case 'suppr_point':
       await db
-        .prepare('DELETE FROM point WHERE id = ? AND viewer_id = ?')
+        .prepare(`DELETE FROM point WHERE id = ? AND portefeuille_id = ${PF}`)
         .bind(texte(f.get('id'), 64), viewerId)
         .run();
       return { onglet: 'historique', erreurs: {} };
     case 'mouvement':
-      return { onglet: 'mouvements', erreurs: await enregistrerMouvement(db, viewerId, f) };
+      return { onglet: 'mouvements', erreurs: await enregistrerMouvement(db, tenantId, viewerId, f) };
     case 'suppr_mouvement':
       await db
         .prepare('DELETE FROM mouvement WHERE id = ? AND viewer_id = ?')
@@ -312,22 +323,10 @@ export async function traiter(
   }
 }
 
-export const STATUTS: [string, string][] = [
-  ['en_preparation', 'En préparation'],
-  ['transmis', 'Transmis'],
-  ['chez_etablissement', 'Chez l\'établissement'],
-  ['execute', 'Exécuté'],
-  ['archive', 'Archivé'],
-];
-export const CLASSES: [string, string][] = [
-  ['actions', 'Actions'],
-  ['obligations', 'Obligations'],
-  ['immobilier', 'Immobilier'],
-  ['private_equity', 'Private equity'],
-  ['liquidites', 'Liquidités'],
-];
-const MSG_CLASSE = 'Choisissez une classe dans la liste.';
-const estClasse = (c: string) => CLASSES.some(([k]) => k === c);
+/** Options des listes du cabinet, pour les écrans : [cle, libelle], dans l'ordre. */
+export async function optionsDe(db: Base, tenantId: string, liste: 'classe_actif' | 'statut_mouvement'): Promise<[string, string][]> {
+  return (await validateurDe(db, tenantId, liste)).options;
+}
 const norm = (s: string) => s.trim().toLowerCase();
 
 const MSG_EUROS = 'Montant en euros, avec virgule (ex. 25000,00).';
@@ -420,17 +419,17 @@ async function enregistrerEnveloppes(db: Base, viewerId: string, f: FormData): P
   if (Object.keys(e).length) return e;
   for (const id of suppr) {
     await db
-      .prepare('DELETE FROM ligne WHERE enveloppe_id IN (SELECT id FROM enveloppe WHERE id = ? AND viewer_id = ?)')
+      .prepare(`DELETE FROM ligne WHERE enveloppe_id IN (SELECT id FROM enveloppe WHERE id = ? AND portefeuille_id = ${PF})`)
       .bind(id, viewerId)
       .run();
-    await db.prepare('DELETE FROM enveloppe WHERE id = ? AND viewer_id = ?').bind(id, viewerId).run();
+    await db.prepare(`DELETE FROM enveloppe WHERE id = ? AND portefeuille_id = ${PF}`).bind(id, viewerId).run();
   }
   for (const { id, v } of maj) {
     await db
       .prepare(
         `UPDATE enveloppe SET libelle = ?, etablissement = ?, ouverte_en = ?, valorisation_cents = ?,
                 perf_bp = ?, arrete_le = ?, rang = ?
-          WHERE id = ? AND viewer_id = ?`,
+          WHERE id = ? AND portefeuille_id = ${PF}`,
       )
       .bind(...v, id, viewerId)
       .run();
@@ -438,9 +437,9 @@ async function enregistrerEnveloppes(db: Base, viewerId: string, f: FormData): P
   for (const v of ajout) {
     await db
       .prepare(
-        `INSERT INTO enveloppe (id, viewer_id, libelle, etablissement, ouverte_en, valorisation_cents,
+        `INSERT INTO enveloppe (id, portefeuille_id, libelle, etablissement, ouverte_en, valorisation_cents,
                                 perf_bp, arrete_le, rang)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ${PF}, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(nouvelId(), viewerId, ...v)
       .run();
@@ -461,8 +460,9 @@ async function recalculerEnveloppe(db: Base, enveloppeId: string): Promise<void>
     .run();
 }
 
-async function enregistrerLignes(db: Base, viewerId: string, f: FormData): Promise<Erreurs> {
+async function enregistrerLignes(db: Base, tenantId: string, viewerId: string, f: FormData): Promise<Erreurs> {
   const e: Erreurs = {};
+  const classes = await validateurDe(db, tenantId, 'classe_actif');
   const envs = new Set((await enveloppesDuViewer(db, viewerId)).map((x) => x.id));
   const n = entier(f.get('n'), 0, 600);
   const suppr: { id: string; env: string }[] = [];
@@ -477,7 +477,7 @@ async function enregistrerLignes(db: Base, viewerId: string, f: FormData): Promi
     const pvS = g('pv', 20), fraisS = g('frais', 20), arreteS = g('arrete', 10);
     if (!id && !libelle && !classe && !valoS && !pvS && !fraisS && !arreteS) continue;
     if (!libelle) e[`r${i}_libelle`] = 'Libellé requis.';
-    if (!estClasse(classe)) e[`r${i}_classe`] = MSG_CLASSE;
+    if (!classes.valide(classe)) e[`r${i}_classe`] = classes.message;
     const valo = lireEuros(valoS);
     if (valo === null) e[`r${i}_valo`] = MSG_EUROS;
     const pv = pvS ? lireEuros(pvS) : null;
@@ -517,8 +517,9 @@ async function enregistrerLignes(db: Base, viewerId: string, f: FormData): Promi
   return {};
 }
 
-async function enregistrerCibles(db: Base, viewerId: string, f: FormData): Promise<Erreurs> {
+async function enregistrerCibles(db: Base, tenantId: string, viewerId: string, f: FormData): Promise<Erreurs> {
   const e: Erreurs = {};
+  const classes = await validateurDe(db, tenantId, 'classe_actif');
   const n = entier(f.get('n'), 0, 60);
   const lignes: [string, number][] = [];
   const vues = new Set<string>();
@@ -527,7 +528,7 @@ async function enregistrerCibles(db: Base, viewerId: string, f: FormData): Promi
     const classe = texte(f.get(`r${i}_classe`), 80);
     const pctS = texte(f.get(`r${i}_pct`), 12);
     if (!classe && !pctS) continue;
-    if (!estClasse(classe)) e[`r${i}_classe`] = MSG_CLASSE;
+    if (!classes.valide(classe)) e[`r${i}_classe`] = classes.message;
     else if (vues.has(classe)) e[`r${i}_classe`] = 'Classe en double.';
     vues.add(classe);
     const bp = lireBp(pctS);
@@ -539,10 +540,10 @@ async function enregistrerCibles(db: Base, viewerId: string, f: FormData): Promi
     e.total = `Le total doit faire 100,00 % ; il fait ${formBp(total)} %.`;
   }
   if (Object.keys(e).length) return e;
-  await db.prepare('DELETE FROM cible WHERE viewer_id = ?').bind(viewerId).run();
+  await db.prepare(`DELETE FROM cible WHERE portefeuille_id = ${PF}`).bind(viewerId).run();
   for (let i = 0; i < lignes.length; i++) {
     await db
-      .prepare('INSERT INTO cible (id, viewer_id, classe, cible_bp, rang) VALUES (?, ?, ?, ?, ?)')
+      .prepare(`INSERT INTO cible (id, portefeuille_id, classe, cible_bp, rang) VALUES (?, ${PF}, ?, ?, ?)`)
       .bind(nouvelId(), viewerId, lignes[i][0], lignes[i][1], i)
       .run();
   }
@@ -572,19 +573,19 @@ export function ecartAllocation(lignes: Ligne[], cibles: Cible[]): EcartClasse[]
 
 async function ecrirePoint(db: Base, viewerId: string, date: string, valeur: number, verse: number) {
   const ex = await db
-    .prepare('SELECT id FROM point WHERE viewer_id = ? AND date = ?')
+    .prepare(`SELECT id FROM point WHERE portefeuille_id = ${PF} AND date = ?`)
     .bind(viewerId, date)
     .first<{ id: string }>();
   if (ex) {
     await db
-      .prepare('UPDATE point SET valeur_cents = ?, versements_cumules_cents = ? WHERE id = ? AND viewer_id = ?')
+      .prepare(`UPDATE point SET valeur_cents = ?, versements_cumules_cents = ? WHERE id = ? AND portefeuille_id = ${PF}`)
       .bind(valeur, verse, ex.id, viewerId)
       .run();
   } else {
     await db
       .prepare(
-        `INSERT INTO point (id, viewer_id, date, valeur_cents, versements_cumules_cents)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO point (id, portefeuille_id, date, valeur_cents, versements_cumules_cents)
+         VALUES (?, ${PF}, ?, ?, ?)`,
       )
       .bind(nouvelId(), viewerId, date, valeur, verse)
       .run();
@@ -618,7 +619,7 @@ export async function pointPrecedent(db: Base, viewerId: string, date: string): 
   const r = await db
     .prepare(
       `SELECT date, valeur_cents, versements_cumules_cents FROM point
-        WHERE viewer_id = ? AND date < ? ORDER BY date DESC LIMIT 1`,
+        WHERE portefeuille_id = ${PF} AND date < ? ORDER BY date DESC LIMIT 1`,
     )
     .bind(viewerId, date)
     .first<{ date: string; valeur_cents: number; versements_cumules_cents: number }>();
@@ -642,7 +643,7 @@ export async function apercuPoint(
   const precedent = await pointPrecedent(db, viewerId, date);
   const perfBp = perfDuMois(precedent, valeurCents, verseCents);
   const existant = await db
-    .prepare('SELECT 1 AS ok FROM point WHERE viewer_id = ? AND date = ?')
+    .prepare(`SELECT 1 AS ok FROM point WHERE portefeuille_id = ${PF} AND date = ?`)
     .bind(viewerId, date)
     .first();
   return {
@@ -685,8 +686,8 @@ async function enregistrerPoint(
 export function pointAu(db: Base, viewerId: string, date: string): Promise<Point | null> {
   return db
     .prepare(
-      `SELECT id, viewer_id, date, valeur_cents, versements_cumules_cents
-         FROM point WHERE viewer_id = ? AND date = ?`,
+      `SELECT id, portefeuille_id, date, valeur_cents, versements_cumules_cents
+         FROM point WHERE portefeuille_id = ${PF} AND date = ?`,
     )
     .bind(viewerId, date)
     .first<Point>();
@@ -747,7 +748,7 @@ async function enregistrerArrete(
     somme += total;
     requetes.push(
       db
-        .prepare('UPDATE enveloppe SET valorisation_cents = ?, perf_bp = ?, arrete_le = ? WHERE id = ? AND viewer_id = ?')
+        .prepare(`UPDATE enveloppe SET valorisation_cents = ?, perf_bp = ?, arrete_le = ? WHERE id = ? AND portefeuille_id = ${PF}`)
         .bind(total, perf, date, env.id, viewerId),
     );
   });
@@ -770,9 +771,9 @@ async function enregistrerArrete(
   requetes.push(
     db
       .prepare(
-        `INSERT INTO point (id, viewer_id, date, valeur_cents, versements_cumules_cents)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(viewer_id, date) DO UPDATE SET
+        `INSERT INTO point (id, portefeuille_id, date, valeur_cents, versements_cumules_cents)
+         VALUES (?, ${PF}, ?, ?, ?)
+         ON CONFLICT(portefeuille_id, date) DO UPDATE SET
            valeur_cents = excluded.valeur_cents, versements_cumules_cents = excluded.versements_cumules_cents`,
       )
       .bind(nouvelId(), viewerId, date, valeur, verse),
@@ -809,8 +810,9 @@ async function importerPoints(db: Base, viewerId: string, f: FormData): Promise<
   return {};
 }
 
-async function enregistrerMouvement(db: Base, viewerId: string, f: FormData): Promise<Erreurs> {
+async function enregistrerMouvement(db: Base, tenantId: string, viewerId: string, f: FormData): Promise<Erreurs> {
   const e: Erreurs = {};
+  const statuts = await validateurDe(db, tenantId, 'statut_mouvement');
   const date = lireDate(texte(f.get('date'), 10));
   if (!date) e.date = MSG_DATE;
   const libelle = texte(f.get('libelle'), 160);
@@ -819,7 +821,7 @@ async function enregistrerMouvement(db: Base, viewerId: string, f: FormData): Pr
   const montant = montantS ? lireEuros(montantS) : null;
   if (montantS && montant === null) e.montant = MSG_EUROS;
   const statut = texte(f.get('statut'), 30);
-  if (!STATUTS.some(([k]) => k === statut)) e.statut = 'Choisissez un statut dans la liste.';
+  if (!statuts.valide(statut)) e.statut = statuts.message;
   const termine = statut === 'execute' || statut === 'archive';
   const etape = termine ? 0 : entier(f.get('etape'), 1, 3);
   const enCours = termine ? 0 : texte(f.get('en_cours'), 1) === '1' ? 1 : 0;
@@ -874,6 +876,7 @@ export async function analyserImport(
     if (!ok) return { fatal: `En-tête attendu : ${COLONNES_IMPORT.join(';')}`, lignes: [] };
     rows = rows.slice(1);
   }
+  const classes = await validateurDe(db, tenantId, 'classe_actif');
   if (rows.length === 0) return { fatal: 'Le fichier ne contient aucune ligne.', lignes: [] };
   if (rows.length > IMPORT_MAX_LIGNES) {
     return { fatal: `${IMPORT_MAX_LIGNES} lignes au plus par fichier (${rows.length} reçues).`, lignes: [] };
@@ -917,7 +920,7 @@ export async function analyserImport(
     if (!l.enveloppe) motifs.push('enveloppe vide');
     if (!l.ligne) motifs.push('ligne vide');
     l.classe = norm(l.classe);
-    if (!estClasse(l.classe)) motifs.push(`classe inconnue (${CLASSES.map(([k]) => k).join(', ')})`);
+    if (!classes.valide(l.classe)) motifs.push(`classe inconnue (${classes.options.map(([k]) => k).join(', ')})`);
     l.valorisation_cents = lireEuros(r[4] ?? '');
     if (l.valorisation_cents === null) motifs.push('valorisation invalide');
     if ((r[5] ?? '') !== '') {
@@ -966,10 +969,10 @@ export async function appliquerImport(
       envId = nouvelId();
       await db
         .prepare(
-          `INSERT INTO enveloppe (id, viewer_id, libelle, etablissement, ouverte_en, valorisation_cents,
+          `INSERT INTO enveloppe (id, portefeuille_id, libelle, etablissement, ouverte_en, valorisation_cents,
                                   perf_bp, arrete_le, rang)
-           VALUES (?, ?, ?, NULL, NULL, 0, NULL, ?,
-                   (SELECT COALESCE(MAX(rang), 0) + 1 FROM enveloppe WHERE viewer_id = ?))`,
+           VALUES (?, ${PF}, ?, NULL, NULL, 0, NULL, ?,
+                   (SELECT COALESCE(MAX(rang), 0) + 1 FROM enveloppe WHERE portefeuille_id = ${PF}))`,
         )
         .bind(envId, l.viewerId, l.enveloppe, l.arrete_le, l.viewerId)
         .run();

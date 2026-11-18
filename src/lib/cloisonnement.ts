@@ -8,20 +8,24 @@ import type { Base } from './db';
 export type Ressource =
   | 'viewer' | 'enveloppe' | 'ligne' | 'cible' | 'point' | 'mouvement' | 'document' | 'note';
 
+// enveloppe, cible et point sont rattachées au portefeuille, qui porte le tenant.
+const VIA_PORTEFEUILLE = (table: string) =>
+  `SELECT 1 AS ok FROM ${table} t JOIN portefeuille p ON p.id = t.portefeuille_id WHERE t.id = ? AND p.tenant_id = ?`;
+
 const VIA_VIEWER = (table: string) =>
   `SELECT 1 AS ok FROM ${table} t JOIN utilisateur u ON u.id = t.viewer_id WHERE t.id = ? AND u.tenant_id = ?`;
 
 const REQUETES: Record<Ressource, string> = {
   viewer: `SELECT 1 AS ok FROM utilisateur WHERE id = ? AND tenant_id = ? AND role = 'viewer'`,
-  enveloppe: VIA_VIEWER('enveloppe'),
-  cible: VIA_VIEWER('cible'),
-  point: VIA_VIEWER('point'),
+  enveloppe: VIA_PORTEFEUILLE('enveloppe'),
+  cible: VIA_PORTEFEUILLE('cible'),
+  point: VIA_PORTEFEUILLE('point'),
   mouvement: VIA_VIEWER('mouvement'),
   document: VIA_VIEWER('document'),
   ligne: `SELECT 1 AS ok FROM ligne l
             JOIN enveloppe e ON e.id = l.enveloppe_id
-            JOIN utilisateur u ON u.id = e.viewer_id
-           WHERE l.id = ? AND u.tenant_id = ?`,
+            JOIN portefeuille p ON p.id = e.portefeuille_id
+           WHERE l.id = ? AND p.tenant_id = ?`,
   note: 'SELECT 1 AS ok FROM note_marche WHERE id = ? AND tenant_id = ?',
 };
 
