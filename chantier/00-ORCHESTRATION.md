@@ -14,7 +14,11 @@ Lis ce fichier **en entier** au début de chaque session. Il remplace tout promp
 6. Un seul commit, message `Lot NN : <titre du lot>`.
 7. Mets `ETAT.md` à jour : statut, empreinte du commit, ce que tu as vérifié, ce que
    tu n'as **pas** pu vérifier, et ce que tu as dû changer en dehors du périmètre.
-8. **Arrête-toi.** Ne commence jamais le lot suivant dans la même session.
+8. **Dis sur quelle branche tu as commité**, et donne la commande de fusion vers
+   `main` : `git checkout main && git merge --no-ff <ta-branche>`. Si tu as travaillé
+   dans un worktree, `ETAT.md` n'existe à jour que sur ta branche : sans cette
+   fusion, la session suivante repartira d'un état périmé et pourrait refaire ton lot.
+9. **Arrête-toi.** Ne commence jamais le lot suivant dans la même session.
 
 ## Règles de l'orchestration
 
@@ -39,4 +43,4 @@ Lis ce fichier **en entier** au début de chaque session. Il remplace tout promp
 | `10-regles.md` | Règles communes et charte. À lire à chaque session. |
 | `20-schema.sql` | Le schéma du lot 01. À utiliser tel quel, sans l'adapter. |
 | `lot-NN-*.md` | Le travail d'un lot. Un seul par session. |
-| `maquettes/` | La référence visuelle, en lecture seule. |
+| `../maquettes/` | La référence visuelle, à la racine du dépôt, en lecture seule. |

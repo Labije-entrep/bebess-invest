@@ -43,8 +43,9 @@ Palette des graphiques, validée en contraste :
 Sémantique : `--positif` `#4FB08D`, `--alerte` `#C2614F`. Ne les utilise pour rien
 d'autre.
 
-Les maquettes font foi pour la mise en page. Elles sont dans `maquettes/` :
-ouvre-les avant de coder, et lis `maquettes/LISEZMOI.md`.
+Les maquettes font foi pour la mise en page. Elles sont dans le dossier `maquettes/`
+**à la racine du dépôt**, pas sous `chantier/` : depuis la racine, `ls maquettes/`.
+Ouvre-les avant de coder, et lis `maquettes/LISEZMOI.md`.
 
 ## Vérification
 
@@ -54,6 +55,11 @@ ne s'y comportent pas pareil.
 
 Relève le poids du paquet du Worker après ton lot et note-le dans `ETAT.md`. Une
 bibliothèque de douze mégaoctets a déjà dû être remplacée après coup.
+
+Signale dans `ETAT.md` toute couleur littérale que tu rencontres dans un composant,
+même hors de ton périmètre, sans y toucher. Au lot 09, cinq thèmes redéfiniront tous
+les jetons : une couleur écrite en dur ne suivra pas le thème et deviendra illisible
+sur l'un d'eux.
 
 Après les lots 07 et 10, rejoue le test de cloisonnement à six cas : ce sont les
 deux lots qui ouvrent des chemins entre des données qui ne se touchaient pas.
