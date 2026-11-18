@@ -8,7 +8,7 @@ import {
   type Apercu, lireDate, pointAu, pointPrecedent,
 } from '../../../lib/gestion';
 import {
-  ficheDuViewer, enveloppesDuViewer, lignesDesEnveloppes, ciblesDuViewer, pointsDuViewer, mouvementsDuViewer,
+  ficheDuViewer, enveloppesDuViewer, lignesDesEnveloppes, ciblesDuViewer, pointsDuViewer, mouvementsDuViewer, portefeuillesDuViewer,
 } from '../../../lib/db';
 import { euros, pourcent, dateCourte } from '../../../lib/format';
 
@@ -20,23 +20,29 @@ const viewer = await viewerDuTenant(db, tenant.id, Astro.params.id ?? '');
 if (!viewer) return new Response('Viewer introuvable', { status: 404 });
 const CLASSES = await optionsDe(db, tenant.id, 'classe_actif');
 const STATUTS = await optionsDe(db, tenant.id, 'statut_mouvement');
+const TYPES_PF = await optionsDe(db, tenant.id, 'type_portefeuille');
 const base = `/gestionnaire/viewers/${encodeURIComponent(viewer.id)}`;
 
 const ONGLETS: [string, string][] = [
-  ['arrete', 'Nouvel arrêté'], ['fiche', 'Fiche'], ['enveloppes', 'Enveloppes'], ['lignes', 'Lignes'],
+  ['arrete', 'Nouvel arrêté'], ['fiche', 'Fiche'], ['portefeuilles', 'Portefeuilles'], ['enveloppes', 'Enveloppes'], ['lignes', 'Lignes'],
   ['cibles', 'Allocation cible'], ['historique', 'Historique'], ['mouvements', 'Mouvements'],
 ];
 let onglet = Astro.url.searchParams.get('onglet') ?? 'fiche';
 let erreurs: Erreurs = {};
 let valeurs: Record<string, string> = {};
 let apercu: Apercu | undefined;
+// Portefeuille travaillé par les onglets de suivi : celui du formulaire, de l'adresse, ou le premier.
+let pfDemande = Astro.url.searchParams.get('pf') ?? '';
 
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
   valeurs = Object.fromEntries([...f].filter(([, v]) => typeof v === 'string')) as Record<string, string>;
   const r = await traiter(db, tenant.id, viewer.id, texte(f.get('action'), 30), f);
   onglet = r.onglet;
-  if (Object.keys(r.erreurs).length === 0 && !r.apercu) return Astro.redirect(`${base}?onglet=${r.onglet}&ok=1`, 303);
+  if (r.pf) pfDemande = r.pf;
+  else if (typeof valeurs.pf === 'string') pfDemande = valeurs.pf;
+  const suitePf = r.pf ? `&pf=${encodeURIComponent(r.pf)}` : '';
+  if (Object.keys(r.erreurs).length === 0 && !r.apercu) return Astro.redirect(`${base}?onglet=${r.onglet}${suitePf}&ok=1`, 303);
   erreurs = r.erreurs;
   apercu = r.apercu;
 }
@@ -46,20 +52,29 @@ const v = (k: string, d: string | number | null | undefined = ''): string => val
 const signe = (bp: number) => (bp > 0 ? `+${pourcent(bp)}` : pourcent(bp));
 const p = Astro.url.searchParams;
 
+const portefeuilles = await portefeuillesDuViewer(db, tenant.id, viewer.id);
+const pf = portefeuilles.find((x) => x.id === pfDemande) ?? portefeuilles[0];
+const SUIVI = ['arrete', 'enveloppes', 'lignes', 'cibles', 'historique'];
+const parPf = SUIVI.includes(onglet);
+const lien = (k: string) => `${base}?onglet=${k}${parPf && SUIVI.includes(k) && pf ? `&pf=${encodeURIComponent(pf.id)}` : ''}`;
+const libelleType = (t: string) => TYPES_PF.find(([k]) => k === t)?.[1] ?? t;
+
 const fiche = onglet === 'fiche' ? await ficheDuViewer(db, tenant.id, viewer.id) : null;
-const enveloppes = ['enveloppes', 'lignes', 'mouvements', 'arrete'].includes(onglet) ? await enveloppesDuViewer(db, viewer.id) : [];
+// Les onglets de suivi lisent le portefeuille choisi ; Mouvements propose toutes les enveloppes du viewer.
+const enveloppes = ['enveloppes', 'lignes', 'arrete'].includes(onglet) ? await enveloppesDuViewer(db, tenant.id, viewer.id, pf?.id)
+  : onglet === 'mouvements' ? await enveloppesDuViewer(db, tenant.id, viewer.id) : [];
 const lignes = ['lignes', 'cibles', 'arrete'].includes(onglet)
-  ? await lignesDesEnveloppes(db, (onglet === 'lignes' || onglet === 'arrete' ? enveloppes : await enveloppesDuViewer(db, viewer.id)).map((e) => e.id))
+  ? await lignesDesEnveloppes(db, (onglet === 'cibles' ? await enveloppesDuViewer(db, tenant.id, viewer.id, pf?.id) : enveloppes).map((e) => e.id))
   : [];
-const cibles = onglet === 'cibles' ? await ciblesDuViewer(db, viewer.id) : [];
-const points = onglet === 'historique' ? (await pointsDuViewer(db, viewer.id)).reverse() : [];
+const cibles = onglet === 'cibles' ? await ciblesDuViewer(db, tenant.id, viewer.id, pf?.id) : [];
+const points = onglet === 'historique' ? (await pointsDuViewer(db, tenant.id, viewer.id, pf?.id)).reverse() : [];
 const mouvements = onglet === 'mouvements' ? await mouvementsDuViewer(db, viewer.id) : [];
 const ecarts = onglet === 'cibles' ? ecartAllocation(lignes, cibles) : [];
 
 // Nouvel arrêté : la date choisie (par défaut aujourd'hui) ; un point déjà présent à cette date est chargé.
 const dateArrete = lireDate(valeurs.date ?? p.get('date') ?? '') ?? new Date().toISOString().slice(0, 10);
-const pointExistant = onglet === 'arrete' ? await pointAu(db, viewer.id, dateArrete) : null;
-const precedent = onglet === 'arrete' ? await pointPrecedent(db, viewer.id, dateArrete) : null;
+const pointExistant = onglet === 'arrete' && pf ? await pointAu(db, pf.id, dateArrete) : null;
+const precedent = onglet === 'arrete' && pf ? await pointPrecedent(db, pf.id, dateArrete) : null;
 const sommeEnveloppes = enveloppes.reduce((s, e) => s + e.valorisation_cents, 0);
 const valeurProposee = formEuros(pointExistant ? pointExistant.valeur_cents : sommeEnveloppes);
 const verseProposee = formEuros(pointExistant ? pointExistant.versements_cumules_cents : precedent?.verseCents);const rowsCibles = [...cibles, null, null];
@@ -76,26 +91,42 @@ let compteur = 0;
   {erreurs.general && <p class="info alerte">{erreurs.general}</p>}
 
   <nav class="onglets" aria-label="Onglets du viewer">
-    {ONGLETS.map(([k, nom]) => <a href={`${base}?onglet=${k}`} aria-current={onglet === k ? 'page' : undefined}>{nom}</a>)}
+    {ONGLETS.map(([k, nom]) => <a href={lien(k)} aria-current={onglet === k ? 'page' : undefined}>{nom}</a>)}
   </nav>
+
+  {parPf && onglet !== 'arrete' && portefeuilles.length > 1 && pf && (
+    <nav class="filtres" aria-label="Portefeuille concerné">
+      {portefeuilles.map((x) => <a href={`${base}?onglet=${onglet}&pf=${encodeURIComponent(x.id)}`} aria-current={x.id === pf.id ? 'true' : undefined}>{x.libelle}</a>)}
+    </nav>
+  )}
 
   {onglet === 'arrete' && (
     <>
       <form method="get" class="actions" style="margin: 0 0 var(--espace-l)">
         <input type="hidden" name="onglet" value="arrete" />
+        {pf && (
+          <div class="groupe" style="margin: 0">
+            <label class="etiquette" for="pf_arrete">Portefeuille</label>
+            <select class="champ" id="pf_arrete" name="pf">
+              {portefeuilles.map((x) => <option value={x.id} selected={x.id === pf.id}>{x.libelle}</option>)}
+            </select>
+          </div>
+        )}
         <div class="groupe" style="margin: 0">
           <label class="etiquette" for="date_arrete">Date de l'arrêté</label>
           <input class="champ" id="date_arrete" name="date" type="date" value={dateArrete} />
         </div>
-        <button class="btn" type="submit">Charger cette date</button>
+        <button class="btn" type="submit">Charger</button>
       </form>
       {pointExistant && <p class="info">Un point existe déjà au {dateCourte(dateArrete)} : il est chargé pour modification.</p>}
       {enveloppes.length === 0 ? (
-        <p>Créez d'abord une enveloppe dans l'onglet Enveloppes.</p>
+        <p>Créez d'abord une enveloppe dans l'onglet Enveloppes{portefeuilles.length > 1 && pf ? ` du portefeuille « ${pf.libelle} »` : ''}.</p>
       ) : (
         <form method="post">
           <input type="hidden" name="action" value="arrete" />
+          <input type="hidden" name="pf" value={pf?.id ?? ''} />
           <input type="hidden" name="date" value={dateArrete} />
+          {pf && <p class="aide">Portefeuille : <strong>{pf.libelle}</strong> ({libelleType(pf.type)}).</p>}
           <input type="hidden" name="valeur_init" value={v('valeur_init', valeurProposee)} />
           {apercu && <input type="hidden" name="perf_vue" value={String(apercu.perfBp ?? 'nc')} />}
           <p class="aide">Toutes les valeurs ci-dessous sont celles du dernier arrêté. Modifiez ce qui a changé : la date d'arrêté de chaque enveloppe et de chaque ligne passe au {dateCourte(dateArrete)}. Une enveloppe qui a des lignes vaut la somme de ses lignes.</p>
@@ -172,6 +203,69 @@ let compteur = 0;
     </>
   )}
 
+  {onglet === 'portefeuilles' && (
+    <>
+      <p class="aide">Un viewer garde toujours au moins un portefeuille. L'ordre fixe celui qui s'affiche en premier ; un portefeuille qui contient des enveloppes, des points ou des cibles doit être vidé avant d'être supprimé.</p>
+      <form method="post">
+        <input type="hidden" name="action" value="pf_maj" />
+        <input type="hidden" name="n" value={portefeuilles.length} />
+        <div class="defile">
+          <table class="table">
+            <thead><tr><th>Libellé</th><th>Type</th><th class="num">Ordre</th><th></th></tr></thead>
+            <tbody>
+              {portefeuilles.map((x, i) => (
+                <tr>
+                  <Cellule nom={`r${i}_libelle`} label="Libellé" valeur={v(`r${i}_libelle`, x.libelle)} erreur={erreurs[`r${i}_libelle`]} />
+                  <Cellule nom={`r${i}_type`} label="Type" options={TYPES_PF} valeur={v(`r${i}_type`, x.type)} erreur={erreurs[`r${i}_type`]} />
+                  <Cellule nom={`r${i}_ordre`} label="Ordre" num valeur={v(`r${i}_ordre`, x.ordre)} erreur={erreurs[`r${i}_ordre`]} />
+                  <td><input type="hidden" name={`r${i}_id`} value={x.id} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div class="actions"><button class="btn-plein" type="submit">Enregistrer les portefeuilles</button></div>
+      </form>
+      {portefeuilles.length > 1 && (
+        <>
+          <hr class="filet" />
+          <h2>Supprimer un portefeuille</h2>
+          <div class="defile">
+            <table class="table">
+              <tbody>
+                {portefeuilles.map((x) => (
+                  <tr>
+                    <td>{x.libelle}</td>
+                    <td class="num">
+                      <form method="post"><input type="hidden" name="action" value="pf_suppr" /><input type="hidden" name="id" value={x.id} /><button class="btn" type="submit">Supprimer</button></form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      <hr class="filet" />
+      <h2>Nouveau portefeuille</h2>
+      <form method="post">
+        <input type="hidden" name="action" value="pf_creer" />
+        <div class="grille">
+          <Champ nom="libelle" label="Libellé" valeur={v('libelle')} erreur={erreurs.libelle} requis />
+          <div class="groupe">
+            <label class="etiquette" for="type_pf">Type *</label>
+            {erreurs.type && <p class="erreur">{erreurs.type}</p>}
+            <select class="champ" id="type_pf" name="type">
+              <option value="">—</option>
+              {TYPES_PF.map(([k, nom]) => <option value={k} selected={v('type') === k}>{nom}</option>)}
+            </select>
+          </div>
+        </div>
+        <div class="actions"><button class="btn-plein" type="submit">Créer le portefeuille</button></div>
+      </form>
+    </>
+  )}
+
   {onglet === 'fiche' && (
     <form method="post">
       <input type="hidden" name="action" value="fiche" />
@@ -194,6 +288,7 @@ let compteur = 0;
   {onglet === 'enveloppes' && (
     <form method="post">
       <input type="hidden" name="action" value="enveloppes" />
+      <input type="hidden" name="pf" value={pf?.id ?? ''} />
       <input type="hidden" name="n" value={enveloppes.length + 1} />
       <p class="aide">Une enveloppe qui a des lignes vaut la somme de ses lignes : sa valorisation est alors recalculée à l'enregistrement des lignes. Dernière ligne vide : ajout. Cochez « Suppr. » pour retirer une enveloppe et ses lignes.</p>
       <div class="defile">
@@ -223,10 +318,11 @@ let compteur = 0;
 
   {onglet === 'lignes' && (
     enveloppes.length === 0 ? (
-      <p>Créez d'abord une enveloppe dans l'onglet Enveloppes.</p>
+      <p>Créez d'abord une enveloppe dans l'onglet Enveloppes{portefeuilles.length > 1 && pf ? ` du portefeuille « ${pf.libelle} »` : ''}.</p>
     ) : (
       <form method="post">
         <input type="hidden" name="action" value="lignes" />
+<input type="hidden" name="pf" value={pf?.id ?? ''} />
         <input type="hidden" name="n" value={lignes.length + enveloppes.length} />
         {enveloppes.map((e) => {
           const siennes = [...lignes.filter((l) => l.enveloppe_id === e.id), null];
@@ -270,6 +366,7 @@ let compteur = 0;
     <>
       <form method="post">
         <input type="hidden" name="action" value="cibles" />
+      <input type="hidden" name="pf" value={pf?.id ?? ''} />
         <input type="hidden" name="n" value={rowsCibles.length} />
         {erreurs.total && <p class="erreur">{erreurs.total}</p>}
         <p class="aide">Le total des cibles doit faire 100 %. Deux lignes vides en fin de tableau pour ajouter une classe ; videz une ligne pour la retirer.</p>
@@ -312,6 +409,7 @@ let compteur = 0;
       {apercu ? (
         <form method="post">
           <input type="hidden" name="action" value="point" />
+<input type="hidden" name="pf" value={pf?.id ?? ''} />
           <input type="hidden" name="date" value={apercu.date} />
           <input type="hidden" name="valeur" value={formEuros(apercu.valeurCents)} />
           <input type="hidden" name="verse" value={formEuros(apercu.verseCents)} />
@@ -337,6 +435,7 @@ let compteur = 0;
       ) : (
         <form method="post">
           <input type="hidden" name="action" value="point" />
+<input type="hidden" name="pf" value={pf?.id ?? ''} />
           <div class="grille">
             <Champ nom="date" label="Date du point" type="date" valeur={v('date')} erreur={erreurs.date} requis />
             <Champ nom="valeur" label="Valeur du patrimoine (€)" valeur={v('valeur')} erreur={erreurs.valeur} inputmode="decimal" requis />
@@ -348,6 +447,7 @@ let compteur = 0;
       <hr class="filet" />
       <form method="post" enctype="multipart/form-data">
         <input type="hidden" name="action" value="points_import" />
+<input type="hidden" name="pf" value={pf?.id ?? ''} />
         <div class="groupe">
           <label class="etiquette" for="fichier">Importer un CSV</label>
           {erreurs.fichier && <p class="erreur">{erreurs.fichier}</p>}
@@ -365,7 +465,7 @@ let compteur = 0;
               <tr>
                 <td>{dateCourte(pt.date)}</td><td class="num">{euros(pt.valeur_cents)}</td><td class="num">{euros(pt.versements_cumules_cents)}</td>
                 <td class="num">
-                  <form method="post"><input type="hidden" name="action" value="suppr_point" /><input type="hidden" name="id" value={pt.id} /><button class="btn" type="submit">Supprimer</button></form>
+                  <form method="post"><input type="hidden" name="action" value="suppr_point" /><input type="hidden" name="pf" value={pf?.id ?? ''} /><input type="hidden" name="id" value={pt.id} /><button class="btn" type="submit">Supprimer</button></form>
                 </td>
               </tr>
             ))}

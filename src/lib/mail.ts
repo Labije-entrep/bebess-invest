@@ -23,10 +23,9 @@ export function envDe(locals: unknown): Env {
 
 const pilotConsole: Mailer = {
   async envoyer(destinataire, sujet, texte) {
-    // Développement seulement : en production, le pilote console n'écrit rien (ni adresse, ni lien).
-    if (import.meta.env.DEV) {
-      console.log(`\n[mail:console] À : ${destinataire}\n[mail:console] Sujet : ${sujet}\n${texte}\n`);
-    }
+    // Ce pilote n'est choisi qu'en développement (`astro dev`), ou par MAIL_DRIVER=console posé
+    // exprès pour essayer un build en local. Jamais en production : le lien serait dans les journaux.
+    console.log(`\n[mail:console] À : ${destinataire}\n[mail:console] Sujet : ${sujet}\n${texte}\n`);
   },
 };
 
