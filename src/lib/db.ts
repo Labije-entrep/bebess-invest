@@ -48,9 +48,37 @@ export interface Fiche {
   prochain_point: string | null;
 }
 
+export interface Portefeuille {
+  id: string;
+  tenant_id: string;
+  viewer_id: string;
+  libelle: string;
+  type: string;
+  ordre: number;
+  cree_le: string;
+}
+
+/**
+ * Portefeuille affiché par le portail : le premier du viewer (ordre, puis id). Un viewer
+ * peut en avoir plusieurs ; le portail n'en montre qu'un tant que le module de suivi ne
+ * les distingue pas. Fragment SQL : un seul « ? », à lier à l'identifiant du viewer.
+ */
+export const PORTEFEUILLE_DU_VIEWER =
+  '(SELECT id FROM portefeuille WHERE viewer_id = ? ORDER BY ordre, id LIMIT 1)';
+
+export const COLONNES_PORTEFEUILLE = 'id, tenant_id, viewer_id, libelle, type, ordre, cree_le';
+
+export async function portefeuillesDuViewer(db: Base, tenantId: string, viewerId: string): Promise<Portefeuille[]> {
+  const { results } = await db
+    .prepare(`SELECT ${COLONNES_PORTEFEUILLE} FROM portefeuille WHERE tenant_id = ? AND viewer_id = ? ORDER BY ordre, id`)
+    .bind(tenantId, viewerId)
+    .all<Portefeuille>();
+  return results;
+}
+
 export interface Enveloppe {
   id: string;
-  viewer_id: string;
+  portefeuille_id: string;
   libelle: string;
   etablissement: string | null;
   ouverte_en: string | null;
@@ -74,7 +102,7 @@ export interface Ligne {
 
 export interface Cible {
   id: string;
-  viewer_id: string;
+  portefeuille_id: string;
   classe: string;
   cible_bp: number;
   rang: number;
@@ -82,7 +110,7 @@ export interface Cible {
 
 export interface Point {
   id: string;
-  viewer_id: string;
+  portefeuille_id: string;
   date: string;
   valeur_cents: number;
   versements_cumules_cents: number;
@@ -189,10 +217,10 @@ export function ficheDuViewer(db: Base, tenantId: string, viewerId: string): Pro
 export async function enveloppesDuViewer(db: Base, viewerId: string): Promise<Enveloppe[]> {
   const { results } = await db
     .prepare(
-      `SELECT id, viewer_id, libelle, etablissement, ouverte_en, valorisation_cents,
+      `SELECT id, portefeuille_id, libelle, etablissement, ouverte_en, valorisation_cents,
               perf_bp, arrete_le, rang
          FROM enveloppe
-        WHERE viewer_id = ?
+        WHERE portefeuille_id = ${PORTEFEUILLE_DU_VIEWER}
         ORDER BY rang, id`,
     )
     .bind(viewerId)
@@ -219,7 +247,8 @@ export async function lignesDesEnveloppes(db: Base, enveloppeIds: string[]): Pro
 
 export async function ciblesDuViewer(db: Base, viewerId: string): Promise<Cible[]> {
   const { results } = await db
-    .prepare('SELECT id, viewer_id, classe, cible_bp, rang FROM cible WHERE viewer_id = ? ORDER BY rang, id')
+    .prepare(`SELECT id, portefeuille_id, classe, cible_bp, rang FROM cible
+        WHERE portefeuille_id = ${PORTEFEUILLE_DU_VIEWER} ORDER BY rang, id`)
     .bind(viewerId)
     .all<Cible>();
   return results;
@@ -229,9 +258,9 @@ export async function ciblesDuViewer(db: Base, viewerId: string): Promise<Cible[
 export async function pointsDuViewer(db: Base, viewerId: string): Promise<Point[]> {
   const { results } = await db
     .prepare(
-      `SELECT id, viewer_id, date, valeur_cents, versements_cumules_cents
+      `SELECT id, portefeuille_id, date, valeur_cents, versements_cumules_cents
          FROM point
-        WHERE viewer_id = ?
+        WHERE portefeuille_id = ${PORTEFEUILLE_DU_VIEWER}
         ORDER BY date`,
     )
     .bind(viewerId)

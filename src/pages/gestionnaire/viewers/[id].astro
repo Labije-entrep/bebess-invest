@@ -4,7 +4,7 @@ import Gestion from '../../../layouts/Gestion.astro';
 import Champ from '../../../components/gestion/Champ.astro';
 import Cellule from '../../../components/gestion/Cellule.astro';
 import {
-  contexte, viewerDuTenant, traiter, STATUTS, CLASSES, texte, ecartAllocation, formEuros, formBp, type Erreurs,
+  contexte, viewerDuTenant, traiter, optionsDe, texte, ecartAllocation, formEuros, formBp, type Erreurs,
   type Apercu, lireDate, pointAu, pointPrecedent,
 } from '../../../lib/gestion';
 import {
@@ -18,6 +18,8 @@ const { db, tenant } = c;
 
 const viewer = await viewerDuTenant(db, tenant.id, Astro.params.id ?? '');
 if (!viewer) return new Response('Viewer introuvable', { status: 404 });
+const CLASSES = await optionsDe(db, tenant.id, 'classe_actif');
+const STATUTS = await optionsDe(db, tenant.id, 'statut_mouvement');
 const base = `/gestionnaire/viewers/${encodeURIComponent(viewer.id)}`;
 
 const ONGLETS: [string, string][] = [
