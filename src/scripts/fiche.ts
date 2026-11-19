@@ -69,6 +69,10 @@ const provisoiresSujets: Sujet[] = [];
 const provisoiresEchanges: Echange[] = [];
 let nTemp = 0;
 
+/** Sujet à montrer à l'arrivée (adresse en #sujet-<id>) : celui que la passerelle vient de créer ou de retrouver. */
+const sujetVise = location.hash.startsWith('#sujet-') ? location.hash.slice('#sujet-'.length) : '';
+let sujetMontre = false;
+
 const INTERVALLE_MS = 10000;
 /** Un sujet est clos quand son statut est terminal dans statut_sujet : la décision est celle de commun.ts. */
 const estClos = (s: Sujet): boolean => estTerminal(serveur?.terminaux, 'statut_sujet', s.statut);
@@ -455,7 +459,7 @@ function blocSujets(): HTMLElement {
       empiler('sujet', s.id, 'patch', { [col]: v === '' ? null : v });
       return null;
     };
-    return h('div', { class: `fiche-ligne${fait ? ' fait' : ''}` },
+    return h('div', { class: `fiche-ligne${fait ? ' fait' : ''}${s.id === sujetVise ? ' vise' : ''}`, id: `sujet-${s.id}` },
       h('button', {
         type: 'button', class: `fiche-statut${retard ? ' retard' : ''}`, 'data-statut': s.statut, 'data-terminal': fait, 'data-f': `statut:${s.id}`,
         'aria-label': `Statut : ${libelle('statut_sujet', s.statut)}${suivant ? `. Passer à « ${libelle('statut_sujet', suivant)} »` : ''}`,
@@ -646,6 +650,13 @@ function rendreMaintenant(): void {
         if (selection && selection[0] !== null && selection[1] !== null && actif?.dataset?.f === voulu) el.setSelectionRange(selection[0], selection[1]);
         else if (el.type === 'text') el.setSelectionRange(el.value.length, el.value.length);
       } catch { /* type sans sélection */ }
+    }
+  }
+  if (sujetVise && !sujetMontre) {
+    const ligne = document.getElementById(`sujet-${sujetVise}`);
+    if (ligne) {
+      sujetMontre = true;
+      ligne.scrollIntoView({ block: 'center' });
     }
   }
   rendreEtat();

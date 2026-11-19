@@ -2,9 +2,9 @@
 export const prerender = false;
 import Gestion from '../../layouts/Gestion.astro';
 import { envDe } from '../../lib/mail';
-import { actuDuJour, actusRecentes, enregistrerActu, type SaisieActu } from '../../lib/actus';
+import { actuDuJour, actusRecentes, enregistrerActu, rafraichirChiffres, type SaisieActu } from '../../lib/actus';
 import {
-  assurerCours, derniersCours, formaterValeur, formaterVariation, incidentsCours, jourUtc, symbolesDe, SYMBOLE_SENS,
+  assurerCours, derniersCours, formaterValeur, formaterVariation, incidentsCours, jourUtc, symbolesDe, SYMBOLE_SENS, variationSeule,
 } from '../../lib/cours';
 import { dateCourte, dateLongue } from '../../lib/format';
 
@@ -34,6 +34,12 @@ if (Astro.request.method === 'POST') {
   const origine = Astro.request.headers.get('Origin');
   if (origine && new URL(origine).host !== Astro.url.host) return new Response('Origine refusée.', { status: 403 });
   const f = await Astro.request.formData();
+  // « Reprendre les cours du jour » : ne touche qu'au bloc Chiffres, et seulement tant que la note n'est pas publiée.
+  if (f.get('action') === 'rafraichir') {
+    await assurerCours(db, env, tenant.id, symboles);
+    const r = await rafraichirChiffres(db, tenant.id, date, symboles);
+    return Astro.redirect(`/gestionnaire/actus?date=${date}&ok=${r === 'ok' ? 'chiffres' : r}`, 303);
+  }
   const lire = (k: string) => String(f.get(k) ?? '').replace(/\r\n/g, '\n');
   v.titre = lire('titre').trim();
   v.resume = lire('resume').trim();
@@ -83,12 +89,23 @@ const manquants = symboles.filter((s) => !chiffres.some((c) => c.cle === s.cle))
 const cleAbsente = !env.COURS_API_KEY?.trim();
 const incidents = (await incidentsCours(db, tenant.id, jourUtc())).filter((i) => i.quoi !== 'cours_cle');
 const recentes = await actusRecentes(db, tenant.id);
-const ok = Astro.url.searchParams.get('ok') === '1';
+// Messages de retour : textes fixes, choisis par code (rien de ce qui est dans l'adresse n'est affiché).
+const MESSAGES: Record<string, [string, boolean]> = {
+  '1': ['Enregistré.', false],
+  chiffres: ['Chiffres repris : ils sont maintenant les derniers cours connus à la date de la fiche.', false],
+  publiee: ['La note de cette fiche est publiée : les chiffres ne bougent plus.', true],
+  absente: ['Enregistrez d’abord la fiche.', true],
+  note: ['Brouillon de note créé à partir du titre et du champ « à dire aux clients », texte repris mot pour mot. Il n’est pas publié : la publication se fait dans l’écran des notes.', false],
+  note_existante: ['Cette fiche a déjà sa note de marché : la voici, aucune seconde note n’a été créée.', false],
+  note_vide: ['Le champ « à dire aux clients » est vide : il n’y a rien à reprendre dans une note.', true],
+};
+const retour = MESSAGES[Astro.url.searchParams.get('ok') ?? ''] ?? null;
+const sansValeur = new Set(symboles.filter(variationSeule).map((s) => s.cle));
 ---
 <Gestion titre="Actus">
   <span class="etiquette">Veille</span>
   <h1>Actus du {dateLongue(date)}</h1>
-  {ok && <p class="info">Enregistré.</p>}
+  {retour && <p class={retour[1] ? 'info alerte' : 'info'} role={retour[1] ? 'alert' : 'status'}>{retour[0]}</p>}
 
   {cleAbsente && (
     <p class="info alerte" role="alert">
@@ -105,8 +122,9 @@ const ok = Astro.url.searchParams.get('ok') === '1';
   <section aria-labelledby="actu-chiffres">
     <h2 id="actu-chiffres">Chiffres</h2>
     {existante
-      ? <p class="aide">Chiffres figés à l’enregistrement de la fiche ; ils ne se modifient pas.</p>
+      ? <p class="aide">Chiffres figés à l’enregistrement de la fiche ; ils ne se saisissent pas à la main.</p>
       : <p class="aide">Chiffres issus des cours, non modifiables. Ils seront figés à l’enregistrement de la fiche.</p>}
+    <p class="aide">Pour un indice suivi par un fonds, seules la variation et la date de séance s’affichent : le prix du fonds n’est pas celui de l’indice.</p>
     <div class="defile">
       <table class="table actu-chiffres">
         <thead><tr><th>Indicateur</th><th class="num">Valeur</th><th class="num">Variation</th><th>Séance</th></tr></thead>
@@ -114,7 +132,7 @@ const ok = Astro.url.searchParams.get('ok') === '1';
           {chiffres.map((c) => (
             <tr>
               <td>{c.libelle}</td>
-              <td class="num actu-valeur">{formaterValeur(c.valeur)}</td>
+              <td class="num actu-valeur">{sansValeur.has(c.cle) ? <span class="actu-ancien" title="Prix du fonds non affiché">—</span> : formaterValeur(c.valeur)}</td>
               <td class="num">{c.sens ? <span aria-label={c.sens}>{SYMBOLE_SENS[c.sens]}</span> : null} {formaterVariation(c.variation_bp)}</td>
               <td class={c.date < date ? 'actu-ancien' : undefined}>{dateCourte(c.date)}</td>
             </tr>
@@ -125,6 +143,17 @@ const ok = Astro.url.searchParams.get('ok') === '1';
         </tbody>
       </table>
     </div>
+    {existante && (
+      existante.note_publiee
+        ? <p class="aide">La note de cette fiche est publiée : les chiffres ne bougent plus.</p>
+        : (
+          <form method="post" class="actu-reprise">
+            <input type="hidden" name="action" value="rafraichir" />
+            <button class="btn" type="submit">Reprendre les cours du jour</button>
+            <p class="aide">Remplace les chiffres figés par les derniers cours connus à la date de la fiche ({dateCourte(date)}), après avoir récupéré ceux qui manquent. Les textes de la fiche ne changent pas. Possible tant que la note n’est pas publiée.</p>
+          </form>
+        )
+    )}
   </section>
 
   <form method="post" class="actu-form">
@@ -169,9 +198,22 @@ const ok = Astro.url.searchParams.get('ok') === '1';
     </div>
     <div class="actions">
       <button class="btn-plein" type="submit">Enregistrer</button>
-      <button class="btn" type="button" disabled title="Pas encore disponible">Publier vers le portail</button>
     </div>
   </form>
+
+  <section aria-labelledby="actu-note" class="actu-note">
+    <h2 id="actu-note">Note de marché</h2>
+    {!existante ? (
+      <p class="aide">Enregistrez la fiche pour pouvoir en tirer une note de marché.</p>
+    ) : existante.note_marche_id ? (
+      <p class="aide">Une note est née de cette fiche : <a href={`/gestionnaire/notes/${existante.note_marche_id}`}>l’ouvrir dans l’écran des notes</a>{existante.note_publiee ? ' (publiée)' : ' (brouillon)'}.</p>
+    ) : (
+      <form method="post" action={`/gestionnaire/passerelle/note/${encodeURIComponent(existante.id)}`}>
+        <p class="aide">Crée un brouillon de note de marché à partir du titre et du champ « à dire aux clients » de la fiche enregistrée, repris mot pour mot, sans reformulation. Rien n’est publié : la publication est un second geste, dans l’écran des notes. Un second clic ouvre la note déjà créée.</p>
+        <div class="actions"><button class="btn" type="submit">Créer la note de marché</button></div>
+      </form>
+    )}
+  </section>
 
   <section aria-labelledby="actu-liste">
     <h2 id="actu-liste">Fiches enregistrées</h2>
@@ -191,7 +233,8 @@ const ok = Astro.url.searchParams.get('ok') === '1';
   .actu-ancien { color: var(--texte-2); }
   .actu-form { margin-top: var(--espace-l); }
   .actu-form textarea.champ { resize: vertical; }
-  .actu-form .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+  .actu-reprise { margin-top: var(--espace-s); }
+  .actu-note { margin-top: var(--espace-l); }
   .actu-liste { margin: 0; padding: 0; list-style: none; }
   .actu-liste li { padding: var(--espace-xs) 0; border-bottom: 1px solid var(--filet); font-size: 0.875rem; color: var(--texte-2); }
   .actu-liste a[aria-current='page'] { color: var(--accent-clair); }

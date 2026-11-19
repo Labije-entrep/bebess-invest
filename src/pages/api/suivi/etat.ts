@@ -31,8 +31,10 @@ export const GET: APIRoute = async (ctx) => {
     seuils,
     terminaux,
     // Contact rattaché à un viewer : avoirs lus dans ses portefeuilles, jamais saisis (clé `avoirs_portail`).
+    // Les avoirs saisis avant le rattachement restent en base mais ne sont plus servis (lot 07).
     contacts: contacts.map((c) => ({
       ...c,
+      ...(typeof c.viewer_id === 'string' ? { avoirs_cents: null, avoirs_le: null } : {}),
       types: parContact.get(c.id) ?? [],
       avoirs_portail: typeof c.viewer_id === 'string' ? (portail[c.viewer_id] ?? null) : null,
     })),
