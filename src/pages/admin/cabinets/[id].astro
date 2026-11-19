@@ -7,6 +7,10 @@ import { incidents, libelleIncident } from '../../../lib/incidents';
 import { dateCourte } from '../../../lib/format';
 import { identiteFacturation, identiteManquante, LIBELLES_IDENTITE } from '../../../lib/identite';
 import { afficherSiren } from '../../../lib/siren';
+import ContratCabinet from '../../../components/admin/ContratCabinet.astro';
+import { compterFondateurs, contratEnCours } from '../../../lib/contrat';
+import { MESSAGES_RETOUR } from '../../../lib/contrat-ecran';
+import { apercuComplementaire, parrainagesValides } from '../../../lib/facturation';
 
 const g = gardeAdmin(Astro);
 if (g instanceof Response) return g;
@@ -16,12 +20,15 @@ const cabinet = await cabinetDe(g.db, id);
 if (!cabinet) return new Response('Introuvable.', { status: 404 });
 await accesCabinet(g, cabinet.id, `GET ${Astro.url.pathname}`);
 
-const [domaines, acces, suspensions, recents, identite] = await Promise.all([
+const [domaines, acces, suspensions, recents, identite, contrat, fondateurs, valides] = await Promise.all([
   domainesDe(g.db, cabinet.id),
   accesDuCabinet(g.db, cabinet.id),
   suspensionsDe(g.db, cabinet.id),
   incidents(g.db, { tenantId: cabinet.id }, 5),
   identiteFacturation(g.db, cabinet.id),
+  contratEnCours(g.db, cabinet.id),
+  compterFondateurs(g.db),
+  parrainagesValides(g.db, cabinet.id),
 ]);
 const manque = identite ? identiteManquante(identite) : [];
 const cf = configCloudflare(g.env);
@@ -30,6 +37,17 @@ const q = Astro.url.searchParams;
 // Le retour d'une action est un code (?r=), traduit ici par une table fixe : jamais du texte tiré de l'adresse.
 const code = q.get('r') as CodeAction | null;
 const retour = code && Object.hasOwn(MESSAGES_ACTION, code) ? { code, texte: MESSAGES_ACTION[code], bon: q.get('ok') === '1' } : null;
+// Le retour d'une écriture du contrat (lot 14) : même principe, une autre table, et il s'affiche dans la rubrique « Contrat ».
+const retourContrat = q.get('r') && Object.hasOwn(MESSAGES_RETOUR, q.get('r') as string) ? { texte: MESSAGES_RETOUR[q.get('r') as string], bon: q.get('ok') === '1' } : null;
+// Le bon complémentaire attendu après l'activation d'un module : trois valeurs lues dans l'adresse, acceptées seulement si elles ont la forme attendue.
+const attendu = /^\d{1,3}$/.test(q.get('mois') ?? '') && /^\d{1,10}$/.test(q.get('ht') ?? '') && /^\d{4}-\d{2}-\d{2}$/.test(q.get('jusqu') ?? '')
+  ? { mois: Number(q.get('mois')), total_ht: Number(q.get('ht')), anniversaire: q.get('jusqu') as string }
+  : null;
+const jour = new Date().toISOString().slice(0, 10);
+const apercus = {
+  pilotage: contrat && !contrat.module_pilotage ? await apercuComplementaire(g.db, contrat, 'pilotage', jour) : null,
+  site: contrat && !contrat.module_site ? await apercuComplementaire(g.db, contrat, 'site', jour) : null,
+};
 const envoye = q.get('envoye');
 const suspension = suspensions.find((s) => !s.fin_le);
 const horodate = (iso: string) => `${dateCourte(iso)} à ${iso.slice(11, 16)} UTC`;
@@ -49,7 +67,7 @@ const horodate = (iso: string) => `${dateCourte(iso)} à ${iso.slice(11, 16)} UT
     <p class="info alerte" role="alert">Aucun compte de support n’a été créé : l’adresse de support est celle du premier associé. Une adresse ne sert qu’à un compte par cabinet.</p>
   )}
   {q.get('cree') === '1' && q.get('support') === 'cree' && <p class="info" role="status">Le compte de support de l’éditeur a été créé.</p>}
-  {retour && <p class={retour.bon ? 'info' : 'info alerte'} role="status">{retour.texte}</p>}
+  {retour && !retourContrat && <p class={retour.bon ? 'info' : 'info alerte'} role="status">{retour.texte}</p>}
   {suspension && (
     <p class="info alerte" role="status">
       <strong>Suspendu depuis le {horodate(suspension.debut_le)}</strong> — motif : {suspension.motif}. Le personnel du cabinet ne peut plus entrer ; les viewers consultent toujours leur espace.
@@ -77,6 +95,9 @@ const horodate = (iso: string) => `${dateCourte(iso)} à ${iso.slice(11, 16)} UT
     </div>
   )}
   <p class="aide">Associés, collaborateurs et lecture. Le compte de support de l’éditeur n’est jamais compté ni affiché ici.</p>
+
+  <hr class="filet" />
+  <ContratCabinet contrat={contrat} base={base} jour={jour} retour={retourContrat} attendu={attendu} fondateurs={fondateurs} parrainagesValides={valides} apercus={apercus} />
 
   <hr class="filet" />
   <h2>Facturation</h2>
