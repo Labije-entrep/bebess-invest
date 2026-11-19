@@ -1,0 +1,396 @@
+---
+export const prerender = false;
+import Gestion from '../../layouts/Gestion.astro';
+import Champ from '../../components/gestion/Champ.astro';
+import { contexte, texte, type Erreurs } from '../../lib/gestion';
+import { MESSAGES_REFUS, LIMITE_LOGO, urlLogoCabinet } from '../../lib/fichiers';
+import { THEMES } from '../../lib/themes';
+import { marqueursDeLaListe } from '../../lib/marqueurs';
+import {
+  LISTES, ajouterValeur, enregistrerListe, listeConnue, marqueursManquants, supprimerValeur, valeursAdmin,
+} from '../../lib/listes-admin';
+import {
+  MENTIONS, PALETTE_MEMBRES, SEUILS, SYMBOLES_MAX, TYPES_SYMBOLE,
+  ajouterMembre, enregistrerIdentite, enregistrerMembres, enregistrerMentions, enregistrerSeuils, enregistrerSymboles,
+  formSeuil, identiteDe, membresAdmin, mentionsDe, seuilsSaisis, symbolesParDefaut, symbolesReglage,
+} from '../../lib/reglages';
+
+// Réglages du cabinet (lot 09), réservés au gestionnaire : listes, seuils, membres, identité, mentions légales.
+const c = contexte(Astro);
+if (c instanceof Response) return c;
+const { db, tenant } = c;
+
+const ONGLETS: [string, string][] = [
+  ['listes', 'Listes'], ['seuils', 'Seuils'], ['membres', 'Membres'], ['identite', 'Identité'], ['mentions', 'Mentions légales'],
+];
+const p = Astro.url.searchParams;
+let onglet = p.get('onglet') ?? 'listes';
+if (!ONGLETS.some(([k]) => k === onglet)) onglet = 'listes';
+let listeId = listeConnue(p.get('liste') ?? '')?.id ?? LISTES[0].id;
+
+let erreurs: Erreurs = {};
+let valeurs: Record<string, string> = {};
+let envoye = false;
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  valeurs = Object.fromEntries([...f].filter(([, v]) => typeof v === 'string')) as Record<string, string>;
+  envoye = true;
+  const action = texte(f.get('action'), 40);
+  const choisie = listeConnue(texte(f.get('liste'), 30));
+  if (choisie) listeId = choisie.id;
+  let r: Erreurs = {};
+  let ok = 'ok';
+  if (action === 'liste_enregistrer' && choisie) {
+    onglet = 'listes';
+    r = await enregistrerListe(db, tenant.id, choisie.id, f);
+    // Le bouton « Supprimer » d'une ligne enregistre d'abord la liste, puis retire la valeur (si rien ne la porte).
+    const cle = texte(f.get('supprimer'), 64);
+    if (cle && Object.keys(r).length === 0) {
+      const cibleSuppr = new FormData();
+      cibleSuppr.set('cle', cle);
+      r = await supprimerValeur(db, tenant.id, choisie.id, cibleSuppr);
+      ok = 'supprime';
+    }
+  } else if (action === 'liste_ajouter' && choisie) {
+    onglet = 'listes';
+    r = await ajouterValeur(db, tenant.id, choisie.id, f);
+    ok = 'ajoute';
+  } else if (action === 'seuils') {
+    onglet = 'seuils';
+    r = await enregistrerSeuils(db, tenant.id, f);
+  } else if (action === 'membres') {
+    onglet = 'membres';
+    r = await enregistrerMembres(db, tenant.id, f);
+  } else if (action === 'membre_ajouter') {
+    onglet = 'membres';
+    r = await ajouterMembre(db, tenant.id, f);
+  } else if (action === 'identite') {
+    onglet = 'identite';
+    r = await enregistrerIdentite(db, tenant.id, f);
+  } else if (action === 'symboles') {
+    onglet = 'identite';
+    r = await enregistrerSymboles(db, tenant.id, f);
+  } else if (action === 'symboles_defaut') {
+    onglet = 'identite';
+    await symbolesParDefaut(db, tenant.id);
+  } else if (action === 'mentions') {
+    onglet = 'mentions';
+    r = await enregistrerMentions(db, tenant.id, f);
+  } else {
+    r = { general: 'Action inconnue.' };
+  }
+  if (Object.keys(r).length === 0) {
+    const suite = onglet === 'listes' ? `&liste=${listeId}` : '';
+    return Astro.redirect(`/gestionnaire/reglages?onglet=${onglet}${suite}&ok=${ok}`, 303);
+  }
+  erreurs = r;
+}
+
+/** Valeur à afficher : ce qui vient d'être saisi (après un refus), sinon la valeur enregistrée. */
+const v = (k: string, d: string | number | null | undefined = ''): string => (envoye && k in valeurs ? valeurs[k] : d == null ? '' : String(d));
+/** Case à cocher : après un refus, l'état saisi (une case décochée n'est pas envoyée) ; sinon l'état enregistré. */
+const coche = (k: string, d: boolean): boolean => (envoye ? valeurs[k] === '1' : d);
+
+const MESSAGES_OK: Record<string, string> = {
+  ok: 'Enregistré.', ajoute: 'Valeur ajoutée à la fin de la liste.', supprime: 'Valeur supprimée.',
+};
+const retourLogo = p.get('logo') ?? '';
+const MSG_LOGO: Record<string, string> = { ok: 'Logo du cabinet enregistré.', retire: 'Logo du cabinet retiré.', ...MESSAGES_REFUS };
+
+// ---- données par onglet
+const infoListe = LISTES.find((l) => l.id === listeId)!;
+const valeursListe = onglet === 'listes' ? await valeursAdmin(db, tenant.id, listeId) : [];
+const defsMarqueurs = marqueursDeLaListe(listeId);
+const manquants = onglet === 'listes' ? marqueursManquants(valeursListe, listeId) : [];
+const nbActives = valeursListe.filter((x) => x.actif === 1).length;
+const saisisSeuils = onglet === 'seuils' ? await seuilsSaisis(db, tenant.id) : {};
+const membres = onglet === 'membres' ? await membresAdmin(db, tenant.id) : [];
+const identite = onglet === 'identite' ? await identiteDe(db, tenant.id) : { nom_affiche: '', theme: '' };
+const logo = onglet === 'identite' ? await urlLogoCabinet(db, tenant.id) : null;
+const symboles = onglet === 'identite' ? await symbolesReglage(db, tenant.id) : { symboles: [], personnalise: false };
+const mentions = onglet === 'mentions' ? await mentionsDe(db, tenant.id) : {};
+const lignesSymboles = [...symboles.symboles.map((s) => ({ cle: s.cle, libelle: s.libelle, type: s.type, source: s.source })), ...[0, 1, 2].map(() => ({ cle: '', libelle: '', type: 'cotation', source: '' }))];
+const themeActuel = THEMES.some((t) => t.id === identite.theme) ? identite.theme : 'maison';
+---
+<Gestion titre="Réglages">
+  <h1>Réglages</h1>
+  <p class="aide">Réservés au gestionnaire. Les changements s’appliquent aussitôt au suivi, à l’espace client et au site public (le site public peut mettre une minute à se rafraîchir).</p>
+  {MESSAGES_OK[p.get('ok') ?? ''] && <p class="info" role="status">{MESSAGES_OK[p.get('ok') ?? '']}</p>}
+  {MSG_LOGO[retourLogo] && <p class={retourLogo in MESSAGES_REFUS ? 'info alerte' : 'info'} role="status">{MSG_LOGO[retourLogo]}</p>}
+  {erreurs.general && <p class="info alerte" role="alert">{erreurs.general}</p>}
+
+  <nav class="onglets" aria-label="Rubriques des réglages">
+    {ONGLETS.map(([k, nom]) => <a href={`/gestionnaire/reglages?onglet=${k}`} aria-current={onglet === k ? 'page' : undefined}>{nom}</a>)}
+  </nav>
+
+  {onglet === 'listes' && (
+    <>
+      <nav class="filtres" aria-label="Liste à modifier">
+        {LISTES.map((l) => <a href={`/gestionnaire/reglages?onglet=listes&liste=${l.id}`} aria-current={l.id === listeId ? 'true' : undefined}>{l.titre}</a>)}
+      </nav>
+
+      <h2>{infoListe.titre}</h2>
+      <p class="aide">{infoListe.sert}</p>
+      <p class="aide">{infoListe.terminal}</p>
+      {listeId === 'etape' && (
+        <p class="info alerte">Ne marquez pas terminale une étape de réussite, la signature par exemple : elle serait mise en retrait avec les abandons.</p>
+      )}
+      {defsMarqueurs.length > 0 && (
+        <ul class="aide" style="padding-left: var(--espace)">
+          {defsMarqueurs.map((d) => <li><strong>{d.libelle}.</strong> {d.effet}</li>)}
+        </ul>
+      )}
+      {manquants.map((d) => (
+        <p class="info alerte" role="status">Aucune valeur active ne porte le marqueur <strong>{d.libelle}</strong> : {d.sans}</p>
+      ))}
+      {valeursListe.length > 0 && nbActives === 0 && (
+        <p class="info alerte" role="status">Aucune valeur n’est active : les listes déroulantes qui s’appuient sur cette liste seront vides.</p>
+      )}
+
+      <form method="post" action={`/gestionnaire/reglages?onglet=listes&liste=${listeId}`}>
+        <input type="hidden" name="action" value="liste_enregistrer" />
+        <input type="hidden" name="liste" value={listeId} />
+        <div class="actions" style="margin: 0 0 var(--espace)"><button class="btn-plein" type="submit">Enregistrer la liste</button></div>
+        <div class="defile">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Libellé</th><th>Actif</th>
+                {infoListe.terminable && <th>Terminal</th>}
+                {defsMarqueurs.length > 0 && <th>Marqueur</th>}
+                <th>Utilisée</th><th>Ordre</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {valeursListe.map((x, i) => (
+                <tr>
+                  <td>
+                    {erreurs[`l${i}`] && <p class="erreur">{erreurs[`l${i}`]}</p>}
+                    <input type="hidden" name={`l${i}_cle`} value={x.cle} />
+                    <input class="champ" name={`l${i}_libelle`} value={v(`l${i}_libelle`, x.libelle)} aria-label={`Libellé de ${x.libelle}`} maxlength="80" />
+                    <span class="aide" style="font-family: var(--mono)">{x.cle}</span>
+                  </td>
+                  <td><input type="checkbox" name={`l${i}_actif`} value="1" checked={coche(`l${i}_actif`, x.actif === 1)} aria-label={`${x.libelle} : actif`} /></td>
+                  {infoListe.terminable && (
+                    <td><input type="checkbox" name={`l${i}_terminal`} value="1" checked={coche(`l${i}_terminal`, x.terminal === 1)} aria-label={`${x.libelle} : terminal`} /></td>
+                  )}
+                  {defsMarqueurs.length > 0 && (
+                    <td>
+                      <select class="champ" name={`l${i}_marqueur`} aria-label={`Marqueur de ${x.libelle}`}>
+                        <option value="">—</option>
+                        {defsMarqueurs.map((d) => <option value={d.id} selected={v(`l${i}_marqueur`, x.marqueur ?? '') === d.id}>{d.libelle}</option>)}
+                      </select>
+                    </td>
+                  )}
+                  <td class="num">{x.usages > 0 ? `${x.usages} fois` : 'jamais'}</td>
+                  <td class="num" style="white-space: nowrap">
+                    <button class="btn" type="submit" name="deplacer" value={`monter:${x.cle}`} disabled={i === 0} aria-label={`Monter ${x.libelle}`}>↑</button>
+                    <button class="btn" type="submit" name="deplacer" value={`descendre:${x.cle}`} disabled={i === valeursListe.length - 1} aria-label={`Descendre ${x.libelle}`}>↓</button>
+                  </td>
+                  <td class="num">
+                    {x.usages === 0
+                      ? <button class="btn" type="submit" name="supprimer" value={x.cle} aria-label={`Supprimer ${x.libelle}`}>Supprimer</button>
+                      : <span class="aide">se désactive</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p class="aide">Une valeur utilisée ne se supprime jamais : décochez « Actif ». Elle disparaît des listes déroulantes et reste lisible partout où elle est déjà posée. La clé, en gris, ne change jamais.</p>
+      </form>
+
+      <hr class="filet" />
+      <form method="post" action={`/gestionnaire/reglages?onglet=listes&liste=${listeId}`} style="max-width: 32rem">
+        <input type="hidden" name="action" value="liste_ajouter" />
+        <input type="hidden" name="liste" value={listeId} />
+        <Champ nom="nouveau_libelle" label="Nouvelle valeur" valeur={v('nouveau_libelle')} erreur={erreurs.nouveau} aide="Elle s’ajoute à la fin de la liste, active et sans marqueur." />
+        <div class="actions"><button class="btn" type="submit">Ajouter</button></div>
+      </form>
+    </>
+  )}
+
+  {onglet === 'seuils' && (
+    <form method="post" style="max-width: 36rem">
+      <input type="hidden" name="action" value="seuils" />
+      <p class="aide">Laissez un champ vide pour revenir à sa valeur par défaut.</p>
+      {SEUILS.map((s) => (
+        <Champ
+          nom={s.champ} label={`${s.libelle} (${s.unite})`} valeur={v(s.champ, saisisSeuils[s.champ])} erreur={erreurs[s.champ]}
+          inputmode={s.centiemes ? 'decimal' : 'numeric'}
+          aide={`${s.aide} Valeur par défaut : ${formSeuil(s, s.defaut)} ${s.unite}.`}
+        />
+      ))}
+      <div class="actions"><button class="btn-plein" type="submit">Enregistrer les seuils</button></div>
+    </form>
+  )}
+
+  {onglet === 'membres' && (
+    <>
+      <p class="aide">L’équipe du cabinet : les membres en charge des contacts. La couleur se prend dans la palette des graphiques et suit le thème. Un membre ne se supprime pas (des fiches s’y réfèrent) : décochez « Actif ».</p>
+      {membres.length > 0 && (
+        <form method="post">
+          <input type="hidden" name="action" value="membres" />
+          <div class="actions" style="margin: 0 0 var(--espace)"><button class="btn-plein" type="submit">Enregistrer les membres</button></div>
+          <div class="defile">
+            <table class="table">
+              <thead><tr><th>Nom</th><th>Initiale</th><th>Couleur</th><th>Actif</th></tr></thead>
+              <tbody>
+                {membres.map((m, i) => (
+                  <tr>
+                    <td>
+                      {erreurs[`m${i}`] && <p class="erreur">{erreurs[`m${i}`]}</p>}
+                      <input type="hidden" name={`m${i}_id`} value={m.id} />
+                      <input class="champ" name={`m${i}_nom`} value={v(`m${i}_nom`, m.nom)} aria-label={`Nom de ${m.nom}`} maxlength="120" />
+                    </td>
+                    <td><input class="champ" name={`m${i}_initiale`} value={v(`m${i}_initiale`, m.initiale)} aria-label={`Initiale de ${m.nom}`} maxlength="2" style="min-width: 0; width: 4rem" /></td>
+                    <td>
+                      <div class="palette" role="radiogroup" aria-label={`Couleur de ${m.nom}`}>
+                        {PALETTE_MEMBRES.map((cle, n) => (
+                          <label class="choix-couleur">
+                            <input type="radio" name={`m${i}_couleur`} value={cle} checked={v(`m${i}_couleur`, m.couleur) === cle} />
+                            <span class="echantillon" style={`background: var(--${cle})`}></span>
+                            <span class="sr">Couleur {n + 1}</span>
+                          </label>
+                        ))}
+                        {!(PALETTE_MEMBRES as readonly string[]).includes(m.couleur) && (
+                          <>
+                            <input type="radio" name={`m${i}_couleur`} value={m.couleur} checked={v(`m${i}_couleur`, m.couleur) === m.couleur} aria-label="Couleur d’origine" />
+                            <span class="aide">couleur d’origine, hors palette</span>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                    <td><input type="checkbox" name={`m${i}_actif`} value="1" checked={coche(`m${i}_actif`, m.actif === 1)} aria-label={`${m.nom} : actif`} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </form>
+      )}
+      <hr class="filet" />
+      <form method="post" style="max-width: 32rem">
+        <input type="hidden" name="action" value="membre_ajouter" />
+        <h2>Ajouter un membre</h2>
+        <Champ nom="nouveau_nom" label="Nom" valeur={v('nouveau_nom')} erreur={erreurs.nouveau} />
+        <Champ nom="nouveau_initiale" label="Initiale" valeur={v('nouveau_initiale')} aide="Facultative : la première lettre du nom par défaut." />
+        <div class="groupe">
+          <span class="etiquette">Couleur</span>
+          <div class="palette" role="radiogroup" aria-label="Couleur du nouveau membre">
+            {PALETTE_MEMBRES.map((cle, n) => (
+              <label class="choix-couleur">
+                <input type="radio" name="nouveau_couleur" value={cle} checked={v('nouveau_couleur', PALETTE_MEMBRES[0]) === cle} />
+                <span class="echantillon" style={`background: var(--${cle})`}></span>
+                <span class="sr">Couleur {n + 1}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div class="actions"><button class="btn" type="submit">Ajouter</button></div>
+      </form>
+    </>
+  )}
+
+  {onglet === 'identite' && (
+    <>
+      <form method="post" style="max-width: 36rem">
+        <input type="hidden" name="action" value="identite" />
+        <Champ nom="nom_affiche" label="Nom affiché" valeur={v('nom_affiche', identite.nom_affiche)} erreur={erreurs.nom_affiche} aide={`Sur le site, dans les titres et l’espace client. Vide : « ${tenant.nom} ».`} />
+        <fieldset class="themes">
+          <legend class="etiquette">Thème</legend>
+          {erreurs.theme && <p class="erreur">{erreurs.theme}</p>}
+          <p class="aide">Cinq combinaisons déjà validées en contraste ; il n’y a pas de couleur libre. Le thème s’applique au site public, à l’espace client et à ce module.</p>
+          {THEMES.map((t) => (
+            <label class="choix-theme">
+              <input type="radio" name="theme" value={t.id} checked={v('theme', themeActuel) === t.id} />
+              <span><strong>{t.libelle}</strong> — {t.description}</span>
+            </label>
+          ))}
+        </fieldset>
+        <div class="actions"><button class="btn-plein" type="submit">Enregistrer l’identité</button></div>
+      </form>
+
+      <hr class="filet" />
+      <span class="etiquette">Logo du cabinet</span>
+      <p class="aide">Affiché sur le site et dans l’espace des clients. PNG, JPEG ou WebP, {LIMITE_LOGO / 1024} Ko au plus.</p>
+      {logo && <p><img src={logo} alt="Logo actuel" height="48" /></p>}
+      <form method="post" action="/gestionnaire/fichiers/logo-cabinet?retour=reglages" enctype="multipart/form-data" class="actions">
+        <input name="fichier" type="file" accept="image/png,image/jpeg,image/webp" required aria-label="Fichier du logo" />
+        <button class="btn" type="submit">Enregistrer le logo</button>
+      </form>
+      {logo && (
+        <form method="post" action="/gestionnaire/fichiers/logo-cabinet?retour=reglages" enctype="multipart/form-data" class="actions">
+          <input type="hidden" name="action" value="retirer" />
+          <button class="btn" type="submit">Retirer le logo</button>
+        </form>
+      )}
+
+      <hr class="filet" />
+      <span class="etiquette">Symboles de marché suivis</span>
+      <p class="aide">
+        Les cours de la vue Actus sont récupérés côté serveur, un appel par symbole et par jour ({SYMBOLES_MAX} symboles au plus). Le forfait gratuit du fournisseur autorise 25 appels par jour pour tous les cabinets réunis : au-delà, les derniers symboles ne sont pas mis à jour.
+        {symboles.personnalise ? ' Vous suivez vos propres symboles.' : ' Vous suivez les cinq symboles par défaut ; les modifier crée votre propre liste.'}
+        Une ligne vide est retirée.
+      </p>
+      <form method="post">
+        <input type="hidden" name="action" value="symboles" />
+        <div class="defile">
+          <table class="table">
+            <thead><tr><th>Libellé</th><th>Type</th><th>Symbole du fournisseur</th></tr></thead>
+            <tbody>
+              {lignesSymboles.map((s, i) => (
+                <tr>
+                  <td>
+                    {erreurs[`s${i}`] && <p class="erreur">{erreurs[`s${i}`]}</p>}
+                    <input type="hidden" name={`s${i}_cle`} value={v(`s${i}_cle`, s.cle)} />
+                    <input class="champ" name={`s${i}_libelle`} value={v(`s${i}_libelle`, s.libelle)} aria-label="Libellé du symbole" maxlength="80" />
+                    {s.cle && <span class="aide" style="font-family: var(--mono)">{s.cle}</span>}
+                  </td>
+                  <td>
+                    <select class="champ" name={`s${i}_type`} aria-label="Type du symbole">
+                      {TYPES_SYMBOLE.map(([k, nom]) => <option value={k} selected={v(`s${i}_type`, s.type) === k}>{nom}</option>)}
+                    </select>
+                  </td>
+                  <td><input class="champ" name={`s${i}_source`} value={v(`s${i}_source`, s.source)} aria-label="Symbole du fournisseur" maxlength="40" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div class="actions"><button class="btn-plein" type="submit">Enregistrer les symboles</button></div>
+      </form>
+      {symboles.personnalise && (
+        <form method="post" class="actions">
+          <input type="hidden" name="action" value="symboles_defaut" />
+          <button class="btn" type="submit">Rétablir les symboles par défaut</button>
+        </form>
+      )}
+    </>
+  )}
+
+  {onglet === 'mentions' && (
+    <form method="post" style="max-width: 40rem">
+      <input type="hidden" name="action" value="mentions" />
+      <p class="aide">Ces champs alimentent la page <a href="/mentions-legales">Mentions légales</a> du site public (et sa version anglaise). Un champ vide n’est pas publié : la page ne contient aucun texte qui ne vienne d’ici ou des sections libres de la rubrique Contenus.</p>
+      {MENTIONS.map((m) => (
+        <Champ nom={m.cle} label={m.libelle} valeur={v(m.cle, mentions[m.cle])} erreur={erreurs[m.cle]} lignes={m.long ? 3 : undefined} aide={m.aide} />
+      ))}
+      <div class="actions"><button class="btn-plein" type="submit">Enregistrer les mentions</button></div>
+    </form>
+  )}
+</Gestion>
+
+<style is:global>
+  .filtres { display: flex; gap: var(--espace); flex-wrap: wrap; margin: var(--espace) 0; }
+  .filtres a { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--texte-2); border-bottom: 1px solid transparent; }
+  .filtres a[aria-current='true'] { color: var(--accent-clair); border-bottom-color: var(--accent); }
+  .palette { display: flex; gap: var(--espace-xs); align-items: center; flex-wrap: wrap; }
+  .choix-couleur { display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; }
+  .echantillon { display: inline-block; width: 1.25rem; height: 1.25rem; border: 1px solid var(--filet); }
+  .sr { position: absolute; left: -9999px; }
+  .themes { border: 0; padding: 0; margin: 0 0 var(--espace); }
+  .themes legend { padding: 0; margin-bottom: var(--espace-xs); }
+  .choix-theme { display: flex; gap: var(--espace-s); align-items: baseline; padding: var(--espace-xs) 0; cursor: pointer; }
+</style>

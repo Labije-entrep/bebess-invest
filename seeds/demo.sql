@@ -15,9 +15,9 @@ INSERT INTO utilisateur (id, tenant_id, email, nom, role, actif, cree_le) VALUES
 
 -- Trois membres de l'équipe du cabinet. couleur : jeton de la palette des graphiques.
 INSERT INTO membre (id, tenant_id, nom, initiale, couleur, actif, cree_le) VALUES
-  ('mbr_helene',  'tnt_demo', 'Hélène Roussel',  'H', '#B9862B', 1, '2023-11-01T09:00:00Z'),
-  ('mbr_antoine', 'tnt_demo', 'Antoine Verdier', 'A', '#4E9BD6', 1, '2023-11-01T09:00:00Z'),
-  ('mbr_camille', 'tnt_demo', 'Camille Durand',  'C', '#3FA98A', 1, '2024-01-08T09:00:00Z');
+  ('mbr_helene',  'tnt_demo', 'Hélène Roussel',  'H', 'serie-1', 1, '2023-11-01T09:00:00Z'),
+  ('mbr_antoine', 'tnt_demo', 'Antoine Verdier', 'A', 'serie-2', 1, '2023-11-01T09:00:00Z'),
+  ('mbr_camille', 'tnt_demo', 'Camille Durand',  'C', 'serie-4', 1, '2024-01-08T09:00:00Z');
 
 -- Listes de référence par défaut (chantier/21-listes-defaut.md, reprises dans src/lib/listes-defaut.ts).
 INSERT INTO liste_valeur (tenant_id, liste, cle, libelle, ordre, actif) VALUES
@@ -72,6 +72,14 @@ INSERT INTO liste_valeur (tenant_id, liste, cle, libelle, ordre, actif) VALUES
 -- Valeurs terminales (migration 0005) : le sujet « fait » est clos, l'étape « perdu » sort du parcours.
 UPDATE liste_valeur SET terminal = 1
  WHERE tenant_id = 'tnt_demo' AND ((liste = 'statut_sujet' AND cle = 'fait') OR (liste = 'etape' AND cle = 'perdu'));
+
+-- Marqueurs de liste (migration 0006) : le rôle que le code attend d'une valeur, posé sur la valeur du cabinet.
+UPDATE liste_valeur SET marqueur = 'parcours'   WHERE tenant_id = 'tnt_demo' AND liste = 'type_contact'      AND cle = 'prospect';
+UPDATE liste_valeur SET marqueur = 'client'     WHERE tenant_id = 'tnt_demo' AND liste = 'type_contact'      AND cle = 'client';
+UPDATE liste_valeur SET marqueur = 'en_cours'   WHERE tenant_id = 'tnt_demo' AND liste = 'statut_sujet'      AND cle = 'encours';
+UPDATE liste_valeur SET marqueur = 'en_attente' WHERE tenant_id = 'tnt_demo' AND liste = 'statut_sujet'      AND cle = 'attente';
+UPDATE liste_valeur SET marqueur = 'clos'       WHERE tenant_id = 'tnt_demo' AND liste = 'statut_mouvement'  AND cle IN ('execute', 'archive');
+UPDATE liste_valeur SET marqueur = 'defaut'     WHERE tenant_id = 'tnt_demo' AND liste = 'type_portefeuille' AND cle = 'personne';
 
 -- Un portefeuille par viewer ; Claire en a un second, vide, pour éprouver le cas.
 INSERT INTO portefeuille (id, tenant_id, viewer_id, libelle, type, ordre, cree_le) VALUES
@@ -207,6 +215,9 @@ INSERT INTO liste_valeur (tenant_id, liste, cle, libelle, ordre, actif) VALUES
   ('tnt_autre', 'statut_mouvement', 'execute', 'Exécuté', 2, 1),
   ('tnt_autre', 'type_portefeuille', 'personne', 'Personne physique', 1, 1),
   ('tnt_autre', 'type_portefeuille', 'holding', 'Holding', 2, 1);
+
+UPDATE liste_valeur SET marqueur = 'clos'   WHERE tenant_id = 'tnt_autre' AND liste = 'statut_mouvement'  AND cle = 'execute';
+UPDATE liste_valeur SET marqueur = 'defaut' WHERE tenant_id = 'tnt_autre' AND liste = 'type_portefeuille' AND cle = 'personne';
 
 INSERT INTO portefeuille (id, tenant_id, viewer_id, libelle, type, ordre, cree_le) VALUES
   ('pf_autre', 'tnt_autre', 'usr_autre_viewer', 'Patrimoine', 'personne', 0, '2025-01-10T09:00:00Z');

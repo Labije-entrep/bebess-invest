@@ -8,6 +8,8 @@
 import type { APIContext } from 'astro';
 import { dateLongue, pourcent } from './format';
 import { signeBp } from './espace';
+import { cleMarquee } from './listes';
+import { MARQUEUR } from './marqueurs';
 import { envDe } from './mail';
 import { incrementerVersion } from './version';
 import type { Base, Role, Tenant, Utilisateur } from './db';
@@ -40,7 +42,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export type ResultatPromotion =
   | { ok: true; viewerId: string; email: string; nom: string }
-  | { ok: false; code: 'deja' | 'email_absent' | 'email_invalide' | 'email_pris' | 'inconnu' };
+  | { ok: false; code: 'deja' | 'email_absent' | 'email_invalide' | 'email_pris' | 'inconnu' | 'type_absent' };
 
 /**
  * Crée, en une transaction, le viewer (nom, prénom et adresse du contact), sa fiche et son portefeuille
@@ -61,6 +63,10 @@ export async function promouvoir(db: Base, tenantId: string, contactId: string):
   if (!EMAIL.test(email)) return { ok: false, code: 'email_invalide' };
   if (await db.prepare('SELECT 1 AS ok FROM utilisateur WHERE email = ?').bind(email).first()) return { ok: false, code: 'email_pris' };
 
+  // Type du portefeuille de départ : la valeur qui porte le marqueur « Type par défaut ». Sans elle, on ne devine rien.
+  const typeDefaut = await cleMarquee(db, tenantId, 'type_portefeuille', MARQUEUR.DEFAUT);
+  if (!typeDefaut) return { ok: false, code: 'type_absent' };
+
   const nom = [c.prenom?.trim(), c.nom.trim()].filter(Boolean).join(' ');
   const viewerId = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -71,8 +77,8 @@ export async function promouvoir(db: Base, tenantId: string, contactId: string):
         .bind(viewerId, tenantId, email, nom, now),
       db.prepare('INSERT INTO fiche (utilisateur_id) VALUES (?)').bind(viewerId),
       db
-        .prepare("INSERT INTO portefeuille (id, tenant_id, viewer_id, libelle, type, ordre, cree_le) VALUES (?, ?, ?, 'Patrimoine', 'personne', 0, ?)")
-        .bind(crypto.randomUUID(), tenantId, viewerId, now),
+        .prepare("INSERT INTO portefeuille (id, tenant_id, viewer_id, libelle, type, ordre, cree_le) VALUES (?, ?, ?, 'Patrimoine', ?, 0, ?)")
+        .bind(crypto.randomUUID(), tenantId, viewerId, typeDefaut, now),
       db
         .prepare('UPDATE contact SET viewer_id = ?, maj_le = ? WHERE id = ? AND tenant_id = ? AND viewer_id IS NULL')
         .bind(viewerId, now, contactId, tenantId),

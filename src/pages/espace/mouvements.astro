@@ -4,6 +4,7 @@ import Selecteur from '../../components/espace/Selecteur.astro';
 import { mouvementsDuViewer, portefeuillesDuViewer } from '../../lib/db';
 import { dateCourte, euros } from '../../lib/format';
 import { envDe } from '../../lib/mail';
+import { libellesDe } from '../../lib/listes';
 import { choixPortefeuille, journaliser } from '../../lib/espace';
 
 const u = Astro.locals.utilisateur;
@@ -22,6 +23,7 @@ const historique = tous.filter((m) => m.en_cours !== 1);
 
 const annees = [...new Set(historique.map((m) => m.date.slice(0, 4)))].sort().reverse();
 const demande = Astro.url.searchParams.get('annee') ?? '';
+const nomStatut = (await libellesDe(DB, tenant.id, 'statut_mouvement')).lire;
 const annee = annees.includes(demande) ? demande : '';
 // Les liens d'année gardent le portefeuille choisi.
 const pChoisi = choix.portefeuille ? `p=${encodeURIComponent(choix.portefeuille.id)}` : '';
@@ -42,7 +44,7 @@ const visibles = annee ? historique.filter((m) => m.date.startsWith(annee)) : hi
           <div class="avance" aria-label={`Étape ${m.etape} sur 3`}>
             {[1, 2, 3].map((n) => <span class={n <= m.etape ? 'fait' : ''}></span>)}
           </div>
-          <p class="laiton">{m.statut}</p>
+          <p class="laiton">{nomStatut(m.statut)}</p>
           <p>
             {[m.enveloppe, m.montant_cents !== null ? euros(m.montant_cents) : null, dateCourte(m.date)].filter(Boolean).join(' · ')}
           </p>
@@ -71,7 +73,7 @@ const visibles = annee ? historique.filter((m) => m.date.startsWith(annee)) : hi
               <td>{m.libelle}</td>
               <td>{m.enveloppe ?? '—'}</td>
               <td class="num">{m.montant_cents === null ? '—' : euros(m.montant_cents)}</td>
-              <td>{m.statut}</td>
+              <td>{nomStatut(m.statut)}</td>
             </tr>
           ))}
         </tbody>

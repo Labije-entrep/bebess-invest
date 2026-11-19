@@ -57,11 +57,19 @@ export function estTerminal(terminaux: Record<string, string[]> | undefined, lis
 }
 
 /**
- * Le parcours de prospection range les contacts de ce type, et l'étape ne se pose que sur eux (liste, fiche).
- * Seule clé de type_contact écrite en dur : la table n'a pas de colonne qui dise laquelle de ses valeurs est
- * le prospect (voir ETAT.md, lot 05, choix 2).
+ * Les clés (actives) qui portent un marqueur de liste. Jamais une clé écrite en dur : le rôle (parcours, en_cours…)
+ * est déclaré dans la table de référence du cabinet et servi par /api/suivi/etat (`marqueurs`).
  */
-export const TYPE_PROSPECT = 'prospect';
+export { clesMarquees, MARQUEUR, type Marqueurs } from '../lib/marqueurs';
+
+/** Adresse de l'écran qui permet de poser un marqueur. */
+export const ECRAN_LISTES = '/gestionnaire/reglages?onglet=listes';
+
+/**
+ * Couleur d'un membre : un jeton de la palette des graphiques (« serie-1 » à « serie-5 »), donc elle suit le thème du
+ * cabinet. Une valeur plus ancienne (couleur littérale) est rendue telle quelle, sans y toucher.
+ */
+export const couleurMembre = (c: string): string => (/^serie-[1-5]$/.test(c) ? `var(--${c})` : c);
 
 // ---------------------------------------------------------------- file d'écritures
 

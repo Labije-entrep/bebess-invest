@@ -8,6 +8,7 @@ import {
 } from '../../lib/db';
 import { dateLongue, euros, pourcent } from '../../lib/format';
 import { envDe } from '../../lib/mail';
+import { libellesDe } from '../../lib/listes';
 import {
   arrete, choixPortefeuille, courbe as calculerCourbe, indicateurs, journaliser, plusAncien,
   pointsConsolides, repartition, signe, signeBp, teinte,
@@ -35,6 +36,8 @@ const lignes = await lignesDesEnveloppes(DB, enveloppes.map((e) => e.id));
 
 const ind = indicateurs(points, enveloppes, lignes);
 const classes = repartition(lignes, cibles);
+const nomClasse = (await libellesDe(DB, tenant.id, 'classe_actif')).lire;
+const nomStatut = (await libellesDe(DB, tenant.id, 'statut_mouvement')).lire;
 const courbe = calculerCourbe(points);
 const enCours = mouvements.filter((m) => m.en_cours === 1).slice(0, 3);
 // La plus ancienne date, jamais la plus récente : un portefeuille n'est à jour que si tout l'est.
@@ -96,7 +99,7 @@ const totalLignes = classes.reduce((s, c) => s + c.montant, 0);
         {totalLignes > 0 && (
           <div class="barre" role="img" aria-label="Répartition par classe d'actifs">
             {classes.filter((c) => c.montant > 0).map((c) => (
-              <span style={`flex: ${c.montant} 1 0; background: ${c.couleur};`} title={c.classe}></span>
+              <span style={`flex: ${c.montant} 1 0; background: ${c.couleur};`} title={nomClasse(c.classe)}></span>
             ))}
           </div>
         )}
@@ -108,7 +111,7 @@ const totalLignes = classes.reduce((s, c) => s + c.montant, 0);
             <tbody>
               {classes.map((c) => (
                 <tr>
-                  <td><span class="pastille" style={`background: ${c.couleur};`}></span>{c.classe}</td>
+                  <td><span class="pastille" style={`background: ${c.couleur};`}></span>{nomClasse(c.classe)}</td>
                   <td class="num">{euros(c.montant)}</td>
                   <td class="num">{pourcent(c.partBp)}</td>
                   {!choix.consolide && (
@@ -135,7 +138,7 @@ const totalLignes = classes.reduce((s, c) => s + c.montant, 0);
           <div class="avance" aria-label={`Étape ${m.etape} sur 3`}>
             {[1, 2, 3].map((n) => <span class={n <= m.etape ? 'fait' : ''}></span>)}
           </div>
-          <p>{m.statut}{m.montant_cents !== null ? ` · ${euros(m.montant_cents)}` : ''}</p>
+          <p>{nomStatut(m.statut)}{m.montant_cents !== null ? ` · ${euros(m.montant_cents)}` : ''}</p>
         </div>
       ))}
       <div class="mvt">

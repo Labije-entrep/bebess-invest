@@ -25,7 +25,7 @@ const liens: [string, string][] = [
 const ici = Astro.url.pathname.replace(/\/$/, '');
 ---
 <!doctype html>
-<html lang={langue}>
+<html lang={langue} data-cabinet-theme={Astro.locals.tenant?.theme ?? 'maison'}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

@@ -164,7 +164,8 @@ export interface Classe {
   couleur: string;
 }
 
-const COULEURS = ['#B9862B', '#4E9BD6', '#C9684E', '#3FA98A', '#9B7BD4'];
+// Couleurs de série : des jetons (app.css), donc elles suivent le thème du cabinet. Aucune couleur littérale ici.
+const COULEURS = ['var(--serie-1)', 'var(--serie-2)', 'var(--serie-3)', 'var(--serie-4)', 'var(--serie-5)'];
 
 export function repartition(lignes: Ligne[], cibles: Cible[]): Classe[] {
   const total = lignes.reduce((s, l) => s + l.valorisation_cents, 0);
@@ -258,8 +259,8 @@ export function courbe(points: Point[]): Courbe | null {
 
   const dernier = points[points.length - 1];
   const defs = [
-    { nom: 'Valorisation', couleur: '#DCBF88', tirets: false, val: (p: Point) => p.valeur_cents },
-    { nom: 'Versements cumulés', couleur: '#7C8AA0', tirets: true, val: (p: Point) => p.versements_cumules_cents },
+    { nom: 'Valorisation', couleur: 'var(--courbe-valeur)', tirets: false, val: (p: Point) => p.valeur_cents },
+    { nom: 'Versements cumulés', couleur: 'var(--courbe-versements)', tirets: true, val: (p: Point) => p.versements_cumules_cents },
   ];
   const series: Serie[] = defs.map((s) => ({
     nom: s.nom,

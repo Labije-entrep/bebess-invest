@@ -4,6 +4,7 @@ import Selecteur from '../../components/espace/Selecteur.astro';
 import { documentsDuViewer, ficheDuViewer, portefeuillesDuViewer } from '../../lib/db';
 import { dateCourte, dateLongue, euros } from '../../lib/format';
 import { envDe } from '../../lib/mail';
+import { libellesDe } from '../../lib/listes';
 import { choixPortefeuille, journaliser } from '../../lib/espace';
 
 const u = Astro.locals.utilisateur;
@@ -12,10 +13,21 @@ if (!u || !tenant) return Astro.redirect('/connexion');
 const { DB } = envDe(Astro.locals);
 await journaliser(DB, u.id, Astro.url.pathname);
 
-// Fiche et documents sont ceux du client : le sélecteur ne filtre rien ici, il garde le choix.
+// La fiche est celle du client. Les rapports se rangent par entité : ceux du dossier entier d'abord, puis un groupe par
+// portefeuille. Sur un portefeuille choisi (?p=), on ne garde que ses rapports et ceux du dossier entier. Un portefeuille
+// archivé n'est plus proposé par le sélecteur, mais ses rapports restent consultables sous son nom, sur « Tout ».
 const portefeuilles = await portefeuillesDuViewer(DB, tenant.id, u.id);
 const choix = choixPortefeuille(portefeuilles, Astro.url.searchParams.get('p'));
-const [fiche, documents] = await Promise.all([ficheDuViewer(DB, tenant.id, u.id), documentsDuViewer(DB, u.id)]);
+const [fiche, tousDocuments, tous] = await Promise.all([
+  ficheDuViewer(DB, tenant.id, u.id), documentsDuViewer(DB, u.id), portefeuillesDuViewer(DB, tenant.id, u.id, true),
+]);
+const nomCategorie = (await libellesDe(DB, tenant.id, 'categorie_doc')).lire;
+const choisi = choix.portefeuille?.id ?? null;
+const documents = tousDocuments.filter((d) => choisi === null || d.portefeuille_id === null || d.portefeuille_id === choisi);
+const groupes: { titre: string; docs: typeof documents }[] = [
+  { titre: 'Tout le dossier', docs: documents.filter((d) => d.portefeuille_id === null) },
+  ...tous.map((p) => ({ titre: `${p.libelle}${p.archive ? ' (archivé)' : ''}`, docs: documents.filter((d) => d.portefeuille_id === p.id) })),
+].filter((g) => g.docs.length > 0);
 
 const lignes: [string, string | null][] = fiche
   ? [
@@ -47,14 +59,23 @@ const lignes: [string, string | null][] = fiche
     <aside class="tb-lateral">
       <span class="etiquette">Documents</span>
       {documents.length === 0 && <p class="aide">Aucun document.</p>}
-      <ul class="liste-doc">
-        {documents.map((d) => (
-          <li>
-            {d.cle_fichier ? <a href={`/fichiers/document/${encodeURIComponent(d.id)}`}>{d.titre}</a> : d.titre}<br />
-            <span class="sec num">{d.categorie} · {dateCourte(d.date)}</span>
-          </li>
-        ))}
-      </ul>
+      {groupes.map((g) => (
+        <>
+          <h3 class="doc-entite">{g.titre}</h3>
+          <ul class="liste-doc">
+            {g.docs.map((d) => (
+              <li>
+                {d.cle_fichier ? <a href={`/fichiers/document/${encodeURIComponent(d.id)}`}>{d.titre}</a> : d.titre}<br />
+                <span class="sec num">{nomCategorie(d.categorie)} · {dateCourte(d.date)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ))}
     </aside>
   </div>
 </Viewer>
+
+<style is:global>
+  .doc-entite { font-family: var(--mono); font-weight: 400; font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--texte-2); margin: var(--espace) 0 var(--espace-xs); }
+</style>

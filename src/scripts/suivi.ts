@@ -8,9 +8,9 @@
 // jusqu'à ce qu'elle passe ou que l'utilisateur l'abandonne : rien ne disparaît sans qu'il le sache.
 
 import {
-  api, brancher, empiler, ecrituresEnFile, estTerminal, fileExistante, h, liaison, marque, reseauRetabli,
-  sansPerdreLeClic, toutesOps, toutRejouer, TYPE_PROSPECT,
-  type Corps, type Enfant, type Attribut,
+  api, brancher, clesMarquees, couleurMembre, ecrituresEnFile, ECRAN_LISTES, empiler, estTerminal, fileExistante, h, liaison,
+  marque, MARQUEUR, reseauRetabli, sansPerdreLeClic, toutesOps, toutRejouer,
+  type Corps, type Enfant, type Attribut, type Marqueurs,
 } from './commun';
 
 // ---------------------------------------------------------------- types
@@ -46,6 +46,8 @@ interface Etat {
   seuils: Seuils;
   /** Clés terminales par liste (colonne `terminal` de liste_valeur), actives ou non. */
   terminaux: Record<string, string[]>;
+  /** Rôles que le code attend de certaines valeurs (colonne `marqueur`), sur les valeurs actives seulement. */
+  marqueurs: Marqueurs;
   contacts: Contact[];
   sujets: Sujet[];
   membres: Membre[];
@@ -225,6 +227,8 @@ interface Calcul {
   compte: Record<Indicateur, number>;
   avoirsTotal: number;
   filtres: Record<Indicateur, (c: Contact) => boolean>;
+  /** Indicateurs sans valeur qui les porte : le message qui remplace leur chiffre. Jamais un zéro silencieux. */
+  manques: Partial<Record<Indicateur, string>>;
 }
 
 function calculer(): Calcul {
@@ -241,11 +245,17 @@ function calculer(): Calcul {
   const enRetard = (x: Sujet): boolean => estOuvert(x) && x.echeance !== null && x.echeance < aujourd;
   const limite = ajouterJours(aujourd, s.seuils.relance);
   const a = (c: Contact, f: (x: Sujet) => boolean): boolean => (sujetsDe.get(c.id) ?? []).some(f);
+  // « En cours » et « En attente » : les statuts qui portent ces marqueurs dans la liste du cabinet. Sans eux, rien à compter.
+  const enCours = new Set(clesMarquees(s.marqueurs, 'statut_sujet', MARQUEUR.EN_COURS));
+  const enAttente = new Set(clesMarquees(s.marqueurs, 'statut_sujet', MARQUEUR.EN_ATTENTE));
+  const manques: Partial<Record<Indicateur, string>> = {};
+  if (enCours.size === 0) manques.encours = 'Aucun statut n’est marqué « Indicateur En cours ».';
+  if (enAttente.size === 0) manques.attente = 'Aucun statut n’est marqué « Indicateur En attente ».';
   const filtres: Record<Indicateur, (c: Contact) => boolean> = {
     vus: (c) => c.dernier_echange === aujourd,
     ouverts: (c) => a(c, estOuvert),
-    encours: (c) => a(c, (x) => x.statut === 'encours'),
-    attente: (c) => a(c, (x) => x.statut === 'attente'),
+    encours: (c) => a(c, (x) => enCours.has(x.statut)),
+    attente: (c) => a(c, (x) => enAttente.has(x.statut)),
     retard: (c) => a(c, enRetard),
     relance: (c) => c.relance !== null && c.relance <= limite,
     sans: (c) => c.dernier_echange === null || ecartJours(c.dernier_echange, aujourd) >= s.seuils.sans_echange,
@@ -254,15 +264,15 @@ function calculer(): Calcul {
   const compte: Record<Indicateur, number> = {
     vus: actifs.filter(filtres.vus).length,
     ouverts: tous.filter(estOuvert).length,
-    encours: tous.filter((x) => x.statut === 'encours').length,
-    attente: tous.filter((x) => x.statut === 'attente').length,
+    encours: tous.filter((x) => enCours.has(x.statut)).length,
+    attente: tous.filter((x) => enAttente.has(x.statut)).length,
     retard: tous.filter(enRetard).length,
     relance: actifs.filter(filtres.relance).length,
     sans: actifs.filter(filtres.sans).length,
     avoirs: actifs.filter(filtres.avoirs).length,
   };
   const avoirsTotal = actifs.reduce((t, c) => t + (avoirsDe(c)?.cents ?? 0), 0);
-  return { actifs, sujetsDe, compte, avoirsTotal, filtres };
+  return { actifs, sujetsDe, compte, avoirsTotal, filtres, manques };
 }
 
 // ---------------------------------------------------------------- rendu
@@ -341,6 +351,20 @@ function rendreMaintenant(): void {
     ['avoirs', `Avoirs suivis · ${c.compte.avoirs} fiche${c.compte.avoirs > 1 ? 's' : ''}`, false, h('span', { class: 'chiffre' }, eurosCompact(c.avoirsTotal))],
   ];
   for (const [id, nom, alerte, chiffre] of defs) {
+    const manque = c.manques[id];
+    if (manque) {
+      // Pas de bouton ni de chiffre : un indicateur sans valeur à compter le dit, et dit où le régler.
+      if (indicateur === id) indicateur = null;
+      kpis.append(
+        h('li', {},
+          h('div', { class: 'suivi-kpi manque' },
+            h('span', { class: 'chiffre', 'aria-hidden': 'true' }, '—'),
+            h('span', { class: 'etiquette' }, nom),
+            h('span', { class: 'suivi-kpi-message', role: 'status' }, manque, ' ', h('a', { href: ECRAN_LISTES }, 'Régler dans les listes'))),
+        ),
+      );
+      continue;
+    }
     const rouge = alerte && c.compte[id] > 0;
     kpis.append(
       h('li', {},
@@ -405,7 +429,7 @@ function rendreMaintenant(): void {
 function avatar(m: Membre | undefined): HTMLElement | null {
   if (!m) return null;
   const a = h('span', { class: 'suivi-avatar', 'aria-hidden': 'true' }, m.initiale);
-  a.style.backgroundColor = m.couleur;
+  a.style.backgroundColor = couleurMembre(m.couleur);
   return a;
 }
 
@@ -440,6 +464,7 @@ function liste(c: Calcul): HTMLElement {
   }
 
   // Apports : pour un prescripteur, les contacts qu'il a apportés et leurs avoirs.
+  const clients = new Set(clesMarquees(s.marqueurs, 'type_contact', MARQUEUR.CLIENT));
   const apports = new Map<string, Contact[]>();
   for (const x of c.actifs) if (x.apporteur_id) apports.set(x.apporteur_id, [...(apports.get(x.apporteur_id) ?? []), x]);
 
@@ -469,7 +494,7 @@ function liste(c: Calcul): HTMLElement {
           marque('contact', x.id, 'suivi-marque'),
         ),
         h('td', {},
-          ...x.types.map((t) => h('span', { class: `suivi-pastille${t === 'client' ? ' client' : ''}` }, libelle('type_contact', t))),
+          ...x.types.map((t) => h('span', { class: `suivi-pastille${clients.has(t) ? ' client' : ''}` }, libelle('type_contact', t))),
           x.viewer_id && h('span', { class: 'suivi-portail' }, 'Portail'),
         ),
         h('td', {}, membre ? h('span', {}, avatar(membre), ' ', membre.nom) : '—'),
@@ -612,19 +637,21 @@ function avancer(id: string): void {
  * Une étape terminale est une sortie (perdu, par défaut) : elle passe en dernier, en retrait. Les prospects
  * sans étape, ou dont l'étape a quitté la liste, ont une colonne à part au début : on ne les perd pas de vue.
  *
- * « Prospect » est la seule clé de liste écrite en dur (TYPE_PROSPECT, commun.ts) : type_contact n'a pas,
- * comme les statuts et les étapes, de colonne qui dise laquelle de ses valeurs est celle-ci. Si le cabinet
- * n'a plus de type de cette clé, on le dit au lieu d'afficher un parcours vide.
+ * Les contacts rangés sont ceux dont un type porte le marqueur « parcours » (colonne `marqueur` de liste_valeur) :
+ * aucune clé n'est écrite en dur. Si aucun type actif ne le porte, on le dit au lieu d'afficher un parcours vide.
  */
 function parcours(c: Calcul): HTMLElement {
   const s = serveur!;
-  if (!(s.listes.type_contact ?? []).some((v) => v.cle === TYPE_PROSPECT)) {
-    return h('p', { class: 'suivi-vide' }, `Aucun type « ${TYPE_PROSPECT} » dans la liste des types de contact : le parcours n’a personne à ranger.`);
+  const typesParcours = new Set(clesMarquees(s.marqueurs, 'type_contact', MARQUEUR.PARCOURS));
+  if (typesParcours.size === 0) {
+    return h('p', { class: 'suivi-vide', role: 'status' },
+      'Aucun type de contact n’est marqué « Alimente le parcours » : le parcours n’a personne à ranger. ',
+      h('a', { href: ECRAN_LISTES }, 'Poser le marqueur dans les listes'), '.');
   }
   const etapes = s.listes.etape ?? [];
   if (etapes.length === 0) return h('p', { class: 'suivi-vide' }, 'Aucune étape de prospection n’est définie.');
   const aujourd = aujourdhui();
-  const prospects = portee(c).visibles.filter((x) => x.types.includes(TYPE_PROSPECT));
+  const prospects = portee(c).visibles.filter((x) => x.types.some((t) => typesParcours.has(t)));
   const sortie = (v: ValeurListe): boolean => estTerminal(s.terminaux, 'etape', v.cle);
   const connues = new Set(etapes.map((v) => v.cle));
 

@@ -3,6 +3,7 @@
 
 import type { Base } from './db';
 import type { Liste } from './listes-defaut';
+import type { Marqueurs } from './marqueurs';
 
 export interface ValeurListe {
   cle: string;
@@ -35,6 +36,50 @@ export async function terminauxDe(db: Base, tenantId: string): Promise<Record<st
   const out: Record<string, string[]> = {};
   for (const r of results) (out[r.liste] ??= []).push(r.cle);
   return out;
+}
+
+/**
+ * Libellé de chaque valeur d'une liste, ACTIVES OU NON : une valeur désactivée disparaît des choix mais reste lisible sur
+ * les enregistrements qui la portent. Une clé inconnue de la table s'affiche telle quelle (`lire`).
+ */
+export async function libellesDe(db: Base, tenantId: string, liste: Liste): Promise<{ lire(cle: string): string; actif(cle: string): boolean }> {
+  const { results } = await db
+    .prepare('SELECT cle, libelle, actif FROM liste_valeur WHERE tenant_id = ? AND liste = ?')
+    .bind(tenantId, liste)
+    .all<{ cle: string; libelle: string; actif: number }>();
+  const m = new Map(results.map((r) => [r.cle, r]));
+  return { lire: (cle) => m.get(cle)?.libelle ?? cle, actif: (cle) => m.get(cle)?.actif === 1 };
+}
+
+/**
+ * Marqueurs posés sur des valeurs ACTIVES : liste → marqueur → clés. Une valeur désactivée ne porte plus son rôle ;
+ * un marqueur que plus aucune valeur active ne porte est absent du résultat, et c'est à l'écran de le dire.
+ */
+export async function marqueursDe(db: Base, tenantId: string): Promise<Marqueurs> {
+  const { results } = await db
+    .prepare('SELECT liste, cle, marqueur FROM liste_valeur WHERE tenant_id = ? AND actif = 1 AND marqueur IS NOT NULL ORDER BY liste, ordre, cle')
+    .bind(tenantId)
+    .all<{ liste: string; cle: string; marqueur: string }>();
+  const out: Marqueurs = {};
+  for (const r of results) ((out[r.liste] ??= {})[r.marqueur] ??= []).push(r.cle);
+  return out;
+}
+
+/** La clé de la (première) valeur active qui porte ce marqueur, ou null : on ne devine pas une autre valeur. */
+export async function cleMarquee(db: Base, tenantId: string, liste: Liste, marqueur: string): Promise<string | null> {
+  const r = await db
+    .prepare('SELECT cle FROM liste_valeur WHERE tenant_id = ? AND liste = ? AND actif = 1 AND marqueur = ? ORDER BY ordre, cle LIMIT 1')
+    .bind(tenantId, liste, marqueur)
+    .first<{ cle: string }>();
+  return r?.cle ?? null;
+}
+
+export async function clesMarqueesDe(db: Base, tenantId: string, liste: Liste, marqueur: string): Promise<string[]> {
+  const { results } = await db
+    .prepare('SELECT cle FROM liste_valeur WHERE tenant_id = ? AND liste = ? AND actif = 1 AND marqueur = ? ORDER BY ordre, cle')
+    .bind(tenantId, liste, marqueur)
+    .all<{ cle: string }>();
+  return results.map((r) => r.cle);
 }
 
 export async function valeurValide(db: Base, tenantId: string, liste: Liste, cle: string): Promise<boolean> {

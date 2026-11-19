@@ -26,6 +26,7 @@ if (Astro.request.method === 'POST') {
 ---
 <Gestion titre="Nouveau viewer">
   <h1>Nouveau viewer</h1>
+  {erreurs.general && <p class="info alerte" role="alert">{erreurs.general} <a href="/gestionnaire/reglages?onglet=listes&liste=type_portefeuille">Ouvrir les listes</a></p>}
   <form method="post" style="max-width: 32rem">
     <Champ nom="nom" label="Nom" valeur={nom} erreur={erreurs.nom} requis />
     <Champ nom="email" label="Adresse e-mail" valeur={email} erreur={erreurs.email} type="email" requis />

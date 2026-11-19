@@ -5,14 +5,15 @@ import { viewersResumes } from './gestion';
 
 /** Seuils en jours. Valeurs de repli quand la clé de `reglage` est absente ou illisible : 7 et 60 sont celles de
  *  la maquette Suivi-Clients (« à rappeler sous 7 j », « sans échange 60 j »), 45 celle de l'arrêté périmé du
- *  tableau de bord (`seuilArrete`). À confirmer au lot du paramétrage. */
+ *  tableau de bord (`seuilArrete`). Le cabinet les remplace dans /gestionnaire/reglages. */
 export interface Seuils {
   sans_echange: number;
   relance: number;
   arrete: number;
 }
 
-const REPLI: Seuils = { sans_echange: 60, relance: 7, arrete: 45 };
+/** Valeurs par défaut des seuils en jours : l'écran des réglages (/gestionnaire/reglages) les rappelle. */
+export const REPLI: Seuils = { sans_echange: 60, relance: 7, arrete: 45 };
 const CLES: Record<keyof Seuils, string> = {
   sans_echange: 'seuil_sans_echange',
   relance: 'seuil_relance',

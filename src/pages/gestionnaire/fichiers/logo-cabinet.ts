@@ -9,7 +9,9 @@ export const prerender = false;
 export const POST: APIRoute = async (ctx) => {
   const g = garde(ctx, ['gestionnaire', 'editeur']);
   if (g instanceof Response) return g;
-  const retour = (q: string) => ctx.redirect(`/gestionnaire?logo=${q}`, 303);
+  // Le formulaire des réglages (Identité) ajoute ?retour=reglages ; le tableau de bord garde son retour d'origine.
+  const versReglages = ctx.url.searchParams.get('retour') === 'reglages';
+  const retour = (q: string) => ctx.redirect(versReglages ? `/gestionnaire/reglages?onglet=identite&logo=${q}` : `/gestionnaire?logo=${q}`, 303);
   if (corpsTropGros(ctx.request, 'logo')) return retour('trop_gros');
 
   const f = await ctx.request.formData();
