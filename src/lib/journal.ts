@@ -5,8 +5,11 @@
 // se paie donc cher : toute écriture qui doit être journalisée part dans la MÊME transaction que l'événement (`requeteEvenement`
 // dans un `batch`), jamais après elle.
 //
-// Un événement ne porte que des identifiants et, pour un accès du personnel, son adresse et son rôle (sans quoi un accès supprimé
-// ne se lirait plus). Jamais le nom ni l'adresse d'un client final : le journal survit à l'effacement d'un cabinet.
+// Un événement ne porte que des identifiants, des types, des dates et des montants du CONTRAT du cabinet. Pour un accès du
+// personnel, son adresse et son rôle s'y ajoutent (sans quoi un accès supprimé ne se lirait plus). Jamais une donnée d'un client
+// final : ni nom, ni adresse, ni montant nominatif, ni texte libre. Le journal ne se modifie pas : il ne peut donc rien
+// « expurger » plus tard (la purge du J+75 du lot 12 n'a pas à y toucher), la seule défense est de ne jamais l'y écrire.
+// `valeurs` le fait respecter : un événement visant un dossier client qui porterait `email` ou `nom` est refusé à l'écriture.
 
 import type { Base, Requete } from './db';
 
@@ -30,6 +33,7 @@ export const EVENEMENT = {
   REMISE_SAISIE: 'remise_saisie',
   REMISE_MODIFIEE: 'remise_modifiee',
   GEL_TARIF: 'gel_tarif',
+  GEL_TARIF_REFUSE: 'gel_tarif_refuse',
   DPA_SIGNE: 'dpa_signe',
   // L'éditeur et ses comptes
   ACCES_EDITEUR: 'acces_editeur',
@@ -55,7 +59,14 @@ export interface Evenement {
 
 const COLONNES = 'id, tenant_id, cree_le, type, acteur_id, acteur_role, cible_type, cible_id, detail';
 
+/** Les clés qui ne doivent jamais accompagner un client final (cible `dossier`). */
+const CLES_PERSONNELLES = ['email', 'nom', 'adresse', 'telephone', 'montant', 'libelle'];
+
 function valeurs(e: Evenement): unknown[] {
+  if (e.cible?.type === 'dossier' && e.detail) {
+    const fautive = Object.keys(e.detail).find((k) => CLES_PERSONNELLES.includes(k));
+    if (fautive) throw new Error(`journal : « ${fautive} » n'entre pas dans l'événement d'un dossier client`);
+  }
   return [
     crypto.randomUUID(),
     e.tenantId,

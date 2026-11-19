@@ -5,6 +5,7 @@ import { contexte, viewersResumes, dernierImport, seuilArrete } from '../../lib/
 import { seuilsDe } from '../../lib/suivi';
 import { euros, dateCourte } from '../../lib/format';
 import { urlLogoCabinet, MESSAGES_REFUS } from '../../lib/fichiers';
+import { EXPORT_COMPLET_CABINET, aLeRole } from '../../lib/roles';
 
 const c = contexte(Astro);
 if (c instanceof Response) return c;
@@ -105,6 +106,6 @@ const MSG_LOGO: Record<string, string> = { ok: 'Logo du cabinet enregistré.', r
     <a class="btn" href="/gestionnaire/export/sujets" download>Sujets</a>
     <a class="btn" href="/gestionnaire/export/echanges" download>Échanges</a>
     <a class="btn" href="/gestionnaire/export/actus" download>Actus</a>
-    <a class="btn" href="/gestionnaire/export/locataire" download>Tout le cabinet (fin de contrat)</a>
+    {aLeRole(c.utilisateur.role, EXPORT_COMPLET_CABINET) && <a class="btn" href="/gestionnaire/export/locataire" download>Tout le cabinet (fin de contrat)</a>}
   </div>
 </Gestion>

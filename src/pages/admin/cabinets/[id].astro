@@ -38,6 +38,13 @@ const horodate = (iso: string) => `${dateCourte(iso)} à ${iso.slice(11, 16)} UT
   {q.get('cree') === '1' && envoye === '0' && (
     <p class="info alerte" role="alert">Le cabinet est créé, mais le lien de première connexion n’a pas pu être envoyé. Le gestionnaire peut en demander un nouveau depuis la page de connexion du cabinet ; l’incident est noté ci-dessous.</p>
   )}
+  {q.get('cree') === '1' && q.get('support') === 'non_configure' && (
+    <p class="info alerte" role="alert">Aucun compte de support n’a été créé : l’adresse de support de l’éditeur n’est pas réglée. Réglez-la dans <a href="/admin/reglages">Réglages</a> ; elle vaudra pour les prochains cabinets.</p>
+  )}
+  {q.get('cree') === '1' && q.get('support') === 'adresse_prise' && (
+    <p class="info alerte" role="alert">Aucun compte de support n’a été créé : l’adresse de support est celle du premier associé. Une adresse ne sert qu’à un compte par cabinet.</p>
+  )}
+  {q.get('cree') === '1' && q.get('support') === 'cree' && <p class="info" role="status">Le compte de support de l’éditeur a été créé.</p>}
   {retour && <p class={retour.bon ? 'info' : 'info alerte'} role="status">{retour.texte}</p>}
   {suspension && (
     <p class="info alerte" role="status">

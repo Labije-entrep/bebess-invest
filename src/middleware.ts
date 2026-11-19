@@ -1,6 +1,6 @@
 import { defineMiddleware } from 'astro:middleware';
 import { tenantParHote, type Role, type Tenant, type Utilisateur } from './lib/db';
-import { sessionCourante } from './lib/auth';
+import { dossierFerme, sessionCourante } from './lib/auth';
 import { envDe } from './lib/mail';
 import { appartient } from './lib/cloisonnement';
 import { COMPTES_EDITEUR, GESTION_LIT, REGLAGES, aLeRole } from './lib/roles';
@@ -36,6 +36,20 @@ function nouveauNonce(): string {
   const o = new Uint8Array(16);
   crypto.getRandomValues(o);
   return btoa(String.fromCharCode(...o));
+}
+
+// Ce que voit un client dont le dossier est archivé : un message, pas une erreur technique. Aucune donnée du dossier n'est lue pour
+// l'afficher. Le nom du cabinet vient du locataire de l'hôte ; il est échappé.
+const echapper = (t: string): string => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+function pageDossierFerme(cabinet: string): Response {
+  const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">` +
+    `<meta name="robots" content="noindex"><title>Accès à votre espace · ${echapper(cabinet)}</title></head>` +
+    `<body style="font-family: system-ui, sans-serif; max-width: 34rem; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.6">` +
+    `<h1 style="font-weight: 300">Votre espace n’est plus accessible</h1>` +
+    `<p>Votre dossier est archivé : vous ne pouvez plus consulter votre espace en ligne.</p>` +
+    `<p>Pour en savoir plus ou pour le rouvrir, rapprochez-vous de votre conseiller au sein de ${echapper(cabinet)}.</p>` +
+    `<form method="post" action="/deconnexion"><button type="submit">Se déconnecter</button></form></body></html>`;
+  return new Response(html, { status: 403, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
 const PUBLIC = 'public, s-maxage=60, stale-while-revalidate=600';
@@ -101,12 +115,17 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const refusAdmin = refuse && garde?.prefixe === '/admin' && role !== undefined;
   // Un membre du personnel qui n'a pas le droit d'une rubrique (les réglages) : un refus net, pas une redirection.
   const refusRubrique = refuse && garde?.prefixe === '/gestionnaire/reglages' && aLeRole(role, GESTION_LIT);
+  // Un dossier archivé ferme l'accès de son viewer (auth.ts, dossierFerme). Ce n'est PAS la suspension d'un cabinet, qui laisse
+  // les viewers en ligne : deux mécanismes opposés, à ne pas faire converger. /deconnexion reste ouverte.
+  const archive = !refuse && dossierFerme(u) && (sous(chemin, '/espace') || sous(chemin, '/fichiers'));
   const lectureSeule =
     !refuse && role === 'lecture' && !['GET', 'HEAD'].includes(context.request.method) && ECRITURE_PREFIXES.some((p) => sous(chemin, p));
   if (!refuse && u && aLeRole(role, COMPTES_EDITEUR) && DONNEES_CABINET.some((p) => sous(chemin, p))) {
     await journaliserAccesEditeur(DB, u.tenant_id, { id: u.id, role: u.role }, `${context.request.method} ${chemin}`);
   }
-  const reponse = refusAdmin || refusRubrique
+  const reponse = archive
+    ? pageDossierFerme(tenant?.nom ?? 'votre cabinet')
+    : refusAdmin || refusRubrique
     ? new Response('Accès refusé.', { status: 403 })
     : lectureSeule
       ? new Response('Accès refusé : ce compte est en lecture seule.', { status: 403 })

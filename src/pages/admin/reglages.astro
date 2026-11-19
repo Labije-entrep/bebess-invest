@@ -1,0 +1,32 @@
+---
+export const prerender = false;
+import Gestion from '../../layouts/Gestion.astro';
+import Champ from '../../components/gestion/Champ.astro';
+import { adresseSupport, gardeAdmin, poserAdresseSupport } from '../../lib/admin';
+
+const g = gardeAdmin(Astro);
+if (g instanceof Response) return g;
+
+let erreur = '';
+let enregistre = false;
+let saisie = (await adresseSupport(g.db)) ?? '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  saisie = String(f.get('adresse_support') ?? '');
+  const r = await poserAdresseSupport(g.db, saisie, { id: g.utilisateur.id, role: g.utilisateur.role });
+  if (r.ok) {
+    saisie = r.adresse ?? '';
+    enregistre = true;
+  } else erreur = 'Adresse e-mail invalide.';
+}
+---
+<Gestion titre="Réglages" espace="admin">
+  <h1>Réglages de l’éditeur</h1>
+  {enregistre && <p class="info" role="status">{saisie ? 'Adresse de support enregistrée.' : 'Adresse de support retirée : les prochains cabinets seront créés sans compte de support.'}</p>}
+  <p class="aide">Ces réglages valent pour tous les cabinets créés ensuite ; ils ne modifient pas les cabinets existants.</p>
+  <form method="post" style="max-width: 32rem">
+    <Champ nom="adresse_support" label="Adresse du compte de support" valeur={saisie} erreur={erreur} type="email"
+      aide="Le compte support_editeur créé dans chaque nouveau cabinet. Vide : aucun compte n’est créé, et l’écran de création le signale." />
+    <div class="actions"><button class="btn-plein" type="submit">Enregistrer</button></div>
+  </form>
+</Gestion>

@@ -143,17 +143,51 @@ async function hotePris(db: Base, hote: string): Promise<boolean> {
 
 export type Erreurs = Record<string, string>;
 
+/**
+ * Le compte de support de l'éditeur, à la création du cabinet : `cree`, `non_configure` (aucune adresse de support dans les
+ * réglages de l'éditeur : le cabinet se crée quand même, sans compte, et l'écran le dit) ou `adresse_prise` (l'adresse de support
+ * est celle du premier associé : un compte par adresse et par cabinet).
+ */
+export type EtatSupport = 'cree' | 'non_configure' | 'adresse_prise';
+
 export interface CabinetCree {
   id: string;
   hote: string;
   nom: string;
   gestionnaire: { id: string; nom: string; email: string };
+  support: EtatSupport;
+}
+
+// ---------------------------------------------------------------- réglages globaux de l'éditeur
+
+const CLE_SUPPORT = 'adresse_support';
+
+/** L'adresse du compte de support, telle que l'éditeur l'a réglée, ou null si elle ne l'est pas (ou plus). */
+export async function adresseSupport(db: Base): Promise<string | null> {
+  const r = await db.prepare('SELECT valeur FROM reglage_editeur WHERE cle = ?').bind(CLE_SUPPORT).first<{ valeur: string }>();
+  return r && EMAIL.test(r.valeur) ? r.valeur : null;
+}
+
+/** Pose l'adresse de support ; une valeur vide la retire. Réglage GLOBAL : il vaut pour les cabinets créés ensuite, pas pour les existants. */
+export async function poserAdresseSupport(db: Base, brut: string, par: Acteur): Promise<{ ok: true; adresse: string | null } | { ok: false }> {
+  const adresse = brut.trim().toLowerCase().slice(0, 254);
+  if (adresse === '') {
+    await db.prepare('DELETE FROM reglage_editeur WHERE cle = ?').bind(CLE_SUPPORT).run();
+    return { ok: true, adresse: null };
+  }
+  if (!EMAIL.test(adresse)) return { ok: false };
+  await db
+    .prepare('INSERT INTO reglage_editeur (cle, valeur, maj_le, par) VALUES (?, ?, ?, ?) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur, maj_le = excluded.maj_le, par = excluded.par')
+    .bind(CLE_SUPPORT, adresse, maintenant(), par.id)
+    .run();
+  return { ok: true, adresse };
 }
 
 /**
  * Crée le cabinet en UNE transaction (`batch` de D1 : tout ou rien) : le locataire, son nom d'hôte d'origine (validé : c'est
  * celui que le Worker sert), son thème, ses listes de référence par défaut avec leurs marqueurs, sa ligne de version et
- * son premier associé (rôle `associe`, avec l'événement de sa création). L'envoi du lien se fait après : s'il échoue, le cabinet reste créé (voir lienPremierGestionnaire).
+ * son premier associé (rôle `associe`, avec l'événement de sa création) et, si l'éditeur a réglé une adresse de support, le compte
+ * `support_editeur` du cabinet (même transaction, même journal). L'envoi du lien se fait après : s'il échoue, le cabinet reste créé (voir lienPremierGestionnaire).
  */
 export async function creerCabinet(db: Base, f: FormData, acteur: Acteur): Promise<{ erreurs: Erreurs } | CabinetCree> {
   const erreurs: Erreurs = {};
@@ -175,6 +209,10 @@ export async function creerCabinet(db: Base, f: FormData, acteur: Acteur): Promi
   const id = `tnt_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
   const gId = crypto.randomUUID();
   const now = maintenant();
+  // Le compte de support n'est jamais créé « à blanc » : sans adresse réglée, on n'en crée pas, et le cabinet se crée quand même.
+  const support = await adresseSupport(db);
+  const etatSupport: EtatSupport = !support ? 'non_configure' : support === gEmail ? 'adresse_prise' : 'cree';
+  const sId = crypto.randomUUID();
   const requetes: Requete[] = [
     db.prepare('INSERT INTO tenant (id, nom, domaine, cree_le) VALUES (?, ?, ?, ?)').bind(id, nom, hote, now),
     db
@@ -187,6 +225,14 @@ export async function creerCabinet(db: Base, f: FormData, acteur: Acteur): Promi
       .prepare("INSERT INTO utilisateur (id, tenant_id, email, nom, role, actif, cree_le) VALUES (?, ?, ?, ?, 'associe', 1, ?)")
       .bind(gId, id, gEmail, gNom, now),
     evenementCreation(db, id, gId, 'associe', gEmail, acteur),
+    ...(etatSupport === 'cree' && support
+      ? [
+          db
+            .prepare("INSERT INTO utilisateur (id, tenant_id, email, nom, role, actif, cree_le) VALUES (?, ?, ?, 'Support éditeur', 'support_editeur', 1, ?)")
+            .bind(sId, id, support, now),
+          evenementCreation(db, id, sId, 'support_editeur', support, acteur),
+        ]
+      : []),
   ];
   try {
     await db.batch(requetes);
@@ -194,7 +240,7 @@ export async function creerCabinet(db: Base, f: FormData, acteur: Acteur): Promi
     // Nom d'hôte pris entre la vérification et l'écriture : rien n'a été écrit.
     return { erreurs: { general: 'Le cabinet n’a pas été créé : le nom d’hôte vient d’être pris. Rien n’a été écrit.' } };
   }
-  return { id, hote, nom, gestionnaire: { id: gId, nom: gNom, email: gEmail } };
+  return { id, hote, nom, gestionnaire: { id: gId, nom: gNom, email: gEmail }, support: etatSupport };
 }
 
 /**

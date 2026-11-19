@@ -1,16 +1,22 @@
 // Le contrat (lot 11) : un seul en cours par locataire, et la seule source des prix. Montants en centimes entiers (hors taxes),
 // taux en centièmes de point (2500 = 25 %), dates ISO 8601. Toute lecture et toute écriture est bornée au locataire.
 //
-// Trois règles dures, tenues ICI et par la base (migration 0008), pas par la convention :
+// Quatre règles dures, tenues ICI et par la base (migrations 0008 et 0009), pas par la convention :
 //   1. les prix se lisent SUR LE CONTRAT (`prixDuContrat`) : aucune grille globale n'existe ;
 //   2. aucun prix ne change tant que `tarif_gele_jusqu_au` est dans le futur ;
-//   3. une date de mise en production est refusée tant que `dpa_signe_le` est vide.
+//   3. une date de gel se PROLONGE, jamais elle ne se raccourcit ni ne s'efface (le refus est journalisé) ;
+//   4. une date de mise en production est refusée tant que `dpa_signe_le` est vide ; elle fait passer le contrat en essai.
+//
+// Statuts : brouillon, essai, actif, suspendu, resilie, essai_non_converti. Les quatre premiers sont « en cours » (un seul par
+// locataire) ; resilie et essai_non_converti sont de l'historique. Le lot 12 déclenche le calendrier d'essai sur ces statuts.
+// `suspendu` est le statut du CONTRAT (litige de facturation) : rien à voir avec la suspension d'un cabinet (admin.ts), qui est
+// une mesure d'accès et ne change pas le contrat.
 //
 // Chaque modification part dans le même `batch` que son événement (journal.ts). Aucun texte n'est généré : les refus sont des codes
 // fixes traduits par MESSAGES_CONTRAT.
 
 import type { Base } from './db';
-import { EVENEMENT, requeteEvenement, type Acteur } from './journal';
+import { EVENEMENT, journaliser, requeteEvenement, type Acteur } from './journal';
 
 export interface Prix {
   prix_socle: number;
@@ -20,17 +26,26 @@ export interface Prix {
 }
 export const CHAMPS_PRIX: (keyof Prix)[] = ['prix_socle', 'prix_pilotage', 'prix_site', 'prix_acces_sup'];
 
+export const STATUTS_CONTRAT = ['brouillon', 'essai', 'actif', 'suspendu', 'resilie', 'essai_non_converti'] as const;
+export type StatutContrat = (typeof STATUTS_CONTRAT)[number];
+/** Ceux d'un contrat « en cours » : le locataire n'en a qu'un. */
+export const STATUTS_EN_COURS: StatutContrat[] = ['brouillon', 'essai', 'actif', 'suspendu'];
+/** Durée de l'essai, à compter de la mise en production. */
+export const JOURS_ESSAI = 45;
+
 export type Module = 'pilotage' | 'site';
 export type Periodicite = 'mensuelle' | 'annuelle';
 
 export interface Contrat extends Prix {
   id: string;
   tenant_id: string;
-  statut: 'brouillon' | 'essai' | 'actif' | 'resilie';
+  statut: StatutContrat;
   periodicite: Periodicite;
   debut_le: string | null;
   fin_le: string | null;
   date_mise_en_production: string | null;
+  /** Posée avec la mise en production : elle + 45 jours. */
+  date_fin_essai: string | null;
   module_pilotage: number;
   module_site: number;
   acces_inclus: number;
@@ -47,12 +62,12 @@ export interface Contrat extends Prix {
 }
 
 const COLONNES =
-  `id, tenant_id, statut, periodicite, debut_le, fin_le, date_mise_en_production, ${CHAMPS_PRIX.join(', ')}, module_pilotage, module_site,
+  `id, tenant_id, statut, periodicite, debut_le, fin_le, date_mise_en_production, date_fin_essai, ${CHAMPS_PRIX.join(', ')}, module_pilotage, module_site,
    acces_inclus, frais_installation, tarif_gele_jusqu_au, remise_parrainage_taux, remise_commerciale_taux, remise_motif, remise_revue_le,
    dpa_signe_le, preavis_recu_le, cree_le, maj_le`;
 
 export type CodeContrat =
-  | 'aucun_contrat' | 'deja_un_contrat' | 'tarif_gele' | 'dpa_manquant' | 'date_invalide' | 'montant_invalide' | 'taux_invalide'
+  | 'aucun_contrat' | 'deja_un_contrat' | 'tarif_gele' | 'gel_raccourci' | 'gel_efface' | 'deja_en_production' | 'dpa_manquant' | 'date_invalide' | 'montant_invalide' | 'taux_invalide'
   | 'motif_requis' | 'revue_requise' | 'periodicite' | 'inchange';
 export type ResultatContrat = { ok: true; contrat: Contrat } | { ok: false; code: CodeContrat };
 
@@ -60,6 +75,9 @@ export const MESSAGES_CONTRAT: Record<CodeContrat, string> = {
   aucun_contrat: 'Ce cabinet n’a pas de contrat en cours.',
   deja_un_contrat: 'Ce cabinet a déjà un contrat en cours : un seul à la fois.',
   tarif_gele: 'Le tarif est gelé : aucun prix ne se modifie avant la fin du gel.',
+  gel_raccourci: 'Le gel du tarif ne se raccourcit pas : une date de gel se prolonge seulement.',
+  gel_efface: 'Le gel du tarif ne s’efface pas : une date de gel se prolonge seulement.',
+  deja_en_production: 'Ce contrat est déjà au-delà de l’essai : la date de mise en production ne se change plus.',
   dpa_manquant: 'La mise en production exige un DPA signé : renseignez sa date d’abord.',
   date_invalide: 'Date invalide : AAAA-MM-JJ.',
   montant_invalide: 'Montant invalide : des centimes entiers, positifs ou nuls.',
@@ -73,16 +91,18 @@ export const MESSAGES_CONTRAT: Record<CodeContrat, string> = {
 const refus = (code: CodeContrat): { ok: false; code: CodeContrat } => ({ ok: false, code });
 const aujourdhui = (): string => new Date().toISOString().slice(0, 10);
 const maintenant = (): string => new Date().toISOString();
+/** Une date ISO (AAAA-MM-JJ) décalée de `jours` jours, en UTC. */
+const plusJours = (date: string, jours: number): string => new Date(Date.parse(`${date}T00:00:00Z`) + jours * 86_400_000).toISOString().slice(0, 10);
 const dateIso = (v: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v);
 const centimes = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 1_000_000_000;
 const taux = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 10000;
 
 // ---------------------------------------------------------------- lire
 
-/** Le contrat en cours (brouillon, essai ou actif) du locataire, ou null. */
+/** Le contrat en cours (brouillon, essai, actif ou suspendu) du locataire, ou null. */
 export function contratEnCours(db: Base, tenantId: string): Promise<Contrat | null> {
   return db
-    .prepare(`SELECT ${COLONNES} FROM contrat WHERE tenant_id = ? AND statut IN ('brouillon','essai','actif')`)
+    .prepare(`SELECT ${COLONNES} FROM contrat WHERE tenant_id = ? AND statut IN (${STATUTS_EN_COURS.map((x) => `'${x}'`).join(',')})`)
     .bind(tenantId)
     .first<Contrat>();
 }
@@ -173,16 +193,32 @@ export async function modifierPrix(db: Base, tenantId: string, prix: Partial<Pri
   return relire(db, tenantId);
 }
 
-/** Pose (ou retire, avec null) le gel du tarif jusqu'à une date. Journalisé : c'est lui qui verrouille les prix. */
+/**
+ * Pose ou PROLONGE le gel du tarif jusqu'à une date. Une date de gel ne se raccourcit jamais et ne s'efface jamais (`null`) :
+ * c'est une promesse faite au cabinet, et la lever puis changer un prix viderait le gel de son sens. Le refus est explicite ET
+ * journalisé (`gel_tarif_refuse`, avec la date tentée) ; la base refuse aussi (déclencheur `contrat_gel_ne_recule_pas`).
+ * Une prolongation est journalisée (`gel_tarif`, avant et après).
+ */
 export async function poserGelTarif(db: Base, tenantId: string, jusquAu: string | null, acteur: Acteur | null): Promise<ResultatContrat> {
   const c = await contratEnCours(db, tenantId);
   if (!c) return refus('aucun_contrat');
   if (jusquAu !== null && !dateIso(jusquAu)) return refus('date_invalide');
-  if (c.tarif_gele_jusqu_au === jusquAu) return refus('inchange');
-  await db.batch([
-    db.prepare('UPDATE contrat SET tarif_gele_jusqu_au = ?, maj_le = ? WHERE id = ? AND tenant_id = ?').bind(jusquAu, maintenant(), c.id, tenantId),
-    requeteEvenement(db, { tenantId, type: EVENEMENT.GEL_TARIF, acteur, cible: { type: 'contrat', id: c.id }, detail: { avant: c.tarif_gele_jusqu_au, apres: jusquAu } }, true),
-  ]);
+  const actuel = c.tarif_gele_jusqu_au;
+  if (actuel !== null && (jusquAu === null || jusquAu < actuel)) {
+    const code: CodeContrat = jusquAu === null ? 'gel_efface' : 'gel_raccourci';
+    await journaliser(db, { tenantId, type: EVENEMENT.GEL_TARIF_REFUSE, acteur, cible: { type: 'contrat', id: c.id }, detail: { actuel, tentative: jusquAu, motif: code } });
+    return refus(code);
+  }
+  if (actuel === jusquAu) return refus('inchange');
+  try {
+    await db.batch([
+      db.prepare('UPDATE contrat SET tarif_gele_jusqu_au = ?, maj_le = ? WHERE id = ? AND tenant_id = ?').bind(jusquAu, maintenant(), c.id, tenantId),
+      requeteEvenement(db, { tenantId, type: EVENEMENT.GEL_TARIF, acteur, cible: { type: 'contrat', id: c.id }, detail: { avant: actuel, apres: jusquAu } }, true),
+    ]);
+  } catch {
+    // Le déclencheur a refusé : une autre écriture a avancé la date entre la lecture et celle-ci.
+    return refus('gel_raccourci');
+  }
   return relire(db, tenantId);
 }
 
@@ -198,16 +234,33 @@ export async function poserDpa(db: Base, tenantId: string, date: string, acteur:
   return relire(db, tenantId);
 }
 
-/** Pose la date de mise en production. REFUSÉ si `dpa_signe_le` est vide — le CHECK de la base refuse aussi. */
+/**
+ * Pose la date de mise en production. REFUSÉ si `dpa_signe_le` est vide (le CHECK de la base refuse aussi). Elle fait passer le
+ * contrat en `essai` et pose `date_fin_essai` à +45 jours : c'est sur ces deux champs que le lot 12 construit le calendrier
+ * d'essai. Admise depuis `brouillon` (la mise en production) et depuis `essai` (correction de la date : la fin d'essai suit) ;
+ * un contrat `actif` ou `suspendu` ne revient pas en essai.
+ */
 export async function poserMiseEnProduction(db: Base, tenantId: string, date: string, acteur: Acteur | null): Promise<ResultatContrat> {
   const c = await contratEnCours(db, tenantId);
   if (!c) return refus('aucun_contrat');
   if (!dateIso(date)) return refus('date_invalide');
   if (!c.dpa_signe_le || c.dpa_signe_le.trim() === '') return refus('dpa_manquant');
+  if (c.statut !== 'brouillon' && c.statut !== 'essai') return refus('deja_en_production');
+  if (c.statut === 'essai' && c.date_mise_en_production === date) return refus('inchange');
+  const finEssai = plusJours(date, JOURS_ESSAI);
   try {
     await db.batch([
-      db.prepare('UPDATE contrat SET date_mise_en_production = ?, maj_le = ? WHERE id = ? AND tenant_id = ?').bind(date, maintenant(), c.id, tenantId),
-      requeteEvenement(db, { tenantId, type: EVENEMENT.MISE_EN_PRODUCTION, acteur, cible: { type: 'contrat', id: c.id }, detail: { avant: c.date_mise_en_production, apres: date } }, true),
+      db
+        .prepare("UPDATE contrat SET date_mise_en_production = ?, date_fin_essai = ?, statut = 'essai', maj_le = ? WHERE id = ? AND tenant_id = ? AND statut IN ('brouillon','essai')")
+        .bind(date, finEssai, maintenant(), c.id, tenantId),
+      requeteEvenement(
+        db,
+        {
+          tenantId, type: EVENEMENT.MISE_EN_PRODUCTION, acteur, cible: { type: 'contrat', id: c.id },
+          detail: { avant: c.date_mise_en_production, apres: date, statut_avant: c.statut, statut_apres: 'essai', date_fin_essai: finEssai },
+        },
+        true,
+      ),
     ]);
   } catch {
     return refus('dpa_manquant');
@@ -267,9 +320,12 @@ export async function saisirRemise(db: Base, tenantId: string, s: SaisieRemise, 
       db,
       {
         tenantId, type: premiere ? EVENEMENT.REMISE_SAISIE : EVENEMENT.REMISE_MODIFIEE, acteur, cible: { type: 'contrat', id: c.id },
+        // Le motif est un texte libre : il reste sur le contrat (modifiable, effaçable avec lui), jamais dans le journal, où une
+        // remise « accordée à M. X » n'aurait plus rien à y faire. Le journal garde les taux, la revue et si le motif a changé.
         detail: {
-          avant: { commerciale_taux: c.remise_commerciale_taux, parrainage_taux: c.remise_parrainage_taux, motif: c.remise_motif, revue_le: c.remise_revue_le },
-          apres: { commerciale_taux: commerciale, parrainage_taux: parrainage, motif, revue_le: revue },
+          avant: { commerciale_taux: c.remise_commerciale_taux, parrainage_taux: c.remise_parrainage_taux, revue_le: c.remise_revue_le },
+          apres: { commerciale_taux: commerciale, parrainage_taux: parrainage, revue_le: revue },
+          motif_modifie: motif !== c.remise_motif,
         },
       },
       true,
