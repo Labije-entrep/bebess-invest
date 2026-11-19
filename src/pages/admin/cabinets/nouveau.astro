@@ -18,14 +18,14 @@ if (Astro.request.method === 'POST') {
   else {
     // Le cabinet est créé, en une transaction. L'envoi du lien vient après et ne l'annule jamais.
     const envoye = await lienPremierGestionnaire(Astro.locals, r, Astro.url);
-    return Astro.redirect(`/admin/cabinets/${encodeURIComponent(r.id)}?cree=1&envoye=${envoye ? 1 : 0}`, 303);
+    return Astro.redirect(`/admin/cabinets/${encodeURIComponent(r.id)}?cree=1&envoye=${envoye ? 1 : 0}&support=${r.support}`, 303);
   }
 }
 ---
 <Gestion titre="Nouveau cabinet" espace="admin">
   <h1>Nouveau cabinet</h1>
   {erreurs.general && <p class="info alerte" role="alert">{erreurs.general}</p>}
-  <p class="aide">Une seule opération crée le cabinet, son nom d’hôte, son thème, ses listes de référence par défaut avec leurs marqueurs, sa ligne de version et son premier associé, puis envoie à celui-ci son lien de première connexion.</p>
+  <p class="aide">Une seule opération crée le cabinet, son nom d’hôte, son thème, ses listes de référence par défaut avec leurs marqueurs, sa ligne de version et son premier associé, le compte de support de l’éditeur (si son adresse est réglée dans <a href="/admin/reglages">Réglages</a>), puis envoie à l’associé son lien de première connexion.</p>
   <form method="post" style="max-width: 32rem">
     <Champ nom="nom" label="Nom du cabinet" valeur={saisie.nom} erreur={erreurs.nom} requis />
     <Champ nom="hote" label="Nom d’hôte du cabinet" valeur={saisie.hote} erreur={erreurs.hote} requis />

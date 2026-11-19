@@ -40,6 +40,8 @@ export interface Utilisateur {
   role: Role;
   actif: number;
   cree_le: string;
+  /** Le dossier client (viewer) : brouillon, publié, archivé. Un viewer archivé n'entre plus (middleware). Sans objet hors d'un viewer. */
+  statut: 'brouillon' | 'publie' | 'archive';
 }
 
 export interface Fiche {
@@ -184,7 +186,7 @@ export interface NoteMarche {
   publiee: number;
 }
 
-const COLONNES_UTILISATEUR = 'id, tenant_id, email, nom, role, actif, cree_le';
+const COLONNES_UTILISATEUR = 'id, tenant_id, email, nom, role, actif, cree_le, statut';
 
 /**
  * Le port et la casse sont ignorés : "Localhost:4321" et "localhost" donnent le même tenant.

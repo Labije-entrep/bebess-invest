@@ -21,6 +21,14 @@ export const GESTION_LIT: Role[] = [...CABINET_LIT, 'editeur'];
 /** Les réglages et, au lot 13, la page d'abonnement : associe seul, et le support qui se comporte comme lui. */
 export const REGLAGES: Role[] = ['associe', 'support_editeur'];
 
+/**
+ * L'export COMPLET d'un cabinet : la situation patrimoniale de tous ses clients en un fichier. L'associé le tire depuis son espace ;
+ * l'éditeur depuis la console. Ni collaborateur, ni lecture, ni le support (qui se comporte comme un associé ailleurs, pas ici).
+ */
+export const EXPORT_COMPLET_CABINET: Role[] = ['associe'];
+export const EXPORT_COMPLET_EDITEUR: Role[] = ['editeur'];
+export const EXPORT_COMPLET: Role[] = [...EXPORT_COMPLET_CABINET, ...EXPORT_COMPLET_EDITEUR];
+
 /** Les accès du cabinet : ce qui s'affiche dans sa liste et se compte. Ni le support, ni l'éditeur, ni les viewers. */
 export const ACCES_CABINET: Role[] = ['associe', 'collaborateur', 'lecture'];
 /** Parmi eux, ceux qui entrent dans le calcul du prix (lot 12) : `lecture` n'est jamais facturé. */

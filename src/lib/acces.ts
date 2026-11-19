@@ -37,6 +37,11 @@ export async function accesDuCabinet(db: Base, tenantId: string): Promise<Acces[
 /**
  * Les nombres sur lesquels un litige se tranche. `actifs` : tous les accès affichés et actifs ; `facturables` : ceux qui entrent
  * dans le prix (associé, collaborateur) — `lecture`, le support de l'éditeur et les viewers n'y sont jamais.
+ *
+ * LES DEUX NOMBRES SE GARDENT, et ne servent pas au même écran. Intention pour le lot 13 : la page d'abonnement affiche le nombre
+ * FACTURABLE (`facturables`), jamais `actifs`, et liste TOUS les comptes (`accesDuCabinet`) avec leur rôle en signalant ceux qui
+ * ne sont pas facturés (`ACCES_FACTURABLES` dans roles.ts les distingue). Un nombre affiché qui ne correspondrait pas à la facture
+ * est la première cause de contestation : le nombre affiché et celui du lot 12 viennent de la même constante, pas de deux calculs.
  */
 export async function compterAcces(db: Base, tenantId: string): Promise<{ actifs: number; facturables: number }> {
   const r = await db
@@ -131,7 +136,7 @@ export async function supprimerAcces(db: Base, tenantId: string, id: string, act
   return { ok: true, id: cibleId };
 }
 
-/** Suspend (actif = 0) ou rétablit un accès. Rien n'est effacé. */
+/** Suspend (actif = 0) ou rétablit un accès. Rien n'est effacé. L'événement d'un viewer ne porte pas son adresse. */
 export async function suspendreAcces(db: Base, tenantId: string, id: string, actif: boolean, acteur: Acteur | null): Promise<ResultatAcces> {
   const g = await cibleGerable(db, tenantId, id, acteur);
   if (!g.cible) return { ok: false, code: g.code };
@@ -141,7 +146,13 @@ export async function suspendreAcces(db: Base, tenantId: string, id: string, act
     db.prepare('UPDATE utilisateur SET actif = ? WHERE id = ? AND tenant_id = ?').bind(actif ? 1 : 0, g.cible.id, tenantId),
     requeteEvenement(
       db,
-      { tenantId, type: actif ? EVENEMENT.ACCES_REACTIVE : EVENEMENT.ACCES_SUSPENDU, acteur, cible: { type: 'acces', id: g.cible.id }, detail: { email: g.cible.email, role: g.cible.role } },
+      {
+        tenantId, type: actif ? EVENEMENT.ACCES_REACTIVE : EVENEMENT.ACCES_SUSPENDU, acteur,
+        // Un viewer est un client final : identifiant et rôle seulement, jamais son adresse. Le personnel garde la sienne.
+        ...(g.cible.role === 'viewer'
+          ? { cible: { type: 'dossier' as const, id: g.cible.id }, detail: { role: g.cible.role } }
+          : { cible: { type: 'acces' as const, id: g.cible.id }, detail: { email: g.cible.email, role: g.cible.role } }),
+      },
       true,
     ),
   ]);

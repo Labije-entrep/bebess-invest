@@ -5,8 +5,9 @@
 // Toute requête ci-dessous est bornée au locataire : un seul paramètre, l'identifiant du locataire,
 // ou, pour l'export d'un contact, le locataire ET le contact.
 
-import type { Base } from './db';
+import type { Base, Role } from './db';
 import { EVENEMENT, journaliser, type Acteur } from './journal';
+import { EXPORT_COMPLET, aLeRole } from './roles';
 
 type Cellule = string | number | null | undefined;
 
@@ -180,11 +181,22 @@ const LISEZMOI = [
   'dont la table document donne la liste (cle_fichier). Les fichiers se téléchargent depuis l’espace gestionnaire, rapport par rapport.',
 ].join('\r\n');
 
+/** Levée quand un rôle qui n'a pas le droit de tirer l'export complet le demande. Les routes la préviennent ; ceci est la dernière garde. */
+export class ExportInterdit extends Error {
+  constructor() {
+    super('Export complet réservé à l’associé du cabinet et à l’éditeur');
+  }
+}
+
 /**
- * L'export complet. Il est journalisé AVANT d'être produit (`export_complet`, avec qui l'a demandé) : sans événement, pas d'export.
+ * L'export complet : la situation patrimoniale de tous les clients du cabinet en un fichier, l'opération la plus sensible du
+ * produit. Réservé à `associe` (depuis son espace) et à `editeur` (depuis la console) — pas collaborateur, pas lecture, pas le
+ * support. Le rôle est contrôlé ICI, pas seulement par les routes : une route ajoutée demain ne peut pas l'oublier.
+ * Il est journalisé AVANT d'être produit (`export_complet`, avec qui l'a demandé) : sans événement, pas d'export.
  * `acteur` est obligatoire, pour qu'aucun appelant ne puisse l'oublier.
  */
 export async function exportLocataire(db: Base, tenantId: string, acteur: Acteur): Promise<Uint8Array> {
+  if (!aLeRole(acteur.role as Role, EXPORT_COMPLET)) throw new ExportInterdit();
   await journaliser(db, { tenantId, type: EVENEMENT.EXPORT_COMPLET, acteur, cible: { type: 'cabinet', id: tenantId } });
   const fichiers: { nom: string; octets: Uint8Array }[] = [];
   const enc = new TextEncoder();

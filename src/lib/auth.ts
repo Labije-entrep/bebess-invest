@@ -25,6 +25,15 @@ const HEX_64 = /^[0-9a-f]{64}$/;
 export const HORS_SUSPENSION =
   `NOT (u.role IN (${enSql(ACCES_CABINET)}) AND EXISTS (SELECT 1 FROM suspension sp WHERE sp.tenant_id = u.tenant_id AND sp.fin_le IS NULL))`;
 
+/**
+ * Un dossier ARCHIVÉ ferme l'accès de son viewer : c'est l'inverse exact de la suspension d'un cabinet, qui LAISSE les viewers en
+ * ligne. Les deux mécanismes ne se rejoignent pas : HORS_SUSPENSION ne touche jamais un viewer, celui-ci ne touche que lui.
+ * Il n'est pas une condition SQL de la session : un viewer archivé garde une session lisible pour que le middleware lui réponde
+ * par un message qui l'oriente vers son conseiller, au lieu de le renvoyer en silence vers la connexion (voir `dossierFerme`).
+ */
+export const dossierFerme = (u: { role: Role; statut?: string } | null | undefined): boolean =>
+  !!u && u.role === 'viewer' && u.statut === 'archive';
+
 function iso(decalageMs = 0): string {
   return new Date(Date.now() + decalageMs).toISOString();
 }
@@ -151,7 +160,7 @@ export async function sessionCourante(db: Base, cookies: AstroCookies): Promise<
   if (!secret || !HEX_64.test(secret)) return null;
   return db
     .prepare(
-      `SELECT u.id, u.tenant_id, u.email, u.nom, u.role, u.actif, u.cree_le
+      `SELECT u.id, u.tenant_id, u.email, u.nom, u.role, u.actif, u.cree_le, u.statut
          FROM session s
          JOIN utilisateur u ON u.id = s.utilisateur_id
         WHERE s.id = ? AND s.expire_le > ? AND u.actif = 1 AND ${HORS_SUSPENSION}`,
