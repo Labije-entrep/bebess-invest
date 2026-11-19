@@ -6,10 +6,14 @@
 // par échange) ; ce qui s'affiche est l'état du serveur recouvert des écritures encore en file. Une écriture
 // qui échoue reste donc visible, marquée, jusqu'à ce qu'elle passe ou que l'utilisateur l'abandonne.
 //
-// Ici la file sert trois entités (contact, sujet, échange) ; la liste garde la sienne, pour contacts seuls.
+// La file d'écritures est celle de src/scripts/commun.ts, la même que celle de la liste et du kanban :
+// ici elle sert trois entités (contact, sujet, échange).
 
-// Module (et non script global) : les noms de ce fichier ne se mélangent pas à ceux de suivi.ts.
-export {};
+import {
+  api, brancher, empiler, estTerminal, fileExistante, h, liaison, marque as marqueEcriture, reseauRetabli,
+  sansPerdreLeClic, toutesOps, toutRejouer, ecrituresEnFile,
+  type Corps, type Entite, type Enfant,
+} from './commun';
 
 // ---------------------------------------------------------------- types
 
@@ -43,24 +47,14 @@ interface Membre { id: string; nom: string; initiale: string; couleur: string; a
 interface ValeurListe { cle: string; libelle: string; ordre: number }
 interface Etat {
   version: number;
+  /** Clés terminales par liste (colonne `terminal` de liste_valeur), actives ou non. */
+  terminaux: Record<string, string[]>;
   contacts: Contact[];
   sujets: Sujet[];
   echanges: Echange[];
   membres: Membre[];
   listes: Record<string, ValeurListe[]>;
 }
-
-type Corps = Record<string, unknown>;
-type Entite = 'contact' | 'sujet' | 'echange';
-interface Op {
-  kind: 'create' | 'patch';
-  corps: Corps;
-  /** attente : pas encore partie, ou à renvoyer. envoi : en vol. refus : rejetée, en attente d'une décision. */
-  etat: 'attente' | 'envoi' | 'refus';
-  tentatives: number;
-  message?: string;
-}
-interface FileOps { entite: Entite; cle: string; ops: Op[]; actif: boolean; minuteur: number | null }
 
 // ---------------------------------------------------------------- état
 
@@ -69,19 +63,14 @@ const ID = racineFiche?.dataset.id ?? '';
 
 let serveur: Etat | null = null;
 let version = 0;
-let versionMin = 0;
 let absent = false;
-const files = new Map<string, FileOps>();
 const provisoiresSujets: Sujet[] = [];
 const provisoiresEchanges: Echange[] = [];
 let nTemp = 0;
-let reseauKO = false;
-let sessionPerdue = false;
 
-const DELAIS_MS = [2000, 5000, 10000, 30000];
 const INTERVALLE_MS = 10000;
-/** Clé de statut_sujet qui ferme un sujet : même convention que la liste (lot 03). */
-const STATUT_FAIT = 'fait';
+/** Un sujet est clos quand son statut est terminal dans statut_sujet : la décision est celle de commun.ts. */
+const estClos = (s: Sujet): boolean => estTerminal(serveur?.terminaux, 'statut_sujet', s.statut);
 
 /** Champ en cours de modification en place. `enregistrer` renvoie un message d'erreur, ou null si c'est écrit. */
 interface Edition {
@@ -96,22 +85,6 @@ const formSujet = { ouvert: false, texte: '', echeance: '', message: '' };
 const formEchange = { ouvert: false, date: '', type: '', note: '', message: '' };
 
 // ---------------------------------------------------------------- utilitaires
-
-type Enfant = Node | string | null | undefined | false;
-type Attribut = string | number | boolean | null | undefined | ((e: Event) => void);
-
-function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, Attribut> = {}, ...enfants: Enfant[]): HTMLElementTagNameMap[K] {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (v === undefined || v === null || v === false) continue;
-    if (typeof v === 'function') el.addEventListener(k.slice(2), v);
-    else if (k === 'class') el.className = String(v);
-    else if (k === 'value' || k === 'checked' || k === 'disabled' || k === 'selected') (el as unknown as Record<string, unknown>)[k] = v;
-    else el.setAttribute(k, v === true ? '' : String(v));
-  }
-  for (const e of enfants) if (e) el.append(e);
-  return el;
-}
 
 function aujourdhui(): string {
   const d = new Date();
@@ -138,17 +111,11 @@ function dateValide(s: string): boolean {
 
 // ---------------------------------------------------------------- réseau
 
-async function api(url: string, init: RequestInit = {}): Promise<Response> {
-  const entetes: Record<string, string> = { Accept: 'application/json', ...(init.headers as Record<string, string> | undefined) };
-  if (init.body !== undefined) entetes['Content-Type'] = 'application/json';
-  return fetch(url, { ...init, headers: entetes, credentials: 'same-origin', cache: 'no-store' });
-}
-
 async function charger(): Promise<boolean> {
   try {
     const r = await api('/api/suivi/etat');
     if (r.status === 401) {
-      sessionPerdue = true;
+      liaison.sessionPerdue = true;
       rendreEtat();
       return false;
     }
@@ -156,7 +123,7 @@ async function charger(): Promise<boolean> {
     const e = (await r.json()) as Etat;
     reseauRetabli();
     // Une écriture de cette session est déjà passée : un état plus ancien serait un retour en arrière.
-    if (e.version < versionMin) {
+    if (e.version < liaison.versionMin) {
       window.setTimeout(() => void charger(), 500);
       return false;
     }
@@ -166,7 +133,7 @@ async function charger(): Promise<boolean> {
     rendre();
     return true;
   } catch {
-    reseauKO = true;
+    liaison.ko = true;
     rendreEtat();
     return false;
   }
@@ -178,14 +145,14 @@ async function sonder(): Promise<void> {
     if (r.status === 304) {
       reseauRetabli();
     } else if (r.status === 401) {
-      sessionPerdue = true;
+      liaison.sessionPerdue = true;
     } else if (r.ok) {
       reseauRetabli();
       const v = ((await r.json()) as { version: number }).version;
       if (v !== version) await charger();
     }
   } catch {
-    reseauKO = true;
+    liaison.ko = true;
   }
   rendreEtat();
 }
@@ -199,149 +166,11 @@ function arreterSondage(): void {
   minuterie = null;
 }
 
-// ---------------------------------------------------------------- file d'écritures
-
-const cleFile = (entite: Entite, id: string): string => `${entite}:${id}`;
-
-function fileDe(entite: Entite, id: string): FileOps {
-  let f = files.get(cleFile(entite, id));
-  if (!f) {
-    f = { entite, cle: id, ops: [], actif: false, minuteur: null };
-    files.set(cleFile(entite, id), f);
-  }
-  return f;
-}
-
-/** Ajoute une modification ; fusionne avec la dernière si elle n'est pas encore partie. */
-function empiler(entite: Entite, id: string, kind: Op['kind'], corps: Corps): void {
-  const f = fileDe(entite, id);
-  const derniere = f.ops[f.ops.length - 1];
-  if (derniere && derniere.etat === 'attente' && derniere.tentatives === 0) Object.assign(derniere.corps, corps);
-  else f.ops.push({ kind, corps: { ...corps }, etat: 'attente', tentatives: 0 });
-  rendre();
-  void pomper(f);
-}
-
-const dansServeur = (entite: Entite): { id: string }[] =>
-  entite === 'contact' ? serveur!.contacts : entite === 'sujet' ? serveur!.sujets : serveur!.echanges;
-
-async function pomper(f: FileOps): Promise<void> {
-  if (f.actif) return;
-  const op = f.ops[0];
-  if (!op || op.etat === 'refus') return;
-  f.actif = true;
-  if (f.minuteur !== null) {
-    window.clearTimeout(f.minuteur);
-    f.minuteur = null;
-  }
-  op.etat = 'envoi';
-  rendreEtat();
-  let reponse: Response;
-  try {
-    reponse = await api(op.kind === 'create' ? `/api/suivi/${f.entite}` : `/api/suivi/${f.entite}/${encodeURIComponent(f.cle)}`, {
-      method: op.kind === 'create' ? 'POST' : 'PATCH',
-      body: JSON.stringify(op.corps),
-    });
-  } catch {
-    reseauKO = true;
-    return rejouer(f, op, DELAIS_MS[Math.min(op.tentatives, DELAIS_MS.length - 1)]);
-  }
-  if (reponse.ok) {
-    reseauRetabli();
-    const r = (await reponse.json()) as { item: { id: string }; version: number };
-    versionMin = Math.max(versionMin, r.version);
-    f.ops.shift();
-    if (serveur) {
-      const liste = dansServeur(f.entite);
-      const i = liste.findIndex((x) => x.id === r.item.id);
-      if (i >= 0) liste[i] = { ...liste[i], ...r.item };
-      else liste.push(r.item);
-    }
-    if (op.kind === 'create') {
-      // L'élément a maintenant son identifiant définitif : la file le suit, la copie provisoire disparaît.
-      const prov = f.entite === 'sujet' ? provisoiresSujets : provisoiresEchanges;
-      const i = prov.findIndex((x) => x.id === f.cle);
-      if (i >= 0) prov.splice(i, 1);
-      files.delete(cleFile(f.entite, f.cle));
-      f.cle = r.item.id;
-      files.set(cleFile(f.entite, f.cle), f);
-    }
-    f.actif = false;
-    if (f.ops.length === 0) files.delete(cleFile(f.entite, f.cle));
-    rendre();
-    void pomper(f);
-    return;
-  }
-  let corps: { erreur?: string } = {};
-  try {
-    corps = (await reponse.json()) as { erreur?: string };
-  } catch { /* corps non JSON */ }
-  if (reponse.status === 401) {
-    sessionPerdue = true;
-    return rejouer(f, op, 10000);
-  }
-  if (reponse.status === 429 || reponse.status >= 500) {
-    const attente = Number(reponse.headers.get('Retry-After'));
-    return rejouer(f, op, Number.isFinite(attente) && attente > 0 ? attente * 1000 : DELAIS_MS[Math.min(op.tentatives, DELAIS_MS.length - 1)]);
-  }
-  // 4xx : la requête elle-même est refusée, la renvoyer telle quelle ne changerait rien.
-  op.etat = 'refus';
-  op.message = corps.erreur ?? `Refusé (${reponse.status}).`;
-  f.actif = false;
-  rendre();
-}
-
-function rejouer(f: FileOps, op: Op, delai: number): void {
-  op.etat = 'attente';
-  op.tentatives += 1;
-  f.actif = false;
-  f.minuteur = window.setTimeout(() => void pomper(f), delai);
-  rendre();
-}
-
-function reessayer(f: FileOps): void {
-  const op = f.ops[0];
-  if (!op) return;
-  op.etat = 'attente';
-  op.tentatives = 0;
-  op.message = undefined;
-  rendre();
-  void pomper(f);
-}
-
-function abandonner(f: FileOps): void {
-  const op = f.ops.shift();
-  if (op?.kind === 'create') {
-    // Un élément jamais créé n'existe nulle part ailleurs : on l'efface avec ses modifications.
-    const prov = f.entite === 'sujet' ? provisoiresSujets : provisoiresEchanges;
-    const i = prov.findIndex((x) => x.id === f.cle);
-    if (i >= 0) prov.splice(i, 1);
-    f.ops.length = 0;
-  }
-  if (f.minuteur !== null) window.clearTimeout(f.minuteur);
-  f.minuteur = null;
-  if (f.ops.length === 0) files.delete(cleFile(f.entite, f.cle));
-  rendre();
-  void pomper(f);
-}
-
-/** Une réponse vient d'arriver : si le réseau était tombé, les écritures qui attendaient leur délai repartent aussitôt. */
-function reseauRetabli(): void {
-  const etait = reseauKO || sessionPerdue;
-  reseauKO = false;
-  sessionPerdue = false;
-  if (etait) toutRejouer();
-}
-
-function toutRejouer(): void {
-  for (const f of files.values()) if (f.ops[0]?.etat === 'attente') void pomper(f);
-}
-
 // ---------------------------------------------------------------- lecture de l'état affiché
 
 /** L'élément tel que l'utilisateur doit le voir : état du serveur recouvert des écritures en file. */
 function appliquer<T extends { id: string }>(entite: Entite, x: T): T {
-  const f = files.get(cleFile(entite, x.id));
+  const f = fileExistante(entite, x.id);
   if (!f) return x;
   const v = { ...x };
   for (const op of f.ops) Object.assign(v, op.corps);
@@ -396,19 +225,19 @@ function rendreEtat(): void {
   if (!el) return;
   let etat = 'ajour';
   let texte = 'À jour';
-  const ops = [...files.values()].flatMap((f) => f.ops);
+  const ops = toutesOps();
   const refus = ops.filter((o) => o.etat === 'refus').length;
   const enAttente = ops.filter((o) => o.etat !== 'refus');
   const nonPartie = enAttente.filter((o) => o.tentatives > 0).length;
   if (!serveur) {
-    etat = reseauKO || sessionPerdue ? 'horsligne' : 'chargement';
-    texte = reseauKO ? 'Hors connexion' : sessionPerdue ? 'Connexion perdue' : 'Chargement…';
+    etat = liaison.ko || liaison.sessionPerdue ? 'horsligne' : 'chargement';
+    texte = liaison.ko ? 'Hors connexion' : liaison.sessionPerdue ? 'Connexion perdue' : 'Chargement…';
   } else if (refus > 0) {
     etat = 'refus';
     texte = `${refus} modification${refus > 1 ? 's' : ''} refusée${refus > 1 ? 's' : ''}`;
-  } else if (reseauKO || sessionPerdue || nonPartie > 0) {
+  } else if (liaison.ko || liaison.sessionPerdue || nonPartie > 0) {
     etat = 'horsligne';
-    texte = `${sessionPerdue ? 'Connexion perdue' : 'Hors connexion'}${enAttente.length ? ` · ${enAttente.length} en attente d'envoi` : ''}`;
+    texte = `${liaison.sessionPerdue ? 'Connexion perdue' : 'Hors connexion'}${enAttente.length ? ` · ${enAttente.length} en attente d'envoi` : ''}`;
   } else if (enAttente.length > 0) {
     etat = 'attente';
     texte = 'Enregistrement…';
@@ -419,7 +248,7 @@ function rendreEtat(): void {
   const alertes = document.getElementById('fiche-alertes');
   if (alertes) {
     alertes.querySelector('[data-session]')?.remove();
-    if (sessionPerdue) {
+    if (liaison.sessionPerdue) {
       alertes.prepend(
         h('p', { class: 'info alerte', role: 'alert', 'data-session': '' },
           'Votre session a expiré. Reconnectez-vous dans un autre onglet : les modifications en attente repartiront ensuite d\'elles-mêmes.'),
@@ -428,18 +257,7 @@ function rendreEtat(): void {
   }
 }
 
-function marque(entite: Entite, id: string): HTMLElement | null {
-  const f = files.get(cleFile(entite, id));
-  const op = f?.ops.find((o) => o.etat === 'refus') ?? f?.ops[0];
-  if (!f || !op) return null;
-  if (op.etat === 'refus') {
-    return h('span', { class: 'fiche-marque refus', role: 'alert' },
-      `Non enregistré : ${op.message ?? 'refusé'}`,
-      h('button', { type: 'button', onclick: () => reessayer(f) }, 'Réessayer'),
-      h('button', { type: 'button', onclick: () => abandonner(f) }, 'Abandonner'));
-  }
-  return h('span', { class: 'fiche-marque' }, op.tentatives > 0 ? 'Non envoyé · nouvelle tentative en cours' : 'Enregistrement…');
-}
+const marque = (entite: Entite, id: string): HTMLElement | null => marqueEcriture(entite, id, 'fiche-marque');
 
 function avatar(m: Membre | undefined, pleine: boolean): HTMLElement | null {
   if (!m) return null;
@@ -609,15 +427,15 @@ function blocSujets(): HTMLElement {
   const tous = sujetsAffiches();
   // Ouverts d'abord, par échéance (sans échéance en dernier), puis les faits ; à égalité, ordre de création.
   const tries = [...tous].sort((a, b) => {
-    const fa = a.statut === STATUT_FAIT ? 1 : 0;
-    const fb = b.statut === STATUT_FAIT ? 1 : 0;
+    const fa = estClos(a) ? 1 : 0;
+    const fb = estClos(b) ? 1 : 0;
     if (fa !== fb) return fa - fb;
     if ((a.echeance ?? '9999') !== (b.echeance ?? '9999')) return (a.echeance ?? '9999') < (b.echeance ?? '9999') ? -1 : 1;
     return a.cree_le < b.cree_le ? -1 : a.cree_le > b.cree_le ? 1 : 0;
   });
 
   const lignes = tries.map((s) => {
-    const fait = s.statut === STATUT_FAIT;
+    const fait = estClos(s);
     const retard = !fait && s.echeance !== null && s.echeance < aujourd;
     const suivant = statutSuivant(s.statut);
     const majSujet = (col: string) => (v: string): string | null => {
@@ -626,14 +444,14 @@ function blocSujets(): HTMLElement {
     };
     return h('div', { class: `fiche-ligne${fait ? ' fait' : ''}` },
       h('button', {
-        type: 'button', class: `fiche-statut${retard ? ' retard' : ''}`, 'data-statut': s.statut, 'data-f': `statut:${s.id}`,
+        type: 'button', class: `fiche-statut${retard ? ' retard' : ''}`, 'data-statut': s.statut, 'data-terminal': fait, 'data-f': `statut:${s.id}`,
         'aria-label': `Statut : ${libelle('statut_sujet', s.statut)}${suivant ? `. Passer à « ${libelle('statut_sujet', suivant)} »` : ''}`,
         disabled: suivant === null,
         onclick: () => {
           const courant = sujetsAffiches().find((x) => x.id === s.id);
           const prochain = courant ? statutSuivant(courant.statut) : null;
           if (!courant || prochain === null) return;
-          empiler('sujet', s.id, 'patch', { statut: prochain, fait_le: prochain === STATUT_FAIT ? aujourdhui() : null });
+          empiler('sujet', s.id, 'patch', { statut: prochain, fait_le: estTerminal(serveur?.terminaux, 'statut_sujet', prochain) ? aujourdhui() : null });
         },
       }, libelle('statut_sujet', s.statut)),
       h('span', { class: 'fiche-sujet' },
@@ -778,7 +596,7 @@ function formulaireEchange(): HTMLElement {
 
 // ----- assemblage
 
-function rendre(): void {
+function rendreMaintenant(): void {
   if (!serveur) return;
   const racine = corps();
   if (absent) {
@@ -820,17 +638,36 @@ function rendre(): void {
   rendreEtat();
 }
 
+/** Le rendu attend le relâchement d'un clic en cours : voir sansPerdreLeClic (commun.ts). */
+const rendre = sansPerdreLeClic(rendreMaintenant);
+
 // ---------------------------------------------------------------- démarrage
 
 function demarrer(): void {
   const racine = document.getElementById('fiche-corps');
   if (!racine || !ID) return;
+  brancher({
+    rendre,
+    rendreEtat,
+    integrer: (entite, item) => {
+      if (!serveur) return;
+      const liste: { id: string }[] = entite === 'contact' ? serveur.contacts : entite === 'sujet' ? serveur.sujets : serveur.echanges;
+      const i = liste.findIndex((x) => x.id === item.id);
+      if (i >= 0) liste[i] = { ...liste[i], ...item };
+      else liste.push(item);
+    },
+    retirerProvisoire: (entite, cle) => {
+      const prov = entite === 'sujet' ? provisoiresSujets : provisoiresEchanges;
+      const i = prov.findIndex((x) => x.id === cle);
+      if (i >= 0) prov.splice(i, 1);
+    },
+  });
   const initial = async (): Promise<void> => {
     if (await charger()) return;
     racine.replaceChildren(
       h('p', { class: 'fiche-vide' },
-        sessionPerdue ? 'Votre session a expiré : reconnectez-vous. ' : 'La fiche n’a pas pu être chargée. ',
-        !sessionPerdue && h('button', { type: 'button', class: 'btn', onclick: () => void initial() }, 'Réessayer')));
+        liaison.sessionPerdue ? 'Votre session a expiré : reconnectez-vous. ' : 'La fiche n’a pas pu être chargée. ',
+        !liaison.sessionPerdue && h('button', { type: 'button', class: 'btn', onclick: () => void initial() }, 'Réessayer')));
   };
   void initial();
   demarrerSondage();
@@ -842,16 +679,16 @@ function demarrer(): void {
     }
   });
   window.addEventListener('online', () => {
-    reseauKO = false;
+    liaison.ko = false;
     toutRejouer();
     void sonder();
   });
   window.addEventListener('offline', () => {
-    reseauKO = true;
+    liaison.ko = true;
     rendreEtat();
   });
   window.addEventListener('beforeunload', (e) => {
-    if ([...files.values()].some((f) => f.ops.length > 0)) e.preventDefault();
+    if (ecrituresEnFile()) e.preventDefault();
   });
 }
 

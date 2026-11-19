@@ -23,6 +23,20 @@ export async function valeursDe(db: Base, tenantId: string, liste: Liste): Promi
   return results;
 }
 
+/**
+ * Clés marquées terminales, par liste, actives ou non : un statut retiré de la liste proposée continue de
+ * clore les sujets qui le portent. Une liste absente du résultat n'a aucune valeur terminale : rien n'y est clos.
+ */
+export async function terminauxDe(db: Base, tenantId: string): Promise<Record<string, string[]>> {
+  const { results } = await db
+    .prepare('SELECT liste, cle FROM liste_valeur WHERE tenant_id = ? AND terminal = 1 ORDER BY liste, ordre, cle')
+    .bind(tenantId)
+    .all<{ liste: string; cle: string }>();
+  const out: Record<string, string[]> = {};
+  for (const r of results) (out[r.liste] ??= []).push(r.cle);
+  return out;
+}
+
 export async function valeurValide(db: Base, tenantId: string, liste: Liste, cle: string): Promise<boolean> {
   if (!cle) return false;
   const r = await db
