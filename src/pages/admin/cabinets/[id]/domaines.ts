@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { cabinetDe, declarerDomaine, gardeAdmin, introuvable, retirerDomaine, verifierDomaine } from '../../../../lib/admin';
+import { accesCabinet, cabinetDe, declarerDomaine, gardeAdmin, introuvable, retirerDomaine, verifierDomaine } from '../../../../lib/admin';
 
 export const prerender = false;
 
@@ -9,6 +9,7 @@ export const POST: APIRoute = async (ctx) => {
   if (g instanceof Response) return g;
   const id = ctx.params.id ?? '';
   if (!(await cabinetDe(g.db, id))) return introuvable();
+  await accesCabinet(g, id, `POST ${ctx.url.pathname}`);
 
   const f = await ctx.request.formData();
   const action = String(f.get('action') ?? '');

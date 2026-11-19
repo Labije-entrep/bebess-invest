@@ -3,6 +3,8 @@ import { tenantParHote, type Role, type Tenant, type Utilisateur } from './lib/d
 import { sessionCourante } from './lib/auth';
 import { envDe } from './lib/mail';
 import { appartient } from './lib/cloisonnement';
+import { COMPTES_EDITEUR, GESTION_LIT, REGLAGES, aLeRole } from './lib/roles';
+import { journaliserAccesEditeur } from './lib/journal';
 
 declare global {
   namespace App {
@@ -39,12 +41,20 @@ function nouveauNonce(): string {
 const PUBLIC = 'public, s-maxage=60, stale-while-revalidate=600';
 const PRIVE = 'private, no-store';
 
-// Une route gardée exige l'un de ces rôles. Sinon : redirection vers /connexion.
+// Une route gardée exige l'un de ces rôles. Sinon : redirection vers /connexion. Le premier préfixe qui correspond l'emporte :
+// les réglages (et, au lot 13, l'abonnement) passent donc avant /gestionnaire. Qui peut quoi : src/lib/roles.ts.
 const GARDES: { prefixe: string; roles: Role[] }[] = [
   { prefixe: '/espace', roles: ['viewer'] },
-  { prefixe: '/gestionnaire', roles: ['gestionnaire', 'editeur'] },
+  { prefixe: '/gestionnaire/reglages', roles: ['editeur', ...REGLAGES] },
+  { prefixe: '/gestionnaire', roles: GESTION_LIT },
   { prefixe: '/admin', roles: ['editeur'] },
 ];
+
+// Le rôle « lecture » n'écrit rien : toute requête qui n'est pas une lecture lui est refusée ici, pour TOUTES les routes du
+// personnel (pages à formulaire, API du suivi, fichiers), sans dépendre de chaque route. /deconnexion reste ouverte.
+const ECRITURE_PREFIXES = ['/gestionnaire', '/api/suivi', '/fichiers'];
+// Les accès aux données d'un cabinet par l'éditeur ou son compte de support sont journalisés (journal.ts).
+const DONNEES_CABINET = ['/gestionnaire', '/api/suivi', '/fichiers'];
 
 // Jamais en cache partagé : pages authentifiées, et pages qui lisent ou posent le cookie.
 // L'API du suivi n'est pas une « garde » : elle répond 401/403 en JSON au lieu de rediriger (src/lib/api-suivi.ts).
@@ -89,11 +99,20 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // La console de l'éditeur : sans session, la connexion ; avec la session d'un autre rôle (un gestionnaire, un viewer),
   // un refus net, jamais une redirection vers une page qui l'accueillerait ailleurs.
   const refusAdmin = refuse && garde?.prefixe === '/admin' && role !== undefined;
-  const reponse = refusAdmin
+  // Un membre du personnel qui n'a pas le droit d'une rubrique (les réglages) : un refus net, pas une redirection.
+  const refusRubrique = refuse && garde?.prefixe === '/gestionnaire/reglages' && aLeRole(role, GESTION_LIT);
+  const lectureSeule =
+    !refuse && role === 'lecture' && !['GET', 'HEAD'].includes(context.request.method) && ECRITURE_PREFIXES.some((p) => sous(chemin, p));
+  if (!refuse && u && aLeRole(role, COMPTES_EDITEUR) && DONNEES_CABINET.some((p) => sous(chemin, p))) {
+    await journaliserAccesEditeur(DB, u.tenant_id, { id: u.id, role: u.role }, `${context.request.method} ${chemin}`);
+  }
+  const reponse = refusAdmin || refusRubrique
     ? new Response('Accès refusé.', { status: 403 })
-    : refuse
-      ? context.redirect('/connexion')
-      : await next();
+    : lectureSeule
+      ? new Response('Accès refusé : ce compte est en lecture seule.', { status: 403 })
+      : refuse
+        ? context.redirect('/connexion')
+        : await next();
   const resultat = new Response(reponse.body, reponse);
 
   // Mesure (lot 08) : POST de confirmation de connexion. Ne voit que les requêtes que le contrôle

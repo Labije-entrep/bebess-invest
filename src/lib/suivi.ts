@@ -20,16 +20,18 @@ const CLES: Record<keyof Seuils, string> = {
   arrete: 'seuil_arrete',
 };
 
+/** Un seuil en jours tel que `reglage` le porte : un entier strictement positif, sinon le repli (clé absente ou illisible). */
+export function joursOuRepli(valeur: string | null | undefined, repli: number): number {
+  return valeur != null && /^\d{1,4}$/.test(valeur.trim()) && Number(valeur) > 0 ? Number(valeur) : repli;
+}
+
 export async function seuilsDe(db: Base, tenantId: string): Promise<Seuils> {
   const { results } = await db
     .prepare("SELECT cle, valeur FROM reglage WHERE tenant_id = ? AND cle IN ('seuil_sans_echange', 'seuil_relance', 'seuil_arrete')")
     .bind(tenantId)
     .all<{ cle: string; valeur: string }>();
   const lu = new Map(results.map((r) => [r.cle, r.valeur]));
-  const entier = (cle: string, repli: number): number => {
-    const v = lu.get(cle);
-    return v !== undefined && /^\d{1,4}$/.test(v.trim()) && Number(v) > 0 ? Number(v) : repli;
-  };
+  const entier = (cle: string, repli: number): number => joursOuRepli(lu.get(cle), repli);
   return {
     sans_echange: entier(CLES.sans_echange, REPLI.sans_echange),
     relance: entier(CLES.relance, REPLI.relance),

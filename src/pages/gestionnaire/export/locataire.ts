@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { exportLocataire } from '../../../lib/export';
+import { GESTION_ECRIT, aLeRole } from '../../../lib/roles';
 import { envDe } from '../../../lib/mail';
 import { introuvable } from '../../../lib/passerelle';
 
@@ -9,9 +10,10 @@ export const prerender = false;
 export const GET: APIRoute = async (ctx) => {
   const { utilisateur, tenant } = ctx.locals;
   if (!utilisateur || !tenant || utilisateur.tenant_id !== tenant.id) return introuvable();
-  if (utilisateur.role !== 'gestionnaire' && utilisateur.role !== 'editeur') return introuvable();
+  // Le cabinet entier : réservé aux rôles qui écrivent. `lecture` consulte, il n'emporte pas tout le cabinet.
+  if (!aLeRole(utilisateur.role, GESTION_ECRIT)) return introuvable();
 
-  const archive = await exportLocataire(envDe(ctx.locals).DB, tenant.id);
+  const archive = await exportLocataire(envDe(ctx.locals).DB, tenant.id, { id: utilisateur.id, role: utilisateur.role });
   return new Response(archive.buffer as ArrayBuffer, {
     headers: {
       'Content-Type': 'application/zip',

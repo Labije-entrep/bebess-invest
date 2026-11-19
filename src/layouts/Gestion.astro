@@ -1,5 +1,6 @@
 ---
 import '../styles/app.css';
+import { CABINET_ECRIT, REGLAGES, aLeRole } from '../lib/roles';
 
 interface Props {
   titre: string;
@@ -26,7 +27,13 @@ const liensAdmin: [string, string][] = [
   ['/admin/incidents', 'Incidents'],
   ['/deconnexion', 'Déconnexion'],
 ];
-const liens = admin ? liensAdmin : liensGestionnaire;
+// Chaque rôle ne voit que ce qu'il peut ouvrir : `lecture` n'a ni création ni import ; les réglages sont à l'associé seul
+// (et au support de l'éditeur). Le menu ne protège rien : les routes refusent d'elles-mêmes.
+const role = Astro.locals.utilisateur?.role;
+const ECRITURE = ['/gestionnaire/viewers/nouveau', '/gestionnaire/import'];
+const visible = ([href]: [string, string]) =>
+  (!ECRITURE.includes(href) || aLeRole(role, CABINET_ECRIT)) && (href !== '/gestionnaire/reglages' || aLeRole(role, REGLAGES));
+const liens = admin ? liensAdmin : liensGestionnaire.filter(visible);
 const ici = Astro.url.pathname.replace(/\/$/, '');
 ---
 <!doctype html>

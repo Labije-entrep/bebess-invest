@@ -17,7 +17,8 @@ export interface Base {
   batch(requetes: Requete[]): Promise<unknown[]>;
 }
 
-export type Role = 'editeur' | 'gestionnaire' | 'viewer';
+/** Les six rôles du lot 11. Qui peut quoi : src/lib/roles.ts. */
+export type Role = 'editeur' | 'associe' | 'collaborateur' | 'lecture' | 'support_editeur' | 'viewer';
 
 export interface Tenant {
   id: string;
@@ -211,10 +212,11 @@ export async function tenantParHote(db: Base, hote: string): Promise<Tenant | nu
   return t ? { ...t, theme: themeValide(t.theme) } : null;
 }
 
-export function utilisateurParEmail(db: Base, email: string): Promise<Utilisateur | null> {
+/** Une adresse n'est unique qu'au sein d'un cabinet (lot 11) : on ne la cherche jamais seule, toujours avec son locataire. */
+export function utilisateurParEmail(db: Base, tenantId: string, email: string): Promise<Utilisateur | null> {
   return db
-    .prepare(`SELECT ${COLONNES_UTILISATEUR} FROM utilisateur WHERE email = ?`)
-    .bind(email.trim().toLowerCase())
+    .prepare(`SELECT ${COLONNES_UTILISATEUR} FROM utilisateur WHERE tenant_id = ? AND email = ?`)
+    .bind(tenantId, email.trim().toLowerCase())
     .first<Utilisateur>();
 }
 

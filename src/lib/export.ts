@@ -6,6 +6,7 @@
 // ou, pour l'export d'un contact, le locataire ET le contact.
 
 import type { Base } from './db';
+import { EVENEMENT, journaliser, type Acteur } from './journal';
 
 type Cellule = string | number | null | undefined;
 
@@ -129,15 +130,23 @@ export async function exportContact(db: Base, tenantId: string, contactId: strin
 // ---------------------------------------------------------------- le locataire entier
 
 // Toutes les tables qui portent des données du cabinet, chacune bornée au locataire (un seul « ? »).
-// Exclues : session et jeton_connexion (secrets d'accès), cours (global, sans locataire).
+// Exclues : session et jeton_connexion (secrets d'accès), cours (global, sans locataire), et ce qui est à l'éditeur et non au
+// cabinet : suspension (son motif commercial, l'identifiant de l'éditeur qui l'a posée), contrat et evenement (prix, remises et
+// leur motif, journal). Cet export est REMIS au cabinet : il ne contient rien que l'éditeur tienne pour lui. Ces tables restent
+// lisibles dans la console (/admin).
 const TABLES_LOCATAIRE: [string, string][] = [
   ['tenant', 'SELECT id, nom, domaine, cree_le FROM tenant WHERE id = ?'],
   ['domaine', 'SELECT hote, tenant_id, principal, valide_le, statut, detail, declare_le, verifie_le FROM domaine WHERE tenant_id = ?'],
-  ['suspension', 'SELECT id, tenant_id, motif, debut_le, par, fin_le, fin_par FROM suspension WHERE tenant_id = ?'],
   ['reglage', 'SELECT tenant_id, cle, valeur FROM reglage WHERE tenant_id = ?'],
   ['liste_valeur', 'SELECT tenant_id, liste, cle, libelle, ordre, actif, terminal, marqueur FROM liste_valeur WHERE tenant_id = ?'],
   ['membre', 'SELECT id, tenant_id, nom, initiale, couleur, actif, cree_le FROM membre WHERE tenant_id = ?'],
-  ['utilisateur', 'SELECT id, tenant_id, email, nom, role, actif, cree_le FROM utilisateur WHERE tenant_id = ?'],
+  // Les accès du cabinet : jamais le compte de support de l'éditeur. Le statut du dossier n'a de sens que pour un viewer.
+  [
+    'utilisateur',
+    `SELECT id, tenant_id, email, nom, role, actif,
+            CASE WHEN role = 'viewer' THEN statut END AS statut, CASE WHEN role = 'viewer' THEN publie_le END AS publie_le, cree_le
+       FROM utilisateur WHERE tenant_id = ? AND role <> 'support_editeur'`,
+  ],
   ['fiche', 'SELECT f.* FROM fiche f JOIN utilisateur u ON u.id = f.utilisateur_id WHERE u.tenant_id = ?'],
   ['portefeuille', 'SELECT id, tenant_id, viewer_id, libelle, type, ordre, archive, cree_le FROM portefeuille WHERE tenant_id = ?'],
   ['enveloppe', 'SELECT e.* FROM enveloppe e JOIN portefeuille p ON p.id = e.portefeuille_id WHERE p.tenant_id = ?'],
@@ -167,11 +176,16 @@ const LISEZMOI = [
   'Export complet du cabinet : un fichier CSV par table.',
   'CSV : séparateur point-virgule, UTF-8, fins de ligne CRLF. Montants en centimes entiers, pourcentages en centièmes de point, dates ISO 8601.',
   'Les cellules de texte qui commencent par = + - @ sont précédées d’une apostrophe, pour ne pas être lues comme des formules par un tableur.',
-  'Non inclus : les sessions et jetons de connexion (secrets), les cours de marché (communs à tous les cabinets) et le contenu des fichiers PDF et logos,',
+  'Non inclus : les sessions et jetons de connexion (secrets), les cours de marché (communs à tous les cabinets), les éléments propres à l’éditeur (contrat, suspension, journal) et le contenu des fichiers PDF et logos,',
   'dont la table document donne la liste (cle_fichier). Les fichiers se téléchargent depuis l’espace gestionnaire, rapport par rapport.',
 ].join('\r\n');
 
-export async function exportLocataire(db: Base, tenantId: string): Promise<Uint8Array> {
+/**
+ * L'export complet. Il est journalisé AVANT d'être produit (`export_complet`, avec qui l'a demandé) : sans événement, pas d'export.
+ * `acteur` est obligatoire, pour qu'aucun appelant ne puisse l'oublier.
+ */
+export async function exportLocataire(db: Base, tenantId: string, acteur: Acteur): Promise<Uint8Array> {
+  await journaliser(db, { tenantId, type: EVENEMENT.EXPORT_COMPLET, acteur, cible: { type: 'cabinet', id: tenantId } });
   const fichiers: { nom: string; octets: Uint8Array }[] = [];
   const enc = new TextEncoder();
   fichiers.push({ nom: 'LISEZMOI.txt', octets: enc.encode(LISEZMOI + '\r\n') });

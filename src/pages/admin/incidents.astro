@@ -1,7 +1,7 @@
 ---
 export const prerender = false;
 import Gestion from '../../layouts/Gestion.astro';
-import { cabinets, gardeAdmin } from '../../lib/admin';
+import { accesCabinet, cabinets, gardeAdmin } from '../../lib/admin';
 import { incidents, libelleIncident, LIMITE_INCIDENTS, SANS_CABINET, typesPresents } from '../../lib/incidents';
 import { dateCourte } from '../../lib/format';
 
@@ -16,6 +16,8 @@ const type = Astro.url.searchParams.get('type') ?? '';
 const tenantId = cabinet === SANS_CABINET || liste.some((c) => c.id === cabinet) ? cabinet : '';
 const typeFiltre = types.includes(type) ? type : '';
 const lignes = await incidents(g.db, { tenantId: tenantId || undefined, type: typeFiltre || undefined });
+// Le détail d'un incident est une donnée du cabinet : lire ces lignes est un accès de l'éditeur à chacun des cabinets listés.
+for (const id of new Set(lignes.map((i) => i.tenant_id).filter((x): x is string => !!x))) await accesCabinet(g, id, `GET ${Astro.url.pathname}`);
 const horodate = (iso: string) => `${dateCourte(iso)} ${iso.slice(11, 16)} UTC`;
 ---
 <Gestion titre="Incidents" espace="admin">

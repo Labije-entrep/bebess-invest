@@ -7,11 +7,26 @@
 INSERT INTO tenant (id, nom, domaine, cree_le) VALUES
   ('tnt_demo', 'Family office de démonstration', 'localhost', '2023-11-01T09:00:00Z');
 
+-- Rôles du lot 11 : un compte de chacun. L'adresse du support est la MÊME dans les deux cabinets du jeu (unicité par cabinet).
 INSERT INTO utilisateur (id, tenant_id, email, nom, role, actif, cree_le) VALUES
-  ('usr_editeur',      'tnt_demo', 'editeur@demo.local',      'Hélène Roussel',  'editeur',      1, '2023-11-01T09:00:00Z'),
-  ('usr_gestionnaire', 'tnt_demo', 'gestionnaire@demo.local', 'Antoine Verdier', 'gestionnaire', 1, '2023-11-01T09:00:00Z'),
-  ('usr_claire',       'tnt_demo', 'claire@demo.local',       'Claire Marchand', 'viewer',       1, '2023-11-01T09:00:00Z'),
-  ('usr_thomas',       'tnt_demo', 'thomas@demo.local',       'Thomas Marchand', 'viewer',       1, '2024-02-15T09:00:00Z');
+  ('usr_editeur',      'tnt_demo', 'editeur@demo.local',       'Hélène Roussel',  'editeur',         1, '2023-11-01T09:00:00Z'),
+  ('usr_gestionnaire', 'tnt_demo', 'gestionnaire@demo.local',  'Antoine Verdier', 'associe',         1, '2023-11-01T09:00:00Z'),
+  ('usr_collab',       'tnt_demo', 'collaborateur@demo.local', 'Camille Durand',  'collaborateur',   1, '2024-01-08T09:00:00Z'),
+  ('usr_lecture',      'tnt_demo', 'lecture@demo.local',       'Léa Fontaine',    'lecture',         1, '2024-01-08T09:00:00Z'),
+  ('usr_support',      'tnt_demo', 'support@editeur.local',    'Support éditeur', 'support_editeur', 1, '2023-11-01T09:00:00Z'),
+  ('usr_claire',       'tnt_demo', 'claire@demo.local',        'Claire Marchand', 'viewer',          1, '2023-11-01T09:00:00Z'),
+  ('usr_thomas',       'tnt_demo', 'thomas@demo.local',        'Thomas Marchand', 'viewer',          1, '2024-02-15T09:00:00Z');
+
+-- Les viewers du jeu ont déjà reçu leur lien : leurs dossiers sont publiés.
+UPDATE utilisateur SET statut = 'publie', publie_le = cree_le WHERE role = 'viewer';
+
+-- Contrat de démonstration. Les quatre prix (79, 49, 39 et 25 €) sont ceux que cite chantier/lot-12-facturation.md ; leur
+-- rattachement socle / Pilotage / Site vitrine / accès supplémentaire suit l'ordre des lignes de ce lot. Le gel est posé pour que
+-- le refus d'une modification de prix se voie sur le jeu. DPA signé : la mise en production reste possible.
+INSERT INTO contrat (id, tenant_id, statut, periodicite, debut_le, prix_socle, prix_pilotage, prix_site, prix_acces_sup,
+                     module_pilotage, module_site, acces_inclus, frais_installation, tarif_gele_jusqu_au, dpa_signe_le, cree_le, maj_le)
+VALUES ('ctr_demo', 'tnt_demo', 'actif', 'annuelle', '2026-03-14', 7900, 4900, 3900, 2500,
+        1, 0, 3, 0, '2027-12-31', '2026-03-01', '2026-03-01T09:00:00Z', '2026-03-01T09:00:00Z');
 
 -- Trois membres de l'équipe du cabinet. couleur : jeton de la palette des graphiques.
 INSERT INTO membre (id, tenant_id, nom, initiale, couleur, actif, cree_le) VALUES
@@ -204,8 +219,11 @@ INSERT INTO tenant (id, nom, domaine, cree_le) VALUES
   ('tnt_autre', 'Cabinet Delmas', 'cabinet2.localhost', '2025-01-10T09:00:00Z');
 
 INSERT INTO utilisateur (id, tenant_id, email, nom, role, actif, cree_le) VALUES
-  ('usr_autre_gest',   'tnt_autre', 'gestionnaire@delmas.local', 'Paul Delmas',  'gestionnaire', 1, '2025-01-10T09:00:00Z'),
-  ('usr_autre_viewer', 'tnt_autre', 'viewer@delmas.local',       'Irène Fabre',  'viewer',       1, '2025-01-10T09:00:00Z');
+  ('usr_autre_gest',    'tnt_autre', 'gestionnaire@delmas.local', 'Paul Delmas',     'associe',         1, '2025-01-10T09:00:00Z'),
+  -- Le même compte de support que dans le cabinet démo : possible depuis que l'adresse n'est unique que par cabinet.
+  ('usr_autre_support', 'tnt_autre', 'support@editeur.local',     'Support éditeur', 'support_editeur', 1, '2025-01-10T09:00:00Z'),
+  ('usr_autre_viewer',  'tnt_autre', 'viewer@delmas.local',       'Irène Fabre',     'viewer',          1, '2025-01-10T09:00:00Z');
+UPDATE utilisateur SET statut = 'publie', publie_le = cree_le WHERE id = 'usr_autre_viewer';
 
 INSERT INTO liste_valeur (tenant_id, liste, cle, libelle, ordre, actif) VALUES
   ('tnt_autre', 'classe_actif', 'actions', 'Actions', 1, 1),

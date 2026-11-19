@@ -3,6 +3,7 @@ import { appartient } from '../../../lib/cloisonnement';
 import { cleDocument, corpsTropGros, deposer, lireDepot, supprimer } from '../../../lib/fichiers';
 import { refusValeur } from '../../../lib/listes';
 import { garde, introuvable } from '../../../lib/passerelle';
+import { GESTION_ECRIT } from '../../../lib/roles';
 import { envDe } from '../../../lib/mail';
 
 export const prerender = false;
@@ -15,7 +16,7 @@ const dateIso = (v: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number
  * Taille bornée (10 Mo), type vérifié sur le contenu. L'objet est rangé sous l'identifiant du locataire.
  */
 export const POST: APIRoute = async (ctx) => {
-  const g = garde(ctx, ['gestionnaire', 'editeur']);
+  const g = garde(ctx, GESTION_ECRIT);
   if (g instanceof Response) return g;
 
   // Le viewer vient de l'adresse (?viewer_id=), pas du corps : un corps trop gros n'est pas lu du tout.

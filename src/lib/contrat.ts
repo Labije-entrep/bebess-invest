@@ -1,0 +1,279 @@
+// Le contrat (lot 11) : un seul en cours par locataire, et la seule source des prix. Montants en centimes entiers (hors taxes),
+// taux en centièmes de point (2500 = 25 %), dates ISO 8601. Toute lecture et toute écriture est bornée au locataire.
+//
+// Trois règles dures, tenues ICI et par la base (migration 0008), pas par la convention :
+//   1. les prix se lisent SUR LE CONTRAT (`prixDuContrat`) : aucune grille globale n'existe ;
+//   2. aucun prix ne change tant que `tarif_gele_jusqu_au` est dans le futur ;
+//   3. une date de mise en production est refusée tant que `dpa_signe_le` est vide.
+//
+// Chaque modification part dans le même `batch` que son événement (journal.ts). Aucun texte n'est généré : les refus sont des codes
+// fixes traduits par MESSAGES_CONTRAT.
+
+import type { Base } from './db';
+import { EVENEMENT, requeteEvenement, type Acteur } from './journal';
+
+export interface Prix {
+  prix_socle: number;
+  prix_pilotage: number;
+  prix_site: number;
+  prix_acces_sup: number;
+}
+export const CHAMPS_PRIX: (keyof Prix)[] = ['prix_socle', 'prix_pilotage', 'prix_site', 'prix_acces_sup'];
+
+export type Module = 'pilotage' | 'site';
+export type Periodicite = 'mensuelle' | 'annuelle';
+
+export interface Contrat extends Prix {
+  id: string;
+  tenant_id: string;
+  statut: 'brouillon' | 'essai' | 'actif' | 'resilie';
+  periodicite: Periodicite;
+  debut_le: string | null;
+  fin_le: string | null;
+  date_mise_en_production: string | null;
+  module_pilotage: number;
+  module_site: number;
+  acces_inclus: number;
+  frais_installation: number;
+  tarif_gele_jusqu_au: string | null;
+  remise_parrainage_taux: number;
+  remise_commerciale_taux: number;
+  remise_motif: string | null;
+  remise_revue_le: string | null;
+  dpa_signe_le: string | null;
+  preavis_recu_le: string | null;
+  cree_le: string;
+  maj_le: string;
+}
+
+const COLONNES =
+  `id, tenant_id, statut, periodicite, debut_le, fin_le, date_mise_en_production, ${CHAMPS_PRIX.join(', ')}, module_pilotage, module_site,
+   acces_inclus, frais_installation, tarif_gele_jusqu_au, remise_parrainage_taux, remise_commerciale_taux, remise_motif, remise_revue_le,
+   dpa_signe_le, preavis_recu_le, cree_le, maj_le`;
+
+export type CodeContrat =
+  | 'aucun_contrat' | 'deja_un_contrat' | 'tarif_gele' | 'dpa_manquant' | 'date_invalide' | 'montant_invalide' | 'taux_invalide'
+  | 'motif_requis' | 'revue_requise' | 'periodicite' | 'inchange';
+export type ResultatContrat = { ok: true; contrat: Contrat } | { ok: false; code: CodeContrat };
+
+export const MESSAGES_CONTRAT: Record<CodeContrat, string> = {
+  aucun_contrat: 'Ce cabinet n’a pas de contrat en cours.',
+  deja_un_contrat: 'Ce cabinet a déjà un contrat en cours : un seul à la fois.',
+  tarif_gele: 'Le tarif est gelé : aucun prix ne se modifie avant la fin du gel.',
+  dpa_manquant: 'La mise en production exige un DPA signé : renseignez sa date d’abord.',
+  date_invalide: 'Date invalide : AAAA-MM-JJ.',
+  montant_invalide: 'Montant invalide : des centimes entiers, positifs ou nuls.',
+  taux_invalide: 'Taux invalide : entre 0 et 10 000 centièmes de point.',
+  motif_requis: 'Une remise commerciale exige un motif.',
+  revue_requise: 'Une remise commerciale exige une date de revue.',
+  periodicite: 'Périodicité inconnue : mensuelle ou annuelle.',
+  inchange: 'Rien à modifier.',
+};
+
+const refus = (code: CodeContrat): { ok: false; code: CodeContrat } => ({ ok: false, code });
+const aujourdhui = (): string => new Date().toISOString().slice(0, 10);
+const maintenant = (): string => new Date().toISOString();
+const dateIso = (v: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v);
+const centimes = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 1_000_000_000;
+const taux = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 10000;
+
+// ---------------------------------------------------------------- lire
+
+/** Le contrat en cours (brouillon, essai ou actif) du locataire, ou null. */
+export function contratEnCours(db: Base, tenantId: string): Promise<Contrat | null> {
+  return db
+    .prepare(`SELECT ${COLONNES} FROM contrat WHERE tenant_id = ? AND statut IN ('brouillon','essai','actif')`)
+    .bind(tenantId)
+    .first<Contrat>();
+}
+
+/**
+ * Les prix, tels que le contrat les porte. C'est la SEULE façon de lire un prix : ni constante, ni grille globale. Sans contrat
+ * en cours, null : on ne devine pas un tarif.
+ */
+export async function prixDuContrat(db: Base, tenantId: string): Promise<(Prix & { acces_inclus: number; frais_installation: number }) | null> {
+  const c = await contratEnCours(db, tenantId);
+  if (!c) return null;
+  return {
+    prix_socle: c.prix_socle, prix_pilotage: c.prix_pilotage, prix_site: c.prix_site, prix_acces_sup: c.prix_acces_sup,
+    acces_inclus: c.acces_inclus, frais_installation: c.frais_installation,
+  };
+}
+
+/** Le gel est actif tant que sa date est strictement dans le futur. */
+export const tarifGele = (c: Pick<Contrat, 'tarif_gele_jusqu_au'>, jour = aujourdhui()): boolean =>
+  !!c.tarif_gele_jusqu_au && c.tarif_gele_jusqu_au > jour;
+
+// ---------------------------------------------------------------- écrire
+
+export interface SaisieContrat extends Prix {
+  periodicite: Periodicite;
+  acces_inclus: number;
+  frais_installation?: number;
+  debut_le?: string | null;
+  fin_le?: string | null;
+  tarif_gele_jusqu_au?: string | null;
+}
+
+/** Ouvre le contrat du cabinet, en brouillon, avec les quatre prix recopiés. Refusé s'il en a déjà un en cours. */
+export async function creerContrat(db: Base, tenantId: string, s: SaisieContrat, acteur: Acteur | null): Promise<ResultatContrat> {
+  if (s.periodicite !== 'mensuelle' && s.periodicite !== 'annuelle') return refus('periodicite');
+  if (![...CHAMPS_PRIX.map((k) => s[k]), s.acces_inclus, s.frais_installation ?? 0].every(centimes)) return refus('montant_invalide');
+  for (const d of [s.debut_le, s.fin_le, s.tarif_gele_jusqu_au]) if (d && !dateIso(d)) return refus('date_invalide');
+  if (await contratEnCours(db, tenantId)) return refus('deja_un_contrat');
+  const id = crypto.randomUUID();
+  const now = maintenant();
+  try {
+    await db.batch([db.prepare(
+      `INSERT INTO contrat (id, tenant_id, statut, periodicite, debut_le, fin_le, ${CHAMPS_PRIX.join(', ')}, acces_inclus, frais_installation,
+                            tarif_gele_jusqu_au, cree_le, maj_le)
+       VALUES (?, ?, 'brouillon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      id, tenantId, s.periodicite, s.debut_le ?? null, s.fin_le ?? null, s.prix_socle, s.prix_pilotage, s.prix_site, s.prix_acces_sup,
+      s.acces_inclus, s.frais_installation ?? 0, s.tarif_gele_jusqu_au ?? null, now, now,
+    ), requeteEvenement(db, {
+      tenantId, type: EVENEMENT.CONTRAT_CREE, acteur, cible: { type: 'contrat', id },
+      detail: { periodicite: s.periodicite, acces_inclus: s.acces_inclus, prix: Object.fromEntries(CHAMPS_PRIX.map((k) => [k, s[k]])) },
+    })]);
+  } catch {
+    return refus('deja_un_contrat');
+  }
+  return relire(db, tenantId);
+}
+
+async function relire(db: Base, tenantId: string): Promise<ResultatContrat> {
+  const c = await contratEnCours(db, tenantId);
+  return c ? { ok: true, contrat: c } : refus('aucun_contrat');
+}
+
+/**
+ * Modifie un ou plusieurs prix. REFUSÉ tant que `tarif_gele_jusqu_au` est dans le futur — la base refuse aussi, au cas où une
+ * autre écriture contournerait celle-ci. Un prix inchangé n'est pas une modification.
+ */
+export async function modifierPrix(db: Base, tenantId: string, prix: Partial<Prix>, acteur: Acteur | null): Promise<ResultatContrat> {
+  const c = await contratEnCours(db, tenantId);
+  if (!c) return refus('aucun_contrat');
+  const champs = CHAMPS_PRIX.filter((k) => prix[k] !== undefined);
+  if (!champs.every((k) => centimes(prix[k]))) return refus('montant_invalide');
+  const change = champs.filter((k) => prix[k] !== c[k]);
+  if (change.length === 0) return refus('inchange');
+  if (tarifGele(c)) return refus('tarif_gele');
+  const avant = Object.fromEntries(change.map((k) => [k, c[k]]));
+  const apres = Object.fromEntries(change.map((k) => [k, prix[k]]));
+  try {
+    await db.batch([
+      db
+        .prepare(`UPDATE contrat SET ${change.map((k) => `${k} = ?`).join(', ')}, maj_le = ? WHERE id = ? AND tenant_id = ?`)
+        .bind(...change.map((k) => prix[k]), maintenant(), c.id, tenantId),
+      requeteEvenement(db, { tenantId, type: EVENEMENT.PRIX_MODIFIE, acteur, cible: { type: 'contrat', id: c.id }, detail: { avant, apres } }, true),
+    ]);
+  } catch {
+    return refus('tarif_gele');
+  }
+  return relire(db, tenantId);
+}
+
+/** Pose (ou retire, avec null) le gel du tarif jusqu'à une date. Journalisé : c'est lui qui verrouille les prix. */
+export async function poserGelTarif(db: Base, tenantId: string, jusquAu: string | null, acteur: Acteur | null): Promise<ResultatContrat> {
+  const c = await contratEnCours(db, tenantId);
+  if (!c) return refus('aucun_contrat');
+  if (jusquAu !== null && !dateIso(jusquAu)) return refus('date_invalide');
+  if (c.tarif_gele_jusqu_au === jusquAu) return refus('inchange');
+  await db.batch([
+    db.prepare('UPDATE contrat SET tarif_gele_jusqu_au = ?, maj_le = ? WHERE id = ? AND tenant_id = ?').bind(jusquAu, maintenant(), c.id, tenantId),
+    requeteEvenement(db, { tenantId, type: EVENEMENT.GEL_TARIF, acteur, cible: { type: 'contrat', id: c.id }, detail: { avant: c.tarif_gele_jusqu_au, apres: jusquAu } }, true),
+  ]);
+  return relire(db, tenantId);
+}
+
+/** Date de signature du DPA. Préalable de la mise en production. */
+export async function poserDpa(db: Base, tenantId: string, date: string, acteur: Acteur | null): Promise<ResultatContrat> {
+  const c = await contratEnCours(db, tenantId);
+  if (!c) return refus('aucun_contrat');
+  if (!dateIso(date)) return refus('date_invalide');
+  await db.batch([
+    db.prepare('UPDATE contrat SET dpa_signe_le = ?, maj_le = ? WHERE id = ? AND tenant_id = ?').bind(date, maintenant(), c.id, tenantId),
+    requeteEvenement(db, { tenantId, type: EVENEMENT.DPA_SIGNE, acteur, cible: { type: 'contrat', id: c.id }, detail: { avant: c.dpa_signe_le, apres: date } }, true),
+  ]);
+  return relire(db, tenantId);
+}
+
+/** Pose la date de mise en production. REFUSÉ si `dpa_signe_le` est vide — le CHECK de la base refuse aussi. */
+export async function poserMiseEnProduction(db: Base, tenantId: string, date: string, acteur: Acteur | null): Promise<ResultatContrat> {
+  const c = await contratEnCours(db, tenantId);
+  if (!c) return refus('aucun_contrat');
+  if (!dateIso(date)) return refus('date_invalide');
+  if (!c.dpa_signe_le || c.dpa_signe_le.trim() === '') return refus('dpa_manquant');
+  try {
+    await db.batch([
+      db.prepare('UPDATE contrat SET date_mise_en_production = ?, maj_le = ? WHERE id = ? AND tenant_id = ?').bind(date, maintenant(), c.id, tenantId),
+      requeteEvenement(db, { tenantId, type: EVENEMENT.MISE_EN_PRODUCTION, acteur, cible: { type: 'contrat', id: c.id }, detail: { avant: c.date_mise_en_production, apres: date } }, true),
+    ]);
+  } catch {
+    return refus('dpa_manquant');
+  }
+  return relire(db, tenantId);
+}
+
+/** Active ou désactive un module. Sans effet (refus `inchange`) s'il est déjà dans cet état : pas d'événement pour rien. */
+export async function basculerModule(db: Base, tenantId: string, module: Module, actif: boolean, acteur: Acteur | null): Promise<ResultatContrat> {
+  const c = await contratEnCours(db, tenantId);
+  if (!c) return refus('aucun_contrat');
+  const colonne = module === 'pilotage' ? 'module_pilotage' : 'module_site';
+  if ((c[colonne] === 1) === actif) return refus('inchange');
+  await db.batch([
+    db.prepare(`UPDATE contrat SET ${colonne} = ?, maj_le = ? WHERE id = ? AND tenant_id = ?`).bind(actif ? 1 : 0, maintenant(), c.id, tenantId),
+    requeteEvenement(
+      db,
+      { tenantId, type: actif ? EVENEMENT.MODULE_ACTIVE : EVENEMENT.MODULE_DESACTIVE, acteur, cible: { type: 'contrat', id: c.id }, detail: { module } },
+      true,
+    ),
+  ]);
+  return relire(db, tenantId);
+}
+
+export interface SaisieRemise {
+  commerciale_taux?: number;
+  parrainage_taux?: number;
+  motif?: string | null;
+  revue_le?: string | null;
+}
+
+/**
+ * Saisit ou modifie une remise. Une remise commerciale non nulle exige un motif et une date de revue. `remise_saisie` la première
+ * fois qu'un taux commercial est posé, `remise_modifiee` ensuite (y compris pour la remise de parrainage recalculée par le produit).
+ */
+export async function saisirRemise(db: Base, tenantId: string, s: SaisieRemise, acteur: Acteur | null): Promise<ResultatContrat> {
+  const c = await contratEnCours(db, tenantId);
+  if (!c) return refus('aucun_contrat');
+  const commerciale = s.commerciale_taux ?? c.remise_commerciale_taux;
+  const parrainage = s.parrainage_taux ?? c.remise_parrainage_taux;
+  if (!taux(commerciale) || !taux(parrainage)) return refus('taux_invalide');
+  const motif = s.motif === undefined ? c.remise_motif : (s.motif ?? '').trim().slice(0, 500) || null;
+  const revue = s.revue_le === undefined ? c.remise_revue_le : s.revue_le || null;
+  if (revue && !dateIso(revue)) return refus('date_invalide');
+  if (commerciale > 0 && !motif) return refus('motif_requis');
+  if (commerciale > 0 && !revue) return refus('revue_requise');
+  if (
+    commerciale === c.remise_commerciale_taux && parrainage === c.remise_parrainage_taux
+    && motif === c.remise_motif && revue === c.remise_revue_le
+  ) return refus('inchange');
+  const premiere = c.remise_commerciale_taux === 0 && !c.remise_motif && commerciale > 0;
+  await db.batch([
+    db
+      .prepare('UPDATE contrat SET remise_commerciale_taux = ?, remise_parrainage_taux = ?, remise_motif = ?, remise_revue_le = ?, maj_le = ? WHERE id = ? AND tenant_id = ?')
+      .bind(commerciale, parrainage, motif, revue, maintenant(), c.id, tenantId),
+    requeteEvenement(
+      db,
+      {
+        tenantId, type: premiere ? EVENEMENT.REMISE_SAISIE : EVENEMENT.REMISE_MODIFIEE, acteur, cible: { type: 'contrat', id: c.id },
+        detail: {
+          avant: { commerciale_taux: c.remise_commerciale_taux, parrainage_taux: c.remise_parrainage_taux, motif: c.remise_motif, revue_le: c.remise_revue_le },
+          apres: { commerciale_taux: commerciale, parrainage_taux: parrainage, motif, revue_le: revue },
+        },
+      },
+      true,
+    ),
+  ]);
+  return relire(db, tenantId);
+}

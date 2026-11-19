@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { appartient } from '../../../../lib/cloisonnement';
 import { arretesPerimes, ecartsHorsSeuil, panneauPortail } from '../../../../lib/fiche';
 import { garde, introuvable, sujetPourOrigine, texteArrete, texteEcart } from '../../../../lib/passerelle';
+import { GESTION_ECRIT } from '../../../../lib/roles';
 
 export const prerender = false;
 
@@ -12,7 +13,7 @@ export const prerender = false;
  * Un sujet non clos portant déjà la même origine est ouvert au lieu d'être recréé.
  */
 export const POST: APIRoute = async (ctx) => {
-  const g = garde(ctx, ['gestionnaire', 'editeur']);
+  const g = garde(ctx, GESTION_ECRIT);
   if (g instanceof Response) return g;
   const id = ctx.params.id ?? '';
   if (id.length > 64 || !(await appartient(g.db, g.tenant.id, 'contact', id))) return introuvable();

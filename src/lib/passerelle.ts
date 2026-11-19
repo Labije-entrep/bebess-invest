@@ -12,6 +12,8 @@ import { cleMarquee } from './listes';
 import { MARQUEUR } from './marqueurs';
 import { envDe } from './mail';
 import { incrementerVersion } from './version';
+import { evenementCreation } from './acces';
+import type { Acteur } from './journal';
 import type { Base, Role, Tenant, Utilisateur } from './db';
 import type { BlocPortefeuille, EcartHorsSeuil } from './fiche';
 
@@ -47,10 +49,10 @@ export type ResultatPromotion =
 /**
  * Crée, en une transaction, le viewer (nom, prénom et adresse du contact), sa fiche et son portefeuille
  * « Patrimoine », puis pose `contact.viewer_id`. Tout ou rien (`batch` de D1) : l'adresse d'un utilisateur est
- * unique, donc un second clic simultané échoue sur la première insertion et rien n'est écrit deux fois.
+ * unique dans son cabinet, donc un second clic simultané échoue sur la première insertion et rien n'est écrit deux fois.
  * L'envoi du lien se fait après, par l'appelant : s'il échoue, le rattachement reste fait.
  */
-export async function promouvoir(db: Base, tenantId: string, contactId: string): Promise<ResultatPromotion> {
+export async function promouvoir(db: Base, tenantId: string, contactId: string, acteur: Acteur | null): Promise<ResultatPromotion> {
   const c = await db
     .prepare('SELECT id, nom, prenom, email, viewer_id FROM contact WHERE id = ? AND tenant_id = ?')
     .bind(contactId, tenantId)
@@ -61,7 +63,8 @@ export async function promouvoir(db: Base, tenantId: string, contactId: string):
   const email = (c.email ?? '').trim().toLowerCase();
   if (email === '') return { ok: false, code: 'email_absent' };
   if (!EMAIL.test(email)) return { ok: false, code: 'email_invalide' };
-  if (await db.prepare('SELECT 1 AS ok FROM utilisateur WHERE email = ?').bind(email).first()) return { ok: false, code: 'email_pris' };
+  // Une adresse n'est unique qu'au sein d'un cabinet (lot 11) : on ne la cherche que dans celui-ci.
+  if (await db.prepare('SELECT 1 AS ok FROM utilisateur WHERE tenant_id = ? AND email = ?').bind(tenantId, email).first()) return { ok: false, code: 'email_pris' };
 
   // Type du portefeuille de départ : la valeur qui porte le marqueur « Type par défaut ». Sans elle, on ne devine rien.
   const typeDefaut = await cleMarquee(db, tenantId, 'type_portefeuille', MARQUEUR.DEFAUT);
@@ -82,6 +85,7 @@ export async function promouvoir(db: Base, tenantId: string, contactId: string):
       db
         .prepare('UPDATE contact SET viewer_id = ?, maj_le = ? WHERE id = ? AND tenant_id = ? AND viewer_id IS NULL')
         .bind(viewerId, now, contactId, tenantId),
+      evenementCreation(db, tenantId, viewerId, 'viewer', email, acteur),
     ]);
   } catch {
     // Adresse prise entre-temps, ou contact promu par un autre clic : on relit pour dire laquelle.

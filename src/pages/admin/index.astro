@@ -9,9 +9,9 @@ const g = gardeAdmin(Astro);
 if (g instanceof Response) return g;
 
 const liste = await cabinets(g.db);
-// Un arrêté de plus de 45 jours (le seuil par défaut du produit) ou absent : le cabinet n'a plus rien mis à jour.
-const seuil = seuilArrete();
-const aSurveiller = (c: (typeof liste)[number]) => !c.suspendu_le && (!c.dernier_arrete || c.dernier_arrete < seuil);
+// Un arrêté plus ancien que le seuil DU CABINET (réglage « Arrêté périmé au-delà de » ; 45 jours si le cabinet n'en a pas posé)
+// ou absent : le cabinet a laissé filer au moins une entité.
+const aSurveiller = (c: (typeof liste)[number]) => !c.suspendu_le && (!c.dernier_arrete || c.dernier_arrete < seuilArrete(c.seuil_arrete_jours));
 const suspendus = liste.filter((c) => c.suspendu_le).length;
 const viewers = liste.reduce((s, c) => s + c.viewers, 0);
 const contacts = liste.reduce((s, c) => s + c.contacts, 0);
@@ -37,7 +37,7 @@ const cree = Astro.url.searchParams.get('cree') === '1';
           <thead>
             <tr>
               <th>Cabinet</th><th class="num">Viewers</th><th class="num">Contacts</th>
-              <th>Dernier arrêté</th><th>Dernier incident</th><th>État</th>
+              <th>Arrêté le plus ancien</th><th>Dernier incident</th><th>État</th>
             </tr>
           </thead>
           <tbody>
@@ -56,7 +56,7 @@ const cree = Astro.url.searchParams.get('cree') === '1';
       </div>
     )
   }
-  <p class="aide">Dernier arrêté : la date la plus récente d’un point ou d’une enveloppe, tous portefeuilles du cabinet ; en rouge au-delà de 45 jours ou sans arrêté. Contacts : hors archivés. Viewers : tous les accès viewer du cabinet.</p>
+  <p class="aide">Arrêté le plus ancien : la date la plus ancienne parmi les enveloppes, les lignes et le dernier point de chaque portefeuille actif du cabinet (un cabinet n’est à jour que si tout l’est) ; en rouge au-delà du seuil propre au cabinet (réglage « Arrêté périmé au-delà de », 45 jours par défaut) ou sans arrêté. Contacts : hors archivés. Viewers : tous les accès viewer du cabinet.</p>
 
   <div class="actions">
     <a class="btn-plein" href="/admin/cabinets/nouveau">Nouveau cabinet</a>

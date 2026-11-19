@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { appartient } from '../../../../lib/cloisonnement';
 import { garde, introuvable } from '../../../../lib/passerelle';
+import { GESTION_ECRIT } from '../../../../lib/roles';
 
 export const prerender = false;
 
@@ -10,7 +11,7 @@ export const prerender = false;
  * portefeuille doit être à CE viewer, dans CE cabinet, et ne pas être archivé. Document inconnu ou d'un autre cabinet : 404.
  */
 export const POST: APIRoute = async (ctx) => {
-  const g = garde(ctx, ['gestionnaire', 'editeur']);
+  const g = garde(ctx, GESTION_ECRIT);
   if (g instanceof Response) return g;
   const id = ctx.params.id ?? '';
   if (id.length > 64 || !(await appartient(g.db, g.tenant.id, 'document', id))) return introuvable();

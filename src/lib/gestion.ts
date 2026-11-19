@@ -5,6 +5,9 @@
 
 import { accueilDuRole } from './auth';
 import { AccesRefuse, appartient, exiger } from './cloisonnement';
+import { evenementCreation } from './acces';
+import { type Acteur } from './journal';
+import { CABINET_ECRIT, CABINET_LIT, REGLAGES, aLeRole } from './roles';
 import { creerMailer, envDe } from './mail';
 import { noterIncident } from './incidents';
 import { cleMarquee, clesMarqueesDe, validateurDe } from './listes';
@@ -40,17 +43,25 @@ export function baseDe(locals: any): Base {
   return base as Base;
 }
 
-/** Réservé au gestionnaire du tenant. Renvoie une réponse (redirection, 403) ou le contexte. */
-export function contexte(a: {
-  locals: any;
-  request: Request;
-  redirect: (chemin: string) => Response;
-}): Contexte | Response {
+/**
+ * Réservé au personnel du cabinet (lot 11). Une page se lit avec n'importe lequel des quatre rôles du personnel ; une écriture
+ * (tout POST) exige un rôle qui écrit : `lecture` n'écrit rien. `reglages: true` : associé seul (et le support de l'éditeur, qui
+ * se comporte comme lui) — les réglages, et au lot 13 la page d'abonnement. `ecriture: true` : une page dont l'objet est d'écrire
+ * (création d'un viewer, import) se refuse dès la lecture à qui n'écrit pas. Renvoie une réponse (redirection, 403) ou le contexte.
+ */
+export function contexte(
+  a: { locals: any; request: Request; redirect: (chemin: string) => Response },
+  options: { reglages?: boolean; ecriture?: boolean } = {},
+): Contexte | Response {
   const utilisateur = a.locals.utilisateur as Utilisateur | null;
   const tenant = a.locals.tenant as Tenant | null;
   if (!utilisateur || !tenant) return a.redirect('/connexion');
-  if (utilisateur.role !== 'gestionnaire') return a.redirect(accueilDuRole(utilisateur.role));
+  if (!aLeRole(utilisateur.role, CABINET_LIT)) return a.redirect(accueilDuRole(utilisateur.role));
+  if (options.reglages && !aLeRole(utilisateur.role, REGLAGES)) return new Response('Accès refusé.', { status: 403 });
   if (utilisateur.tenant_id !== tenant.id) return new Response('Interdit', { status: 403 });
+  if ((options.ecriture || !['GET', 'HEAD'].includes(a.request.method)) && !aLeRole(utilisateur.role, CABINET_ECRIT)) {
+    return new Response('Accès refusé : ce compte est en lecture seule.', { status: 403 });
+  }
   if (a.request.method === 'POST') {
     const origine = a.request.headers.get('origin');
     if (origine && new URL(origine).host !== new URL(a.request.url).host) {
@@ -217,6 +228,7 @@ export async function creerViewer(
   db: Base,
   tenantId: string,
   f: FormData,
+  acteur: Acteur | null,
 ): Promise<{ erreurs: Erreurs } | { id: string; email: string }> {
   const erreurs: Erreurs = {};
   const nom = texte(f.get('nom'), 120);
@@ -224,7 +236,8 @@ export async function creerViewer(
   if (!nom) erreurs.nom = 'Le nom est requis.';
   if (!EMAIL.test(email)) erreurs.email = 'Adresse e-mail invalide.';
   else {
-    const existant = await db.prepare('SELECT id FROM utilisateur WHERE email = ?').bind(email).first();
+    // Une adresse n'est unique qu'au sein d'un cabinet : la même personne peut être cliente de deux cabinets.
+    const existant = await db.prepare('SELECT id FROM utilisateur WHERE tenant_id = ? AND email = ?').bind(tenantId, email).first();
     if (existant) erreurs.email = 'Cette adresse est déjà utilisée.';
   }
   // Le type du premier portefeuille est celui qui porte le marqueur « Type par défaut » : jamais une clé écrite en dur.
@@ -235,7 +248,8 @@ export async function creerViewer(
   if (Object.keys(erreurs).length) return { erreurs };
   const id = nouvelId();
   const now = maintenant();
-  // Un viewer sans portefeuille n'existe pas : les deux lignes sont écrites ensemble.
+  // Un viewer sans portefeuille n'existe pas : les deux lignes sont écrites ensemble, avec l'événement. Le dossier naît en
+  // brouillon : il passe publié quand le lien de première connexion part (publierDossier).
   await db.batch([
     db
       .prepare(
@@ -249,6 +263,7 @@ export async function creerViewer(
          VALUES (?, ?, ?, 'Patrimoine', ?, 0, ?)`,
       )
       .bind(nouvelId(), tenantId, id, typeDefaut, now),
+    evenementCreation(db, tenantId, id, 'viewer', email, acteur),
   ]);
   return { id, email };
 }
