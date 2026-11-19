@@ -1,6 +1,7 @@
 ---
 export const prerender = false;
 import Gestion from '../../layouts/Gestion.astro';
+import { noterIncident } from '../../lib/incidents';
 import { contexte, analyserImport, appliquerImport, texte, COLONNES_IMPORT, COLONNE_PORTEFEUILLE, type LigneImport } from '../../lib/gestion';
 import { euros, pourcent, dateCourte } from '../../lib/format';
 
@@ -32,6 +33,8 @@ if (Astro.request.method === 'POST') {
       const r = await appliquerImport(c.db, c.tenant.id, c.utilisateur.id, nom, csv);
       if ('erreur' in r) {
         erreur = r.erreur;
+        // Un import refusé est un incident du cabinet : la console de l'éditeur le liste (type « import_echec »).
+        await noterIncident(c.db, c.tenant.id, 'import_echec', `${nom || 'import'} : ${r.erreur}`);
         apercu = await analyserImport(c.db, c.tenant.id, csv);
       } else return Astro.redirect('/gestionnaire?importe=1', 303);
     }

@@ -3,9 +3,12 @@ import '../styles/app.css';
 
 interface Props {
   titre: string;
+  /** « admin » : la console de l'éditeur (lot 10), même grammaire visuelle, autre menu. */
+  espace?: 'gestionnaire' | 'admin';
 }
-const { titre } = Astro.props;
-const liens: [string, string][] = [
+const { titre, espace = 'gestionnaire' } = Astro.props;
+const admin = espace === 'admin';
+const liensGestionnaire: [string, string][] = [
   ['/gestionnaire', 'Tableau de bord'],
   ['/gestionnaire/suivi', 'Suivi'],
   ['/gestionnaire/actus', 'Actus'],
@@ -17,6 +20,13 @@ const liens: [string, string][] = [
   ['/gestionnaire/reglages', 'Réglages'],
   ['/deconnexion', 'Déconnexion'],
 ];
+const liensAdmin: [string, string][] = [
+  ['/admin', 'Cabinets'],
+  ['/admin/cabinets/nouveau', 'Nouveau cabinet'],
+  ['/admin/incidents', 'Incidents'],
+  ['/deconnexion', 'Déconnexion'],
+];
+const liens = admin ? liensAdmin : liensGestionnaire;
 const ici = Astro.url.pathname.replace(/\/$/, '');
 ---
 <!doctype html>
@@ -25,15 +35,19 @@ const ici = Astro.url.pathname.replace(/\/$/, '');
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>{titre} · Espace gestionnaire</title>
+    <title>{titre} · {admin ? 'Console de l’éditeur' : 'Espace gestionnaire'}</title>
   </head>
   <body class="gest">
     <header class="gest-haut">
       <div class="wrap gest-barre">
-        <a class="gest-marque" href="/gestionnaire">Espace gestionnaire</a>
+        <a class="gest-marque" href={admin ? '/admin' : '/gestionnaire'}>{admin ? 'Console de l’éditeur' : 'Espace gestionnaire'}</a>
         <button class="btn gest-burger" type="button" aria-expanded="false" aria-controls="gest-menu" data-menu>Menu</button>
         <nav id="gest-menu" class="gest-menu" aria-label="Navigation">
-          {liens.map(([href, nom]) => <a href={href} aria-current={ici === href ? 'page' : undefined}>{nom}</a>)}
+          {liens.map(([href, nom]) =>
+            // /deconnexion n'accepte que POST : un lien (GET) ne déconnecte personne.
+            href === '/deconnexion'
+              ? <form method="post" action={href}><button type="submit">{nom}</button></form>
+              : <a href={href} aria-current={ici === href ? 'page' : undefined}>{nom}</a>)}
         </nav>
       </div>
     </header>
@@ -59,6 +73,9 @@ const ici = Astro.url.pathname.replace(/\/$/, '');
   .gest-menu { display: flex; gap: var(--espace); flex-wrap: wrap; }
   .gest-menu a { font-size: 0.875rem; color: var(--texte-2); }
   .gest-menu a[aria-current='page'] { color: var(--accent-clair); }
+  .gest-menu form { margin: 0; display: inline; }
+  .gest-menu button { font: inherit; font-size: 0.875rem; color: var(--texte-2); background: none; border: 0; padding: 0; cursor: pointer; }
+  .gest-menu button:hover { color: var(--accent-clair); }
   .gest-burger { display: none; }
   @media (max-width: 48rem) {
     .gest-burger { display: inline-block; }

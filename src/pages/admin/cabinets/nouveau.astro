@@ -1,0 +1,44 @@
+---
+export const prerender = false;
+import Gestion from '../../../layouts/Gestion.astro';
+import Champ from '../../../components/gestion/Champ.astro';
+import { creerCabinet, gardeAdmin, lienPremierGestionnaire, type Erreurs } from '../../../lib/admin';
+import { THEMES, THEME_DEFAUT } from '../../../lib/themes';
+
+const g = gardeAdmin(Astro);
+if (g instanceof Response) return g;
+
+let erreurs: Erreurs = {};
+const saisie = { nom: '', hote: '', gestionnaire_nom: '', gestionnaire_email: '', theme: THEME_DEFAUT };
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  for (const k of Object.keys(saisie) as (keyof typeof saisie)[]) saisie[k] = String(f.get(k) ?? '');
+  const r = await creerCabinet(g.db, f);
+  if ('erreurs' in r) erreurs = r.erreurs;
+  else {
+    // Le cabinet est créé, en une transaction. L'envoi du lien vient après et ne l'annule jamais.
+    const envoye = await lienPremierGestionnaire(Astro.locals, r, Astro.url);
+    return Astro.redirect(`/admin/cabinets/${encodeURIComponent(r.id)}?cree=1&envoye=${envoye ? 1 : 0}`, 303);
+  }
+}
+---
+<Gestion titre="Nouveau cabinet" espace="admin">
+  <h1>Nouveau cabinet</h1>
+  {erreurs.general && <p class="info alerte" role="alert">{erreurs.general}</p>}
+  <p class="aide">Une seule opération crée le cabinet, son nom d’hôte, son thème, ses listes de référence par défaut avec leurs marqueurs, sa ligne de version et son premier gestionnaire, puis envoie à celui-ci son lien de première connexion.</p>
+  <form method="post" style="max-width: 32rem">
+    <Champ nom="nom" label="Nom du cabinet" valeur={saisie.nom} erreur={erreurs.nom} requis />
+    <Champ nom="hote" label="Nom d’hôte du cabinet" valeur={saisie.hote} erreur={erreurs.hote} requis />
+    <p class="aide">L’adresse que le Worker sert pour ce cabinet, sans schéma ni port (ex. patrimoine.cabinet.fr). Les noms d’hôte supplémentaires se déclarent ensuite, sur la fiche du cabinet.</p>
+    <Champ nom="gestionnaire_nom" label="Nom du premier gestionnaire" valeur={saisie.gestionnaire_nom} erreur={erreurs.gestionnaire_nom} requis />
+    <Champ nom="gestionnaire_email" label="Adresse e-mail du gestionnaire" valeur={saisie.gestionnaire_email} erreur={erreurs.gestionnaire_email} type="email" requis />
+    <div class="groupe">
+      <label class="etiquette" for="theme">Thème</label>
+      <select class="champ" id="theme" name="theme">
+        {THEMES.map((t) => <option value={t.id} selected={t.id === saisie.theme}>{t.libelle} — {t.description}</option>)}
+      </select>
+      {erreurs.theme && <p class="erreur">{erreurs.theme}</p>}
+    </div>
+    <div class="actions"><button class="btn-plein" type="submit">Créer le cabinet et envoyer le lien</button></div>
+  </form>
+</Gestion>

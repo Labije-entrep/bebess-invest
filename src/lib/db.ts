@@ -27,6 +27,8 @@ export interface Tenant {
   cree_le: string;
   /** Thème du cabinet (réglage `theme`), toujours un nom connu de src/lib/themes.ts. */
   theme: string;
+  /** Date de la suspension en cours (lot 10), ou null. Elle ne bloque que les gestionnaires : voir HORS_SUSPENSION (auth.ts). */
+  suspendu_le: string | null;
 }
 
 export interface Utilisateur {
@@ -183,19 +185,28 @@ export interface NoteMarche {
 
 const COLONNES_UTILISATEUR = 'id, tenant_id, email, nom, role, actif, cree_le';
 
-/** Le port et la casse sont ignorés : "Localhost:4321" et "localhost" donnent le même tenant. */
+/**
+ * Le port et la casse sont ignorés : "Localhost:4321" et "localhost" donnent le même tenant.
+ * Un hôte désigne un cabinet par `tenant.domaine` (l'hôte d'origine) ou par une ligne de `domaine` VALIDÉE : un nom d'hôte
+ * déclaré mais pas encore validé n'ouvre rien. Les deux sont uniques entre cabinets (contrôlé à la déclaration) ; en cas
+ * d'égalité malgré tout, l'hôte d'origine l'emporte.
+ */
 export async function tenantParHote(db: Base, hote: string): Promise<Tenant | null> {
   const sansPort = hote.trim().toLowerCase().replace(/:\d+$/, '');
-  // Une seule requête par page : le nom affiché et le thème du cabinet viennent avec le locataire (table reglage).
+  // Une seule requête par page : le nom affiché, le thème et la suspension du cabinet viennent avec le locataire.
   const t = await db
     .prepare(
       `SELECT t.id,
               COALESCE(NULLIF(TRIM((SELECT valeur FROM reglage WHERE tenant_id = t.id AND cle = 'nom_affiche')), ''), t.nom) AS nom,
               t.domaine, t.cree_le,
-              (SELECT valeur FROM reglage WHERE tenant_id = t.id AND cle = 'theme') AS theme
-         FROM tenant t WHERE t.domaine = ?`,
+              (SELECT valeur FROM reglage WHERE tenant_id = t.id AND cle = 'theme') AS theme,
+              (SELECT debut_le FROM suspension WHERE tenant_id = t.id AND fin_le IS NULL) AS suspendu_le
+         FROM tenant t
+        WHERE t.domaine = ? OR t.id IN (SELECT tenant_id FROM domaine WHERE hote = ? AND valide_le IS NOT NULL)
+        ORDER BY (t.domaine = ?) DESC
+        LIMIT 1`,
     )
-    .bind(sansPort)
+    .bind(sansPort, sansPort, sansPort)
     .first<Omit<Tenant, 'theme'> & { theme: string | null }>();
   return t ? { ...t, theme: themeValide(t.theme) } : null;
 }

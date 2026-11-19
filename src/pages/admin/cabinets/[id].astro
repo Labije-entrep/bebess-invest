@@ -1,0 +1,170 @@
+---
+export const prerender = false;
+import Gestion from '../../../layouts/Gestion.astro';
+import { cabinetDe, configCloudflare, domainesDe, gardeAdmin, gestionnairesDe, MESSAGES_ACTION, suspensionsDe, type CodeAction } from '../../../lib/admin';
+import { incidents, libelleIncident } from '../../../lib/incidents';
+import { dateCourte } from '../../../lib/format';
+
+const g = gardeAdmin(Astro);
+if (g instanceof Response) return g;
+
+const id = Astro.params.id ?? '';
+const cabinet = await cabinetDe(g.db, id);
+if (!cabinet) return new Response('Introuvable.', { status: 404 });
+
+const [domaines, gestionnaires, suspensions, recents] = await Promise.all([
+  domainesDe(g.db, cabinet.id),
+  gestionnairesDe(g.db, cabinet.id),
+  suspensionsDe(g.db, cabinet.id),
+  incidents(g.db, { tenantId: cabinet.id }, 5),
+]);
+const cf = configCloudflare(g.env);
+const base = `/admin/cabinets/${encodeURIComponent(cabinet.id)}`;
+const q = Astro.url.searchParams;
+// Le retour d'une action est un code (?r=), traduit ici par une table fixe : jamais du texte tiré de l'adresse.
+const code = q.get('r') as CodeAction | null;
+const retour = code && Object.hasOwn(MESSAGES_ACTION, code) ? { code, texte: MESSAGES_ACTION[code], bon: q.get('ok') === '1' } : null;
+const envoye = q.get('envoye');
+const suspension = suspensions.find((s) => !s.fin_le);
+const horodate = (iso: string) => `${dateCourte(iso)} à ${iso.slice(11, 16)} UTC`;
+---
+<Gestion titre={cabinet.nom} espace="admin">
+  <p class="aide"><a href="/admin">← Cabinets</a></p>
+  <h1>{cabinet.nom}</h1>
+  {q.get('cree') === '1' && <p class="info" role="status">Cabinet créé.</p>}
+  {q.get('cree') === '1' && envoye === '1' && <p class="info" role="status">Le lien de première connexion a été envoyé au gestionnaire.</p>}
+  {q.get('cree') === '1' && envoye === '0' && (
+    <p class="info alerte" role="alert">Le cabinet est créé, mais le lien de première connexion n’a pas pu être envoyé. Le gestionnaire peut en demander un nouveau depuis la page de connexion du cabinet ; l’incident est noté ci-dessous.</p>
+  )}
+  {retour && <p class={retour.bon ? 'info' : 'info alerte'} role="status">{retour.texte}</p>}
+  {suspension && (
+    <p class="info alerte" role="status">
+      <strong>Suspendu depuis le {horodate(suspension.debut_le)}</strong> — motif : {suspension.motif}. Les gestionnaires ne peuvent plus entrer ; les viewers consultent toujours leur espace.
+    </p>
+  )}
+
+  <div class="kpis">
+    <div class="kpi"><span class="etiquette">Viewers</span><span class="chiffre">{cabinet.viewers}</span></div>
+    <div class="kpi"><span class="etiquette">Contacts</span><span class="chiffre">{cabinet.contacts}</span></div>
+    <div class="kpi"><span class="etiquette">Dernier arrêté</span><span class="chiffre">{cabinet.dernier_arrete ? dateCourte(cabinet.dernier_arrete) : '—'}</span></div>
+    <div class="kpi"><span class="etiquette">Dernier incident</span><span class="chiffre">{cabinet.dernier_incident ? dateCourte(cabinet.dernier_incident) : '—'}</span></div>
+  </div>
+
+  <h2>Gestionnaires</h2>
+  {gestionnaires.length === 0 ? <p class="aide">Aucun gestionnaire.</p> : (
+    <div class="defile">
+      <table class="table">
+        <thead><tr><th>Nom</th><th>Adresse</th><th>Accès</th></tr></thead>
+        <tbody>
+          {gestionnaires.map((x) => (
+            <tr><td>{x.nom}</td><td>{x.email}</td><td>{suspension ? 'Suspendu' : x.actif === 1 ? 'Actif' : 'Désactivé'}</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+
+  <hr class="filet" />
+  <h2>Domaines</h2>
+  {!cf.jeton && (
+    <p class="info alerte" role="alert">
+      Jeton d’API Cloudflare absent (<code>CF_API_TOKEN</code>) : un domaine peut être déclaré et l’enregistrement CNAME s’affiche, mais Cloudflare n’est pas appelé et rien n’est validé. Le reste de la console fonctionne.
+    </p>
+  )}
+  {cf.jeton && cf.manque.length > 0 && (
+    <p class="info alerte" role="alert">Configuration Cloudflare incomplète : {cf.manque.join(', ')} manquant. {cf.zone ? '' : 'Sans zone, Cloudflare n’est pas appelé. '}</p>
+  )}
+  <p class="aide">Un nom d’hôte déclaré n’ouvre le cabinet qu’une fois validé par Cloudflare. Le cabinet pose chez son hébergeur DNS l’enregistrement CNAME indiqué.</p>
+  <div class="defile">
+    <table class="table">
+      <thead><tr><th>Nom d’hôte</th><th>Enregistrement CNAME à poser</th><th>Validation</th><th></th></tr></thead>
+      <tbody>
+        {domaines.map((d) => (
+          <tr>
+            <td>{d.hote}{d.principal === 1 && <><br /><span class="aide">hôte d’origine</span></>}</td>
+            <td>{d.principal === 1 ? '—' : <code>{d.hote} CNAME {cf.cible ?? '(cible non configurée : CF_CNAME_CIBLE)'}</code>}</td>
+            <td class={d.statut === 'erreur' ? 'perime' : undefined}>
+              {d.valide_le ? `Validé le ${dateCourte(d.valide_le)}` : d.statut === 'erreur' ? 'En erreur' : 'En attente'}
+              {d.detail && !d.valide_le && <><br /><span class="aide">{d.detail}</span></>}
+              {d.verifie_le && !d.valide_le && <><br /><span class="aide">Vérifié le {horodate(d.verifie_le)}</span></>}
+            </td>
+            <td class="num">
+              {d.principal === 0 && (
+                <>
+                  <form method="post" action={`${base}/domaines`} style="display:inline">
+                    <input type="hidden" name="action" value="verifier" /><input type="hidden" name="hote" value={d.hote} />
+                    <button class="btn" type="submit">Vérifier</button>
+                  </form>
+                  <form method="post" action={`${base}/domaines`} style="display:inline">
+                    <input type="hidden" name="action" value="retirer" /><input type="hidden" name="hote" value={d.hote} />
+                    <button class="btn" type="submit">Retirer</button>
+                  </form>
+                </>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action={`${base}/domaines`} class="actions">
+    <input type="hidden" name="action" value="declarer" />
+    <label class="etiquette" for="nouvel-hote">Nouveau nom d’hôte</label>
+    <input class="champ" id="nouvel-hote" name="hote" required maxlength="253" style="max-width: 24rem" placeholder="patrimoine.cabinet.fr" />
+    <button class="btn" type="submit">Déclarer</button>
+  </form>
+
+  <hr class="filet" />
+  <h2>Derniers incidents</h2>
+  {recents.length === 0 ? <p class="aide">Aucun incident.</p> : (
+    <div class="defile">
+      <table class="table">
+        <thead><tr><th>Date</th><th>Type</th><th>Détail</th></tr></thead>
+        <tbody>
+          {recents.map((i) => <tr><td>{horodate(i.cree_le)}</td><td>{libelleIncident(i.type)}</td><td>{i.detail ?? '—'}</td></tr>)}
+        </tbody>
+      </table>
+    </div>
+  )}
+  <p class="aide"><a href={`/admin/incidents?cabinet=${encodeURIComponent(cabinet.id)}`}>Tous les incidents de ce cabinet</a></p>
+
+  <hr class="filet" />
+  <h2>Sortie</h2>
+  <p class="aide">L’export complet du cabinet : une archive ZIP, un fichier CSV par table, les mêmes que la sortie de fin de contrat du gestionnaire.</p>
+  <div class="actions">
+    <a class="btn" href={`${base}/export`} download>Exporter tout le cabinet</a>
+  </div>
+
+  <h2 style="margin-top: var(--espace-l)">Suspension</h2>
+  <p class="aide">La suspension rend inopérants les accès des gestionnaires du cabinet : connexion et sessions déjà ouvertes. Elle laisse en ligne et consultables les espaces de ses clients finaux, qui ne sont pas partie au litige commercial. Rien n’est effacé. Aucune suspension n’est jamais automatique.</p>
+  {suspension ? (
+    <form method="post" action={`${base}/suspension`} class="actions">
+      <input type="hidden" name="action" value="lever" />
+      <button class="btn" type="submit">Lever la suspension</button>
+    </form>
+  ) : (
+    <form method="post" action={`${base}/suspension`} style="max-width: 32rem">
+      <input type="hidden" name="action" value="suspendre" />
+      <div class="groupe">
+        <label class="etiquette" for="motif">Motif de la suspension *</label>
+        <textarea class="champ" id="motif" name="motif" rows="3" required maxlength="500"></textarea>
+      </div>
+      <div class="actions"><button class="btn-plein" type="submit">Suspendre le cabinet</button></div>
+    </form>
+  )}
+  {suspensions.length > 0 && (
+    <div class="defile">
+      <table class="table">
+        <thead><tr><th>Depuis</th><th>Motif</th><th>Posée par</th><th>Levée</th></tr></thead>
+        <tbody>
+          {suspensions.map((s) => (
+            <tr>
+              <td>{horodate(s.debut_le)}</td><td>{s.motif}</td><td>{s.par_nom ?? '—'}</td>
+              <td>{s.fin_le ? `${horodate(s.fin_le)}${s.fin_par_nom ? ` par ${s.fin_par_nom}` : ''}` : 'En cours'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</Gestion>

@@ -14,6 +14,15 @@ const DEMANDES_MAX = 10;
 
 const HEX_64 = /^[0-9a-f]{64}$/;
 
+/**
+ * Condition SQL (alias `u` = utilisateur) : un cabinet suspendu (lot 10) n'a plus de gestionnaire qui puisse entrer.
+ * Elle vaut pour la demande de lien, l'ouverture du lien ET chaque requête d'une session déjà ouverte : suspendre rend
+ * donc inopérants les accès existants sans rien effacer, et lever la suspension les rend. Les viewers n'en dépendent
+ * jamais : leurs espaces restent consultables. Un éditeur n'est pas concerné : il ne dépend d'aucun cabinet client.
+ */
+export const HORS_SUSPENSION =
+  "NOT (u.role = 'gestionnaire' AND EXISTS (SELECT 1 FROM suspension sp WHERE sp.tenant_id = u.tenant_id AND sp.fin_le IS NULL))";
+
 function iso(decalageMs = 0): string {
   return new Date(Date.now() + decalageMs).toISOString();
 }
@@ -44,7 +53,7 @@ export function accueilDuRole(role: Role): string {
  */
 export async function demanderLien(db: Base, tenantId: string, email: string): Promise<string | null> {
   const utilisateur = await db
-    .prepare('SELECT id FROM utilisateur WHERE tenant_id = ? AND email = ? AND actif = 1')
+    .prepare(`SELECT u.id FROM utilisateur u WHERE u.tenant_id = ? AND u.email = ? AND u.actif = 1 AND ${HORS_SUSPENSION}`)
     .bind(tenantId, email.trim().toLowerCase())
     .first<{ id: string }>();
   if (!utilisateur) return null;
@@ -81,7 +90,7 @@ export async function jetonValide(db: Base, jeton: string, tenantId: string): Pr
     .prepare(
       `SELECT 1 AS ok FROM jeton_connexion
         WHERE hash = ? AND utilise_le IS NULL AND expire_le > ?
-          AND utilisateur_id IN (SELECT id FROM utilisateur WHERE tenant_id = ? AND actif = 1)`,
+          AND utilisateur_id IN (SELECT u.id FROM utilisateur u WHERE u.tenant_id = ? AND u.actif = 1 AND ${HORS_SUSPENSION})`,
     )
     .bind(await sha256(jeton), iso(), tenantId)
     .first<{ ok: number }>();
@@ -105,7 +114,7 @@ export async function consommerJeton(
     .prepare(
       `UPDATE jeton_connexion SET utilise_le = ?
         WHERE hash = ? AND utilise_le IS NULL AND expire_le > ?
-          AND utilisateur_id IN (SELECT id FROM utilisateur WHERE tenant_id = ? AND actif = 1)
+          AND utilisateur_id IN (SELECT u.id FROM utilisateur u WHERE u.tenant_id = ? AND u.actif = 1 AND ${HORS_SUSPENSION})
         RETURNING utilisateur_id`,
     )
     .bind(maintenant, await sha256(jeton), maintenant, tenantId)
@@ -143,7 +152,7 @@ export async function sessionCourante(db: Base, cookies: AstroCookies): Promise<
       `SELECT u.id, u.tenant_id, u.email, u.nom, u.role, u.actif, u.cree_le
          FROM session s
          JOIN utilisateur u ON u.id = s.utilisateur_id
-        WHERE s.id = ? AND s.expire_le > ? AND u.actif = 1`,
+        WHERE s.id = ? AND s.expire_le > ? AND u.actif = 1 AND ${HORS_SUSPENSION}`,
     )
     .bind(await sha256(secret), iso())
     .first<Utilisateur>();

@@ -6,6 +6,7 @@
 import { accueilDuRole } from './auth';
 import { AccesRefuse, appartient, exiger } from './cloisonnement';
 import { creerMailer, envDe } from './mail';
+import { noterIncident } from './incidents';
 import { cleMarquee, clesMarqueesDe, validateurDe } from './listes';
 import { MARQUEUR } from './marqueurs';
 import {
@@ -252,8 +253,11 @@ export async function creerViewer(
   return { id, email };
 }
 
-/** Envoie le lien de première connexion par le pilote de mail.ts. Renvoie false en cas d'échec. */
-export async function envoyerLien(locals: unknown, email: string, nom: string, lien: string): Promise<boolean> {
+/**
+ * Envoie le lien de première connexion par le pilote de mail.ts. Renvoie false en cas d'échec ; avec `tenantId`, l'échec est
+ * aussi noté dans `incident` (« mail_refuse »), que la console de l'éditeur liste par cabinet.
+ */
+export async function envoyerLien(locals: unknown, email: string, nom: string, lien: string, tenantId?: string): Promise<boolean> {
   try {
     await creerMailer(envDe(locals), new URL(lien).hostname).envoyer(
       email,
@@ -262,7 +266,9 @@ export async function envoyerLien(locals: unknown, email: string, nom: string, l
     );
     return true;
   } catch (e) {
-    console.error('[gestionnaire] envoi du lien impossible :', e instanceof Error ? e.message : 'erreur');
+    const message = e instanceof Error ? e.message : 'erreur';
+    console.error('[gestionnaire] envoi du lien impossible :', message);
+    if (tenantId) await noterIncident(envDe(locals).DB, tenantId, 'mail_refuse', `Lien de première connexion non envoyé à ${email} : ${message}`);
     return false;
   }
 }

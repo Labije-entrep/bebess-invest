@@ -1,0 +1,60 @@
+---
+export const prerender = false;
+import Gestion from '../../layouts/Gestion.astro';
+import { cabinets, gardeAdmin } from '../../lib/admin';
+import { incidents, libelleIncident, LIMITE_INCIDENTS, SANS_CABINET, typesPresents } from '../../lib/incidents';
+import { dateCourte } from '../../lib/format';
+
+const g = gardeAdmin(Astro);
+if (g instanceof Response) return g;
+
+const liste = await cabinets(g.db);
+const types = await typesPresents(g.db);
+// Les filtres ne valent que s'ils désignent un cabinet ou un type qui existe : une valeur inconnue est ignorée.
+const cabinet = Astro.url.searchParams.get('cabinet') ?? '';
+const type = Astro.url.searchParams.get('type') ?? '';
+const tenantId = cabinet === SANS_CABINET || liste.some((c) => c.id === cabinet) ? cabinet : '';
+const typeFiltre = types.includes(type) ? type : '';
+const lignes = await incidents(g.db, { tenantId: tenantId || undefined, type: typeFiltre || undefined });
+const horodate = (iso: string) => `${dateCourte(iso)} ${iso.slice(11, 16)} UTC`;
+---
+<Gestion titre="Incidents" espace="admin">
+  <h1>Incidents</h1>
+  <form method="get" class="actions">
+    <label class="etiquette" for="f-cabinet">Cabinet</label>
+    <select class="champ" id="f-cabinet" name="cabinet" style="max-width: 18rem">
+      <option value="">Tous</option>
+      {liste.map((c) => <option value={c.id} selected={c.id === tenantId}>{c.nom}</option>)}
+      <option value={SANS_CABINET} selected={tenantId === SANS_CABINET}>Sans cabinet</option>
+    </select>
+    <label class="etiquette" for="f-type">Type</label>
+    <select class="champ" id="f-type" name="type" style="max-width: 18rem">
+      <option value="">Tous</option>
+      {types.map((t) => <option value={t} selected={t === typeFiltre}>{libelleIncident(t)}</option>)}
+    </select>
+    <button class="btn" type="submit">Filtrer</button>
+  </form>
+
+  {
+    lignes.length === 0 ? (
+      <p class="aide">Aucun incident{tenantId || typeFiltre ? ' pour ce filtre' : ''}.</p>
+    ) : (
+      <div class="defile">
+        <table class="table">
+          <thead><tr><th>Date</th><th>Cabinet</th><th>Type</th><th>Détail</th></tr></thead>
+          <tbody>
+            {lignes.map((i) => (
+              <tr>
+                <td>{horodate(i.cree_le)}</td>
+                <td>{i.tenant_id ? <a href={`/admin/cabinets/${encodeURIComponent(i.tenant_id)}`}>{i.cabinet ?? i.tenant_id}</a> : '—'}</td>
+                <td>{libelleIncident(i.type)}</td>
+                <td>{i.detail ?? i.quoi}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+  <p class="aide">Les {LIMITE_INCIDENTS} plus récents, du plus récent au plus ancien. Un incident est une ligne de la table <code>incident</code> : import en échec, mail refusé, cours indisponible, appel Cloudflare en échec.</p>
+</Gestion>

@@ -19,7 +19,7 @@ if (Astro.request.method === 'POST') {
   if ('erreurs' in r) erreurs = r.erreurs;
   else {
     const jeton = await demanderLien(c.db, c.tenant.id, r.email);
-    const envoye = jeton ? await envoyerLien(Astro.locals, r.email, nom.trim(), new URL(`/connexion/${jeton}`, Astro.url).href) : false;
+    const envoye = jeton ? await envoyerLien(Astro.locals, r.email, nom.trim(), new URL(`/connexion/${jeton}`, Astro.url).href, c.tenant.id) : false;
     return Astro.redirect(`/gestionnaire/viewers/${encodeURIComponent(r.id)}?cree=1&envoye=${envoye ? 1 : 0}`, 303);
   }
 }

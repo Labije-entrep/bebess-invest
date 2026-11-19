@@ -22,6 +22,6 @@ export const POST: APIRoute = async (ctx) => {
 
   // Le rattachement est fait : si l'envoi échoue, il le reste, et l'écran le dit.
   const jeton = await demanderLien(g.db, g.tenant.id, r.email);
-  const envoye = jeton ? await envoyerLien(ctx.locals, r.email, r.nom, new URL(`/connexion/${jeton}`, ctx.url).href) : false;
+  const envoye = jeton ? await envoyerLien(ctx.locals, r.email, r.nom, new URL(`/connexion/${jeton}`, ctx.url).href, g.tenant.id) : false;
   return retour(envoye ? 'promu' : 'promu_sans_envoi');
 };
