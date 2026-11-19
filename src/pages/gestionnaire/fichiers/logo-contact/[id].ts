@@ -3,13 +3,14 @@ import { appartient } from '../../../../lib/cloisonnement';
 import { cleLogoContact, corpsTropGros, deposer, lireDepot, supprimer } from '../../../../lib/fichiers';
 import { envDe } from '../../../../lib/mail';
 import { garde, introuvable } from '../../../../lib/passerelle';
+import { GESTION_ECRIT } from '../../../../lib/roles';
 import { incrementerVersion } from '../../../../lib/version';
 
 export const prerender = false;
 
 /** Dépose (champ `fichier`) ou retire (`action=retirer`) le logo d'un contact du cabinet. PNG, JPEG ou WebP, 512 Ko au plus. */
 export const POST: APIRoute = async (ctx) => {
-  const g = garde(ctx, ['gestionnaire', 'editeur']);
+  const g = garde(ctx, GESTION_ECRIT);
   if (g instanceof Response) return g;
   const id = ctx.params.id ?? '';
   if (id.length > 64 || !(await appartient(g.db, g.tenant.id, 'contact', id))) return introuvable();

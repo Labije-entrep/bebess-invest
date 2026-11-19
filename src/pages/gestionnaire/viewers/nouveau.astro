@@ -3,9 +3,10 @@ export const prerender = false;
 import Gestion from '../../../layouts/Gestion.astro';
 import Champ from '../../../components/gestion/Champ.astro';
 import { contexte, creerViewer, envoyerLien, type Erreurs } from '../../../lib/gestion';
+import { publierDossier } from '../../../lib/acces';
 import { demanderLien } from '../../../lib/auth';
 
-const c = contexte(Astro);
+const c = contexte(Astro, { ecriture: true });
 if (c instanceof Response) return c;
 
 let erreurs: Erreurs = {};
@@ -15,11 +16,14 @@ if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
   nom = String(f.get('nom') ?? '');
   email = String(f.get('email') ?? '');
-  const r = await creerViewer(c.db, c.tenant.id, f);
+  const acteur = { id: c.utilisateur.id, role: c.utilisateur.role };
+  const r = await creerViewer(c.db, c.tenant.id, f, acteur);
   if ('erreurs' in r) erreurs = r.erreurs;
   else {
     const jeton = await demanderLien(c.db, c.tenant.id, r.email);
     const envoye = jeton ? await envoyerLien(Astro.locals, r.email, nom.trim(), new URL(`/connexion/${jeton}`, Astro.url).href, c.tenant.id) : false;
+    // Le dossier passe de brouillon à publié quand le lien de première connexion est envoyé.
+    if (envoye) await publierDossier(c.db, c.tenant.id, r.id, acteur);
     return Astro.redirect(`/gestionnaire/viewers/${encodeURIComponent(r.id)}?cree=1&envoye=${envoye ? 1 : 0}`, 303);
   }
 }

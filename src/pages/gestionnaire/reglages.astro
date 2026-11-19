@@ -15,8 +15,8 @@ import {
   formSeuil, identiteDe, membresAdmin, mentionsDe, seuilsSaisis, symbolesParDefaut, symbolesReglage,
 } from '../../lib/reglages';
 
-// Réglages du cabinet (lot 09), réservés au gestionnaire : listes, seuils, membres, identité, mentions légales.
-const c = contexte(Astro);
+// Réglages du cabinet (lot 09), réservés à l'associé (et au support de l'éditeur, qui se comporte comme lui) : listes, seuils, membres, identité, mentions légales.
+const c = contexte(Astro, { reglages: true });
 if (c instanceof Response) return c;
 const { db, tenant } = c;
 
@@ -115,7 +115,7 @@ const themeActuel = THEMES.some((t) => t.id === identite.theme) ? identite.theme
 ---
 <Gestion titre="Réglages">
   <h1>Réglages</h1>
-  <p class="aide">Réservés au gestionnaire. Les changements s’appliquent aussitôt au suivi, à l’espace client et au site public (le site public peut mettre une minute à se rafraîchir).</p>
+  <p class="aide">Réservés à l’associé. Les changements s’appliquent aussitôt au suivi, à l’espace client et au site public (le site public peut mettre une minute à se rafraîchir).</p>
   {MESSAGES_OK[p.get('ok') ?? ''] && <p class="info" role="status">{MESSAGES_OK[p.get('ok') ?? '']}</p>}
   {MSG_LOGO[retourLogo] && <p class={retourLogo in MESSAGES_REFUS ? 'info alerte' : 'info'} role="status">{MSG_LOGO[retourLogo]}</p>}
   {erreurs.general && <p class="info alerte" role="alert">{erreurs.general}</p>}

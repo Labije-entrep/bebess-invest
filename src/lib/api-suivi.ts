@@ -5,6 +5,7 @@
 // locataire avant usage. Les noms de colonnes viennent des tables fermées ci-dessous, jamais
 // de la saisie.
 
+import { GESTION_ECRIT, GESTION_LIT, aLeRole } from './roles';
 import type { APIContext } from 'astro';
 import { COOKIE } from './auth';
 import { appartient, type Ressource } from './cloisonnement';
@@ -59,7 +60,8 @@ function limiter(cle: string, maintenantMs: number): number | null {
 export function garde(ctx: APIContext, ecriture: boolean): Appel | Response {
   const { utilisateur, tenant } = ctx.locals;
   if (!utilisateur || !tenant) return erreur(401, 'Connexion requise.');
-  if (utilisateur.role !== 'gestionnaire' && utilisateur.role !== 'editeur') return erreur(403, 'Accès refusé.');
+  // Lecture : tout le personnel, `lecture` compris ; écriture : les rôles qui écrivent (lot 11).
+  if (!aLeRole(utilisateur.role, ecriture ? GESTION_ECRIT : GESTION_LIT)) return erreur(403, 'Accès refusé.');
   if (ecriture) {
     const origine = ctx.request.headers.get('Origin');
     if (origine && new URL(origine).host !== ctx.url.host) return erreur(403, 'Origine refusée.');

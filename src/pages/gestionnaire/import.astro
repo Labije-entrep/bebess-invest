@@ -5,7 +5,7 @@ import { noterIncident } from '../../lib/incidents';
 import { contexte, analyserImport, appliquerImport, texte, COLONNES_IMPORT, COLONNE_PORTEFEUILLE, type LigneImport } from '../../lib/gestion';
 import { euros, pourcent, dateCourte } from '../../lib/format';
 
-const c = contexte(Astro);
+const c = contexte(Astro, { ecriture: true });
 if (c instanceof Response) return c;
 
 let erreur = '';

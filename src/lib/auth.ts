@@ -4,6 +4,7 @@
 
 import type { AstroCookies } from 'astro';
 import { utilisateurParId, type Base, type Role, type Utilisateur } from './db';
+import { ACCES_CABINET, enSql } from './roles';
 
 export const COOKIE = 'bbs';
 
@@ -15,13 +16,14 @@ const DEMANDES_MAX = 10;
 const HEX_64 = /^[0-9a-f]{64}$/;
 
 /**
- * Condition SQL (alias `u` = utilisateur) : un cabinet suspendu (lot 10) n'a plus de gestionnaire qui puisse entrer.
- * Elle vaut pour la demande de lien, l'ouverture du lien ET chaque requête d'une session déjà ouverte : suspendre rend
- * donc inopérants les accès existants sans rien effacer, et lever la suspension les rend. Les viewers n'en dépendent
- * jamais : leurs espaces restent consultables. Un éditeur n'est pas concerné : il ne dépend d'aucun cabinet client.
+ * Condition SQL (alias `u` = utilisateur) : un cabinet suspendu (lot 10) n'a plus de personnel qui puisse entrer (associés,
+ * collaborateurs, lecture : les accès du cabinet). Elle vaut pour la demande de lien, l'ouverture du lien ET chaque requête d'une
+ * session déjà ouverte : suspendre rend donc inopérants les accès existants sans rien effacer, et lever la suspension les rend.
+ * Les viewers n'en dépendent jamais : leurs espaces restent consultables. L'éditeur et son compte de support (support_editeur,
+ * lot 11) ne sont pas concernés : ils ne sont pas des accès du cabinet, et la suspension est une mesure contre lui.
  */
 export const HORS_SUSPENSION =
-  "NOT (u.role = 'gestionnaire' AND EXISTS (SELECT 1 FROM suspension sp WHERE sp.tenant_id = u.tenant_id AND sp.fin_le IS NULL))";
+  `NOT (u.role IN (${enSql(ACCES_CABINET)}) AND EXISTS (SELECT 1 FROM suspension sp WHERE sp.tenant_id = u.tenant_id AND sp.fin_le IS NULL))`;
 
 function iso(decalageMs = 0): string {
   return new Date(Date.now() + decalageMs).toISOString();
@@ -40,8 +42,8 @@ async function sha256(texte: string): Promise<string> {
 
 export function accueilDuRole(role: Role): string {
   if (role === 'viewer') return '/espace';
-  if (role === 'gestionnaire') return '/gestionnaire';
-  return '/admin';
+  if (role === 'editeur') return '/admin';
+  return '/gestionnaire'; // associe, collaborateur, lecture, support_editeur
 }
 
 /**

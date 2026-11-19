@@ -5,6 +5,7 @@ import { envDe } from '../../../lib/mail';
 import { arretesPerimes, ecartsHorsSeuil, panneauPortail } from '../../../lib/fiche';
 import { dateLongue, euros, pourcent } from '../../../lib/format';
 import { signeBp, teinte } from '../../../lib/espace';
+import { CABINET_ECRIT, aLeRole } from '../../../lib/roles';
 
 // Fiche d'un contact. Colonne principale : rendue côté client par src/scripts/fiche.ts, qui parle à
 // /api/suivi (édition optimiste). Colonne Portail : rendue ici, au serveur, en lecture seule.
@@ -32,7 +33,7 @@ const horsSeuil = portail
 const visite = portail?.derniereVisite ? dateLongue(portail.derniereVisite.slice(0, 10)) : null;
 
 // Passerelle (lot 07) : les boutons ne se déclenchent que par un geste ; les routes recalculent ce qu'elles écrivent.
-const estGestionnaire = utilisateur.role === 'gestionnaire';
+const estGestionnaire = aLeRole(utilisateur.role, CABINET_ECRIT); // associé, collaborateur, support : pas `lecture`, pas l'éditeur
 const ecarts = portail ? ecartsHorsSeuil(portail) : [];
 const perimes = portail ? arretesPerimes(portail) : [];
 const actionSujet = `/gestionnaire/passerelle/sujet/${encodeURIComponent(contact.id)}`;
@@ -203,7 +204,7 @@ const retour = MESSAGES[Astro.url.searchParams.get('pm') ?? ''] ?? null;
                 <button type="submit" class="btn portail-action">Promouvoir en viewer</button>
               </form>
             ) : (
-              <p>La promotion crée un accès client : elle est réservée au gestionnaire.</p>
+              <p>La promotion crée un accès client : elle est réservée aux rôles qui écrivent (associé, collaborateur).</p>
             )}
           </div>
         )}

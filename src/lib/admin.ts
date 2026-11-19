@@ -9,6 +9,9 @@
 
 import { demanderLien } from './auth';
 import type { Base, Requete, Utilisateur } from './db';
+import { evenementCreation } from './acces';
+import { EVENEMENT, journaliserAccesEditeur, requeteEvenement, type Acteur } from './journal';
+import { joursOuRepli, REPLI } from './suivi';
 import { creerMailer, envDe, type Env } from './mail';
 import { requetesListesDefaut } from './listes-defaut';
 import { noterIncident } from './incidents';
@@ -59,50 +62,62 @@ export interface Cabinet {
   suspendu_le: string | null;
   viewers: number;
   contacts: number;
-  /** Date de l'arrêté le plus récent, tous portefeuilles du cabinet (point, enveloppe). */
+  /**
+   * Fraîcheur du cabinet : la plus ANCIENNE date de ses portefeuilles actifs (enveloppes, lignes, dernier point de chacun), comme
+   * partout ailleurs. Un cabinet n'est à jour que si tout l'est : une entité laissée six mois fait paraître le cabinet périmé.
+   */
   dernier_arrete: string | null;
+  /** Seuil du cabinet (réglage `seuil_arrete`, repli sur celui du produit) au-delà duquel `dernier_arrete` est rouge. */
+  seuil_arrete_jours: number;
   dernier_incident: string | null;
 }
 
-const PF = 'SELECT pf.id FROM portefeuille pf WHERE pf.tenant_id = t.id';
+// Les portefeuilles qui comptent pour la fraîcheur : actifs, et d'un dossier non archivé (un dossier archivé est périmé par nature).
+const PF = `SELECT pf.id FROM portefeuille pf JOIN utilisateur v ON v.id = pf.viewer_id AND v.tenant_id = pf.tenant_id
+             WHERE pf.tenant_id = t.id AND pf.archive = 0 AND v.statut <> 'archive'`;
 
 const SQL_CABINETS = `
   SELECT t.id, t.nom, t.domaine, t.cree_le,
          (SELECT sp.debut_le FROM suspension sp WHERE sp.tenant_id = t.id AND sp.fin_le IS NULL) AS suspendu_le,
          (SELECT COUNT(*) FROM utilisateur u WHERE u.tenant_id = t.id AND u.role = 'viewer') AS viewers,
          (SELECT COUNT(*) FROM contact c WHERE c.tenant_id = t.id AND c.archive = 0) AS contacts,
-         (SELECT MAX(d) FROM (
-            SELECT p.date AS d FROM point p WHERE p.portefeuille_id IN (${PF})
+         -- La plus ancienne date : même règle que le tableau de bord du gestionnaire (gestion.ts, viewersResumes).
+         (SELECT MIN(d) FROM (
+            SELECT e.arrete_le AS d FROM enveloppe e WHERE e.portefeuille_id IN (${PF})
             UNION ALL
-            SELECT e.arrete_le FROM enveloppe e WHERE e.portefeuille_id IN (${PF})
+            SELECT l.arrete_le FROM ligne l JOIN enveloppe e ON e.id = l.enveloppe_id WHERE e.portefeuille_id IN (${PF})
+            UNION ALL
+            SELECT MAX(p.date) FROM point p WHERE p.portefeuille_id IN (${PF}) GROUP BY p.portefeuille_id
          )) AS dernier_arrete,
+         (SELECT r.valeur FROM reglage r WHERE r.tenant_id = t.id AND r.cle = 'seuil_arrete') AS seuil_arrete_brut,
          (SELECT MAX(i.cree_le) FROM incident i WHERE i.tenant_id = t.id) AS dernier_incident
     FROM tenant t`;
 
+type LigneCabinet = Omit<Cabinet, 'seuil_arrete_jours'> & { seuil_arrete_brut: string | null };
+
+/** Le seuil est celui du CABINET, lu comme partout (suivi.ts) : sa clé, ou le repli du produit quand elle est absente. */
+function avecSeuil({ seuil_arrete_brut, ...c }: LigneCabinet): Cabinet {
+  return { ...c, seuil_arrete_jours: joursOuRepli(seuil_arrete_brut, REPLI.arrete) };
+}
+
 /** Tous les cabinets, avec ce qu'il faut pour voir lequel a décroché. */
 export async function cabinets(db: Base): Promise<Cabinet[]> {
-  const { results } = await db.prepare(`${SQL_CABINETS} ORDER BY t.nom, t.id`).bind().all<Cabinet>();
-  return results;
+  const { results } = await db.prepare(`${SQL_CABINETS} ORDER BY t.nom, t.id`).bind().all<LigneCabinet>();
+  return results.map(avecSeuil);
 }
 
 export async function cabinetDe(db: Base, id: string): Promise<Cabinet | null> {
   if (!ID.test(id)) return null;
-  return db.prepare(`${SQL_CABINETS} WHERE t.id = ?`).bind(id).first<Cabinet>();
+  const c = await db.prepare(`${SQL_CABINETS} WHERE t.id = ?`).bind(id).first<LigneCabinet>();
+  return c ? avecSeuil(c) : null;
 }
 
-export interface Gestionnaire {
-  id: string;
-  nom: string;
-  email: string;
-  actif: number;
-}
-
-export async function gestionnairesDe(db: Base, tenantId: string): Promise<Gestionnaire[]> {
-  const { results } = await db
-    .prepare("SELECT id, nom, email, actif FROM utilisateur WHERE tenant_id = ? AND role = 'gestionnaire' ORDER BY nom")
-    .bind(tenantId)
-    .all<Gestionnaire>();
-  return results;
+/**
+ * Un accès de l'éditeur aux données d'UN cabinet (sa page, ses domaines, sa suspension) : une ligne du journal du cabinet, qui dit
+ * qui est venu et par où. À appeler dès qu'une route de la console lit ou écrit pour un cabinet précis.
+ */
+export function accesCabinet(g: GardeAdmin, tenantId: string, route: string): Promise<void> {
+  return journaliserAccesEditeur(g.db, tenantId, { id: g.utilisateur.id, role: g.utilisateur.role }, route);
 }
 
 // ---------------------------------------------------------------- créer un cabinet
@@ -138,9 +153,9 @@ export interface CabinetCree {
 /**
  * Crée le cabinet en UNE transaction (`batch` de D1 : tout ou rien) : le locataire, son nom d'hôte d'origine (validé : c'est
  * celui que le Worker sert), son thème, ses listes de référence par défaut avec leurs marqueurs, sa ligne de version et
- * son premier gestionnaire. L'envoi du lien se fait après : s'il échoue, le cabinet reste créé (voir lienPremierGestionnaire).
+ * son premier associé (rôle `associe`, avec l'événement de sa création). L'envoi du lien se fait après : s'il échoue, le cabinet reste créé (voir lienPremierGestionnaire).
  */
-export async function creerCabinet(db: Base, f: FormData): Promise<{ erreurs: Erreurs } | CabinetCree> {
+export async function creerCabinet(db: Base, f: FormData, acteur: Acteur): Promise<{ erreurs: Erreurs } | CabinetCree> {
   const erreurs: Erreurs = {};
   const nom = texte(f.get('nom'), 120);
   const hote = normaliserHote(texte(f.get('hote'), 253));
@@ -152,10 +167,8 @@ export async function creerCabinet(db: Base, f: FormData): Promise<{ erreurs: Er
   if (!hote) erreurs.hote = 'Nom d’hôte invalide : lettres, chiffres, tirets et points, sans schéma ni port (ex. patrimoine.cabinet.fr).';
   else if (await hotePris(db, hote)) erreurs.hote = 'Ce nom d’hôte est déjà utilisé par un cabinet.';
   if (!gNom) erreurs.gestionnaire_nom = 'Le nom du gestionnaire est requis.';
+  // Une adresse n'est unique qu'au sein d'un cabinet : le cabinet est neuf, rien ne peut s'y heurter.
   if (!EMAIL.test(gEmail)) erreurs.gestionnaire_email = 'Adresse e-mail invalide.';
-  else if (await db.prepare('SELECT 1 AS ok FROM utilisateur WHERE email = ?').bind(gEmail).first()) {
-    erreurs.gestionnaire_email = 'Cette adresse est déjà utilisée.';
-  }
   if (!THEMES.some((t) => t.id === theme)) erreurs.theme = 'Thème inconnu.';
   if (Object.keys(erreurs).length || !hote) return { erreurs };
 
@@ -171,14 +184,15 @@ export async function creerCabinet(db: Base, f: FormData): Promise<{ erreurs: Er
     ...requetesListesDefaut(db, id),
     db.prepare('INSERT INTO version_locataire (tenant_id, version) VALUES (?, 1)').bind(id),
     db
-      .prepare("INSERT INTO utilisateur (id, tenant_id, email, nom, role, actif, cree_le) VALUES (?, ?, ?, ?, 'gestionnaire', 1, ?)")
+      .prepare("INSERT INTO utilisateur (id, tenant_id, email, nom, role, actif, cree_le) VALUES (?, ?, ?, ?, 'associe', 1, ?)")
       .bind(gId, id, gEmail, gNom, now),
+    evenementCreation(db, id, gId, 'associe', gEmail, acteur),
   ];
   try {
     await db.batch(requetes);
   } catch {
-    // Nom d'hôte ou adresse pris entre la vérification et l'écriture : rien n'a été écrit.
-    return { erreurs: { general: 'Le cabinet n’a pas été créé : le nom d’hôte ou l’adresse vient d’être pris. Rien n’a été écrit.' } };
+    // Nom d'hôte pris entre la vérification et l'écriture : rien n'a été écrit.
+    return { erreurs: { general: 'Le cabinet n’a pas été créé : le nom d’hôte vient d’être pris. Rien n’a été écrit.' } };
   }
   return { id, hote, nom, gestionnaire: { id: gId, nom: gNom, email: gEmail } };
 }
@@ -322,8 +336,8 @@ export const MESSAGES_ACTION: Record<CodeAction, string> = {
   domaine_inconnu: 'Domaine inconnu pour ce cabinet.',
   principal: 'L’hôte d’origine du cabinet ne se retire pas.',
   retrait_sans_jeton: 'Le jeton Cloudflare est absent : le domaine ne peut pas être retiré chez Cloudflare, il est donc conservé.',
-  suspendu: 'Cabinet suspendu : ses gestionnaires ne peuvent plus entrer ; les espaces de ses viewers restent en ligne.',
-  leve: 'Suspension levée : les gestionnaires peuvent de nouveau entrer.',
+  suspendu: 'Cabinet suspendu : son personnel (associés, collaborateurs, lecture) ne peut plus entrer ; les espaces de ses viewers restent en ligne.',
+  leve: 'Suspension levée : le personnel du cabinet peut de nouveau entrer.',
   motif: 'Le motif est obligatoire.',
   cabinet_inconnu: 'Cabinet inconnu.',
   editeur: 'Ce cabinet héberge un compte éditeur : il ne se suspend pas.',
@@ -437,31 +451,38 @@ export async function suspensionsDe(db: Base, tenantId: string): Promise<Suspens
 }
 
 /**
- * Suspend le cabinet : action explicite, motif obligatoire, horodatée. Les accès des gestionnaires deviennent inopérants
+ * Suspend le cabinet : action explicite, motif obligatoire, horodatée. Les accès du personnel deviennent inopérants
  * (HORS_SUSPENSION, auth.ts) ; les espaces des viewers restent en ligne : ils ne sont pas partie au litige commercial.
  * Refusée pour un cabinet qui héberge un compte éditeur : on ne se coupe pas de sa propre console.
  */
-export async function suspendre(db: Base, tenantId: string, motifBrut: string, parId: string): Promise<ResultatAction> {
+export async function suspendre(db: Base, tenantId: string, motifBrut: string, par: Acteur): Promise<ResultatAction> {
   const motif = motifBrut.trim().slice(0, 500);
   if (!motif) return ko('motif');
   if (!(await cabinetDe(db, tenantId))) return ko('cabinet_inconnu');
+  // La garde vise le rôle `editeur`, et lui seul. Le compte de support (`support_editeur`) existe dans CHAQUE cabinet : si la
+  // garde le visait, aucun cabinet ne serait plus suspendable.
   const editeur = await db.prepare("SELECT 1 AS ok FROM utilisateur WHERE tenant_id = ? AND role = 'editeur'").bind(tenantId).first();
   if (editeur) return ko('editeur');
   try {
-    await db
-      .prepare('INSERT INTO suspension (id, tenant_id, motif, debut_le, par) VALUES (?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), tenantId, motif, maintenant(), parId)
-      .run();
+    // La suspension et son événement partent ensemble. Le motif reste dans `suspension`, jamais dans le journal du cabinet.
+    await db.batch([
+      db
+        .prepare('INSERT INTO suspension (id, tenant_id, motif, debut_le, par) VALUES (?, ?, ?, ?, ?)')
+        .bind(crypto.randomUUID(), tenantId, motif, maintenant(), par.id),
+      requeteEvenement(db, { tenantId, type: EVENEMENT.CABINET_SUSPENDU, acteur: par, cible: { type: 'cabinet', id: tenantId } }),
+    ]);
   } catch {
     return ko('deja_suspendu');
   }
   return ok('suspendu');
 }
 
-export async function leverSuspension(db: Base, tenantId: string, parId: string): Promise<ResultatAction> {
-  const r = await db
-    .prepare('UPDATE suspension SET fin_le = ?, fin_par = ? WHERE tenant_id = ? AND fin_le IS NULL RETURNING id')
-    .bind(maintenant(), parId, tenantId)
-    .first();
-  return r ? ok('leve') : ko('pas_suspendu');
+export async function leverSuspension(db: Base, tenantId: string, par: Acteur): Promise<ResultatAction> {
+  const [r] = await db.batch([
+    db
+      .prepare('UPDATE suspension SET fin_le = ?, fin_par = ? WHERE tenant_id = ? AND fin_le IS NULL')
+      .bind(maintenant(), par.id, tenantId),
+    requeteEvenement(db, { tenantId, type: EVENEMENT.CABINET_LEVE, acteur: par, cible: { type: 'cabinet', id: tenantId } }, true),
+  ]);
+  return ((r as { meta?: { changes?: number } })?.meta?.changes ?? 0) > 0 ? ok('leve') : ko('pas_suspendu');
 }

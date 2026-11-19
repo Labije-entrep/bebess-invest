@@ -1,7 +1,8 @@
 ---
 export const prerender = false;
 import Gestion from '../../../layouts/Gestion.astro';
-import { cabinetDe, configCloudflare, domainesDe, gardeAdmin, gestionnairesDe, MESSAGES_ACTION, suspensionsDe, type CodeAction } from '../../../lib/admin';
+import { accesCabinet, cabinetDe, configCloudflare, domainesDe, gardeAdmin, MESSAGES_ACTION, suspensionsDe, type CodeAction } from '../../../lib/admin';
+import { accesDuCabinet } from '../../../lib/acces';
 import { incidents, libelleIncident } from '../../../lib/incidents';
 import { dateCourte } from '../../../lib/format';
 
@@ -11,10 +12,11 @@ if (g instanceof Response) return g;
 const id = Astro.params.id ?? '';
 const cabinet = await cabinetDe(g.db, id);
 if (!cabinet) return new Response('Introuvable.', { status: 404 });
+await accesCabinet(g, cabinet.id, `GET ${Astro.url.pathname}`);
 
-const [domaines, gestionnaires, suspensions, recents] = await Promise.all([
+const [domaines, acces, suspensions, recents] = await Promise.all([
   domainesDe(g.db, cabinet.id),
-  gestionnairesDe(g.db, cabinet.id),
+  accesDuCabinet(g.db, cabinet.id),
   suspensionsDe(g.db, cabinet.id),
   incidents(g.db, { tenantId: cabinet.id }, 5),
 ]);
@@ -39,30 +41,31 @@ const horodate = (iso: string) => `${dateCourte(iso)} à ${iso.slice(11, 16)} UT
   {retour && <p class={retour.bon ? 'info' : 'info alerte'} role="status">{retour.texte}</p>}
   {suspension && (
     <p class="info alerte" role="status">
-      <strong>Suspendu depuis le {horodate(suspension.debut_le)}</strong> — motif : {suspension.motif}. Les gestionnaires ne peuvent plus entrer ; les viewers consultent toujours leur espace.
+      <strong>Suspendu depuis le {horodate(suspension.debut_le)}</strong> — motif : {suspension.motif}. Le personnel du cabinet ne peut plus entrer ; les viewers consultent toujours leur espace.
     </p>
   )}
 
   <div class="kpis">
     <div class="kpi"><span class="etiquette">Viewers</span><span class="chiffre">{cabinet.viewers}</span></div>
     <div class="kpi"><span class="etiquette">Contacts</span><span class="chiffre">{cabinet.contacts}</span></div>
-    <div class="kpi"><span class="etiquette">Dernier arrêté</span><span class="chiffre">{cabinet.dernier_arrete ? dateCourte(cabinet.dernier_arrete) : '—'}</span></div>
+    <div class="kpi"><span class="etiquette">Arrêté le plus ancien</span><span class="chiffre">{cabinet.dernier_arrete ? dateCourte(cabinet.dernier_arrete) : '—'}</span></div>
     <div class="kpi"><span class="etiquette">Dernier incident</span><span class="chiffre">{cabinet.dernier_incident ? dateCourte(cabinet.dernier_incident) : '—'}</span></div>
   </div>
 
-  <h2>Gestionnaires</h2>
-  {gestionnaires.length === 0 ? <p class="aide">Aucun gestionnaire.</p> : (
+  <h2>Accès du cabinet</h2>
+  {acces.length === 0 ? <p class="aide">Aucun accès.</p> : (
     <div class="defile">
       <table class="table">
-        <thead><tr><th>Nom</th><th>Adresse</th><th>Accès</th></tr></thead>
+        <thead><tr><th>Nom</th><th>Adresse</th><th>Rôle</th><th>Accès</th></tr></thead>
         <tbody>
-          {gestionnaires.map((x) => (
-            <tr><td>{x.nom}</td><td>{x.email}</td><td>{suspension ? 'Suspendu' : x.actif === 1 ? 'Actif' : 'Désactivé'}</td></tr>
+          {acces.map((x) => (
+            <tr><td>{x.nom}</td><td>{x.email}</td><td>{x.role}</td><td>{suspension ? 'Suspendu' : x.actif === 1 ? 'Actif' : 'Désactivé'}</td></tr>
           ))}
         </tbody>
       </table>
     </div>
   )}
+  <p class="aide">Associés, collaborateurs et lecture. Le compte de support de l’éditeur n’est jamais compté ni affiché ici.</p>
 
   <hr class="filet" />
   <h2>Domaines</h2>
@@ -136,7 +139,7 @@ const horodate = (iso: string) => `${dateCourte(iso)} à ${iso.slice(11, 16)} UT
   </div>
 
   <h2 style="margin-top: var(--espace-l)">Suspension</h2>
-  <p class="aide">La suspension rend inopérants les accès des gestionnaires du cabinet : connexion et sessions déjà ouvertes. Elle laisse en ligne et consultables les espaces de ses clients finaux, qui ne sont pas partie au litige commercial. Rien n’est effacé. Aucune suspension n’est jamais automatique.</p>
+  <p class="aide">La suspension rend inopérants les accès du personnel du cabinet (associés, collaborateurs, lecture) : connexion et sessions déjà ouvertes. Elle laisse en ligne et consultables les espaces de ses clients finaux, qui ne sont pas partie au litige commercial. Rien n’est effacé. Aucune suspension n’est jamais automatique.</p>
   {suspension ? (
     <form method="post" action={`${base}/suspension`} class="actions">
       <input type="hidden" name="action" value="lever" />

@@ -2,12 +2,13 @@ import type { APIRoute } from 'astro';
 import { cleLogoCabinet, cleLogoDuCabinet, corpsTropGros, deposer, lireDepot, supprimer } from '../../../lib/fichiers';
 import { envDe } from '../../../lib/mail';
 import { garde } from '../../../lib/passerelle';
+import { GESTION_ECRIT } from '../../../lib/roles';
 
 export const prerender = false;
 
 /** Dépose (champ `fichier`) ou retire (`action=retirer`) le logo du cabinet, affiché sur le site et dans l'espace. */
 export const POST: APIRoute = async (ctx) => {
-  const g = garde(ctx, ['gestionnaire', 'editeur']);
+  const g = garde(ctx, GESTION_ECRIT);
   if (g instanceof Response) return g;
   // Le formulaire des réglages (Identité) ajoute ?retour=reglages ; le tableau de bord garde son retour d'origine.
   const versReglages = ctx.url.searchParams.get('retour') === 'reglages';

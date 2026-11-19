@@ -1,3 +1,4 @@
+import { GESTION_LIT, aLeRole } from '../../../../lib/roles';
 import type { APIRoute } from 'astro';
 import { exportContact, nomFichier } from '../../../../lib/export';
 import { envDe } from '../../../../lib/mail';
@@ -12,7 +13,7 @@ export const prerender = false;
 export const GET: APIRoute = async (ctx) => {
   const { utilisateur, tenant } = ctx.locals;
   if (!utilisateur || !tenant || utilisateur.tenant_id !== tenant.id) return introuvable();
-  if (utilisateur.role !== 'gestionnaire' && utilisateur.role !== 'editeur') return introuvable();
+  if (!aLeRole(utilisateur.role, GESTION_LIT)) return introuvable();
   const id = ctx.params.id ?? '';
   if (id.length > 64) return introuvable();
 

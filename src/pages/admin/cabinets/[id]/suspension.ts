@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { cabinetDe, gardeAdmin, introuvable, leverSuspension, suspendre } from '../../../../lib/admin';
+import { accesCabinet, cabinetDe, gardeAdmin, introuvable, leverSuspension, suspendre } from '../../../../lib/admin';
 
 export const prerender = false;
 
@@ -12,12 +12,14 @@ export const POST: APIRoute = async (ctx) => {
   if (g instanceof Response) return g;
   const id = ctx.params.id ?? '';
   if (!(await cabinetDe(g.db, id))) return introuvable();
+  await accesCabinet(g, id, `POST ${ctx.url.pathname}`);
+  const acteur = { id: g.utilisateur.id, role: g.utilisateur.role };
 
   const f = await ctx.request.formData();
   const action = String(f.get('action') ?? '');
   const r =
-    action === 'suspendre' ? await suspendre(g.db, id, String(f.get('motif') ?? ''), g.utilisateur.id)
-    : action === 'lever' ? await leverSuspension(g.db, id, g.utilisateur.id)
+    action === 'suspendre' ? await suspendre(g.db, id, String(f.get('motif') ?? ''), acteur)
+    : action === 'lever' ? await leverSuspension(g.db, id, acteur)
     : null;
   if (!r) return new Response('Action inconnue.', { status: 400 });
   return ctx.redirect(`/admin/cabinets/${encodeURIComponent(id)}?r=${r.code}&ok=${r.ok ? 1 : 0}`, 303);
