@@ -8,8 +8,12 @@ export type Liste =
   | 'type_contact' | 'metier' | 'etape' | 'type_echange' | 'statut_sujet'
   | 'categorie_doc' | 'classe_actif' | 'statut_mouvement' | 'type_portefeuille';
 
-/** [cle, libelle] ; l'ordre est celui du tableau, à partir de 1. */
-export const LISTES_DEFAUT: Record<Liste, [string, string][]> = {
+/**
+ * [cle, libelle] ou [cle, libelle, 'terminal'] ; l'ordre est celui du tableau, à partir de 1.
+ * « terminal » : la valeur clôt l'objet (statut_sujet) ou le fait sortir du parcours (etape).
+ */
+type ValeurDefaut = [cle: string, libelle: string, terminal?: 'terminal'];
+export const LISTES_DEFAUT: Record<Liste, ValeurDefaut[]> = {
   classe_actif: [
     ['actions', 'Actions'],
     ['obligations', 'Obligations'],
@@ -35,14 +39,14 @@ export const LISTES_DEFAUT: Record<Liste, [string, string][]> = {
     ['afaire', 'À faire'],
     ['encours', 'En cours'],
     ['attente', 'En attente'],
-    ['fait', 'Fait'],
+    ['fait', 'Fait', 'terminal'],
   ],
   etape: [
     ['contact', 'Premier contact'],
     ['rdv', 'RDV'],
     ['proposition', 'Proposition'],
     ['signe', 'Signé'],
-    ['perdu', 'Perdu'],
+    ['perdu', 'Perdu', 'terminal'],
   ],
   type_echange: [
     ['rdv', 'RDV'],
@@ -81,11 +85,11 @@ export const LISTES_DEFAUT: Record<Liste, [string, string][]> = {
 export function requetesListesDefaut(db: Base, tenantId: string): Requete[] {
   const out: Requete[] = [];
   for (const [liste, valeurs] of Object.entries(LISTES_DEFAUT)) {
-    valeurs.forEach(([cle, libelle], i) => {
+    valeurs.forEach(([cle, libelle, terminal], i) => {
       out.push(
         db
-          .prepare('INSERT INTO liste_valeur (tenant_id, liste, cle, libelle, ordre, actif) VALUES (?, ?, ?, ?, ?, 1)')
-          .bind(tenantId, liste, cle, libelle, i + 1),
+          .prepare('INSERT INTO liste_valeur (tenant_id, liste, cle, libelle, ordre, actif, terminal) VALUES (?, ?, ?, ?, ?, 1, ?)')
+          .bind(tenantId, liste, cle, libelle, i + 1, terminal ? 1 : 0),
       );
     });
   }

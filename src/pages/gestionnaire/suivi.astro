@@ -90,6 +90,34 @@ if (!utilisateur || !tenant) return Astro.redirect('/connexion');
   .suivi-vide { padding: var(--espace-xl) 0; color: var(--texte-2); }
   .suivi-note { margin: var(--espace) 0 0; max-width: 47.5rem; font-size: 0.75rem; line-height: 1.8; color: var(--texte-2); }
 
+  /* Kanban et parcours : une colonne par statut ou par étape, défilement horizontal si elles ne tiennent pas */
+  .suivi-colonnes { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(15rem, 1fr); gap: var(--espace-m); align-items: start; margin-top: var(--espace); padding-bottom: var(--espace-s); overflow-x: auto; }
+  .suivi-colonne { min-width: 0; border: 1px solid var(--filet); }
+  .suivi-colonne > header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.25rem 0.625rem; padding: 0.875rem 1rem; border-bottom: 1px solid var(--filet); }
+  .suivi-colonne > header h2 { margin: 0 auto 0 0; font-family: var(--mono); font-size: 0.625rem; font-weight: 400; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-clair); }
+  .suivi-colonne-n, .suivi-colonne-total { font-family: var(--serif); font-weight: 300; font-size: 1.125rem; line-height: 1; font-variant-numeric: tabular-nums lining-nums; }
+  .suivi-colonne-total { flex-basis: 100%; text-align: right; font-size: 0.9375rem; color: var(--texte-2); }
+  .suivi-colonne-tag { font-family: var(--mono); font-size: 0.5625rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--texte-2); }
+  .suivi-colonne-vide { margin: 0; padding: 1rem; font-size: 0.8125rem; color: var(--texte-2); }
+  .suivi-colonne.terminale .suivi-carte { opacity: 0.6; }
+  .suivi-colonne.hors { border-style: dotted; }
+  .suivi-colonne.sortie { margin-inline-start: var(--espace); border-style: dashed; }
+  .suivi-colonne.sortie .suivi-carte { opacity: 0.75; }
+  .suivi-cartes { margin: 0; padding: 0; list-style: none; }
+  .suivi-carte { padding: 0.875rem 1rem; border-top: 1px solid var(--filet); }
+  .suivi-cartes .suivi-carte:first-child { border-top: 0; }
+  .suivi-carte p { margin: 0; }
+  .suivi-carte-texte { font-size: 0.9375rem; overflow-wrap: anywhere; }
+  .suivi-carte-sous { margin-top: 0.25rem; font-size: 0.75rem; color: var(--texte-2); }
+  .suivi-carte-sous .suivi-nom { font-size: 0.75rem; color: var(--texte-2); }
+  .suivi-carte .alerte, .suivi-carte .perime { color: var(--alerte); }
+  .suivi-carte-avoirs { margin-top: 0.375rem; font-size: 0.8125rem; color: var(--texte-2); }
+  .suivi-carte .gros { font-size: 0.9375rem; color: var(--texte); }
+  .suivi-carte .gros.saisi { color: var(--texte-2); }
+  .suivi-carte .suivi-sous.mono { font-family: var(--mono); font-size: 0.5625rem; letter-spacing: 0.08em; }
+  .suivi-avancer { margin-top: 0.625rem; font-family: var(--mono); font-size: 0.5625rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-clair); background: transparent; border: 1px solid var(--accent); padding: 0.4375rem 0.625rem; cursor: pointer; }
+  .suivi-avancer:hover { background: var(--marine); }
+
   /* Fenêtre de saisie */
   .suivi-dialogue { width: min(40rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); overflow: auto; padding: var(--espace); color: var(--texte); background: var(--fond); border: 1px solid var(--accent); }
   .suivi-dialogue::backdrop { background: color-mix(in srgb, var(--fond) 80%, transparent); }
@@ -106,5 +134,6 @@ if (!utilisateur || !tenant) return Astro.redirect('/connexion');
 
   @media (max-width: 48rem) {
     .suivi-nouveau { margin-left: 0; }
+    .suivi-colonnes { grid-auto-columns: minmax(15rem, 85%); }
   }
 </style>

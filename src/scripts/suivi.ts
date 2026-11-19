@@ -1,10 +1,17 @@
-// Module de suivi, côté client : la liste des contacts (lot 03). JavaScript écrit à la main, aucun
-// framework, aucun domaine externe : tout passe par /api/suivi (lot 02).
+// Module de suivi, côté client : la liste des contacts (lot 03), le kanban des sujets et le parcours de
+// prospection (lot 05). JavaScript écrit à la main, aucun framework, aucun domaine externe : tout passe par
+// /api/suivi (lot 02), les trois vues travaillent sur le même état chargé (/api/suivi/etat).
 //
 // Principe : l'état du serveur (`serveur`) n'est jamais modifié par une saisie. Chaque modification entre
-// dans une file d'écritures par contact (`files`) ; ce qui s'affiche est l'état du serveur recouvert des
-// écritures encore en file. Une écriture qui échoue reste donc visible, marquée, jusqu'à ce qu'elle passe
-// ou que l'utilisateur l'abandonne : rien ne disparaît sans qu'il le sache.
+// dans la file d'écritures de src/scripts/commun.ts (une file par objet) ; ce qui s'affiche est l'état du
+// serveur recouvert des écritures encore en file. Une écriture qui échoue reste donc visible, marquée,
+// jusqu'à ce qu'elle passe ou que l'utilisateur l'abandonne : rien ne disparaît sans qu'il le sache.
+
+import {
+  api, brancher, empiler, ecrituresEnFile, estTerminal, fileExistante, h, liaison, marque, reseauRetabli,
+  sansPerdreLeClic, toutesOps, toutRejouer,
+  type Corps, type Enfant, type Attribut,
+} from './commun';
 
 // ---------------------------------------------------------------- types
 
@@ -26,32 +33,24 @@ interface Contact {
   apporteur_id: string | null;
   viewer_id: string | null;
   archive: number;
+  etape: string | null;
   types: string[];
   avoirs_portail: Portail | null;
 }
-interface Sujet { id: string; contact_id: string; statut: string; echeance: string | null; texte: string; archive: number }
+interface Sujet { id: string; contact_id: string; statut: string; echeance: string | null; texte: string; archive: number; cree_le: string; fait_le: string | null }
 interface Membre { id: string; nom: string; initiale: string; couleur: string; actif: number }
 interface ValeurListe { cle: string; libelle: string; ordre: number }
 interface Seuils { sans_echange: number; relance: number; arrete: number }
 interface Etat {
   version: number;
   seuils: Seuils;
+  /** Clés terminales par liste (colonne `terminal` de liste_valeur), actives ou non. */
+  terminaux: Record<string, string[]>;
   contacts: Contact[];
   sujets: Sujet[];
   membres: Membre[];
   listes: Record<string, ValeurListe[]>;
 }
-
-type Corps = Record<string, unknown>;
-interface Op {
-  kind: 'create' | 'patch';
-  corps: Corps;
-  /** attente : pas encore partie, ou à renvoyer. envoi : en vol. refus : rejetée, en attente d'une décision. */
-  etat: 'attente' | 'envoi' | 'refus';
-  tentatives: number;
-  message?: string;
-}
-interface FileOps { cle: string; ops: Op[]; actif: boolean; minuteur: number | null }
 
 type Indicateur = 'vus' | 'ouverts' | 'encours' | 'attente' | 'retard' | 'relance' | 'sans' | 'avoirs';
 type Vue = 'liste' | 'kanban' | 'parcours';
@@ -60,39 +59,35 @@ type Vue = 'liste' | 'kanban' | 'parcours';
 
 let serveur: Etat | null = null;
 let version = 0;
-let versionMin = 0;
 const nouveaux: Contact[] = [];
-const files = new Map<string, FileOps>();
 let nTemp = 0;
 
 let indicateur: Indicateur | null = null;
 let membreFiltre: string | null = null;
 let recherche = '';
-let vue: Vue = 'liste';
+const CLE_VUE = 'suivi.vue';
+let vue: Vue = vueRetenue();
 let archives = false;
-let reseauKO = false;
-let sessionPerdue = false;
 
-const DELAIS_MS = [2000, 5000, 10000, 30000];
 const INTERVALLE_MS = 10000;
+/** Le parcours range les contacts de ce type. Seule clé de liste que ce fichier écrive en dur : voir parcours(). */
+const TYPE_PROSPECT = 'prospect';
+
+/** La vue choisie la dernière fois ; le stockage du navigateur peut manquer ou refuser, la liste est alors la vue. */
+function vueRetenue(): Vue {
+  try {
+    const v = window.localStorage.getItem(CLE_VUE);
+    if (v === 'liste' || v === 'kanban' || v === 'parcours') return v;
+  } catch { /* stockage indisponible */ }
+  return 'liste';
+}
+function retenirVue(v: Vue): void {
+  try {
+    window.localStorage.setItem(CLE_VUE, v);
+  } catch { /* stockage indisponible */ }
+}
 
 // ---------------------------------------------------------------- utilitaires
-
-type Enfant = Node | string | null | undefined | false;
-type Attribut = string | number | boolean | null | undefined | ((e: Event) => void);
-
-function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, Attribut> = {}, ...enfants: Enfant[]): HTMLElementTagNameMap[K] {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (v === undefined || v === null || v === false) continue;
-    if (typeof v === 'function') el.addEventListener(k.slice(2), v);
-    else if (k === 'class') el.className = String(v);
-    else if (k === 'value' || k === 'checked' || k === 'disabled' || k === 'selected') (el as unknown as Record<string, unknown>)[k] = v;
-    else el.setAttribute(k, v === true ? '' : String(v));
-  }
-  for (const e of enfants) if (e) el.append(e);
-  return el;
-}
 
 const norm = (s: string): string => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -132,17 +127,11 @@ const formEuros = (cents: number | null): string =>
 
 // ---------------------------------------------------------------- réseau
 
-async function api(url: string, init: RequestInit = {}): Promise<Response> {
-  const entetes: Record<string, string> = { Accept: 'application/json', ...(init.headers as Record<string, string> | undefined) };
-  if (init.body !== undefined) entetes['Content-Type'] = 'application/json';
-  return fetch(url, { ...init, headers: entetes, credentials: 'same-origin', cache: 'no-store' });
-}
-
 async function charger(): Promise<boolean> {
   try {
     const r = await api('/api/suivi/etat');
     if (r.status === 401) {
-      sessionPerdue = true;
+      liaison.sessionPerdue = true;
       rendreEtat();
       return false;
     }
@@ -150,7 +139,7 @@ async function charger(): Promise<boolean> {
     const e = (await r.json()) as Etat;
     reseauRetabli();
     // Une écriture de cette session est déjà passée : un état plus ancien serait un retour en arrière.
-    if (e.version < versionMin) {
+    if (e.version < liaison.versionMin) {
       window.setTimeout(() => void charger(), 500);
       return false;
     }
@@ -159,7 +148,7 @@ async function charger(): Promise<boolean> {
     rendre();
     return true;
   } catch {
-    reseauKO = true;
+    liaison.ko = true;
     rendreEtat();
     return false;
   }
@@ -171,14 +160,14 @@ async function sonder(): Promise<void> {
     if (r.status === 304) {
       reseauRetabli();
     } else if (r.status === 401) {
-      sessionPerdue = true;
+      liaison.sessionPerdue = true;
     } else if (r.ok) {
       reseauRetabli();
       const v = ((await r.json()) as { version: number }).version;
       if (v !== version) await charger();
     }
   } catch {
-    reseauKO = true;
+    liaison.ko = true;
   }
   rendreEtat();
 }
@@ -192,143 +181,11 @@ function arreterSondage(): void {
   minuterie = null;
 }
 
-// ---------------------------------------------------------------- file d'écritures
-
-function fileDe(cle: string): FileOps {
-  let f = files.get(cle);
-  if (!f) {
-    f = { cle, ops: [], actif: false, minuteur: null };
-    files.set(cle, f);
-  }
-  return f;
-}
-
-/** Ajoute une modification ; fusionne avec la dernière si elle n'est pas encore partie. */
-function empiler(cle: string, kind: Op['kind'], corps: Corps): void {
-  const f = fileDe(cle);
-  const derniere = f.ops[f.ops.length - 1];
-  if (derniere && derniere.etat === 'attente' && derniere.tentatives === 0) Object.assign(derniere.corps, corps);
-  else f.ops.push({ kind, corps: { ...corps }, etat: 'attente', tentatives: 0 });
-  rendre();
-  void pomper(f);
-}
-
-async function pomper(f: FileOps): Promise<void> {
-  if (f.actif) return;
-  const op = f.ops[0];
-  if (!op || op.etat === 'refus') return;
-  f.actif = true;
-  if (f.minuteur !== null) {
-    window.clearTimeout(f.minuteur);
-    f.minuteur = null;
-  }
-  op.etat = 'envoi';
-  rendreEtat();
-  let reponse: Response;
-  try {
-    reponse = await api(op.kind === 'create' ? '/api/suivi/contact' : `/api/suivi/contact/${encodeURIComponent(f.cle)}`, {
-      method: op.kind === 'create' ? 'POST' : 'PATCH',
-      body: JSON.stringify(op.corps),
-    });
-  } catch {
-    reseauKO = true;
-    return rejouer(f, op, DELAIS_MS[Math.min(op.tentatives, DELAIS_MS.length - 1)]);
-  }
-  if (reponse.ok) {
-    reseauRetabli();
-    const r = (await reponse.json()) as { item: Contact; version: number };
-    versionMin = Math.max(versionMin, r.version);
-    f.ops.shift();
-    if (serveur) {
-      const i = serveur.contacts.findIndex((c) => c.id === r.item.id);
-      const entier = { ...(i >= 0 ? serveur.contacts[i] : {}), ...r.item } as Contact;
-      if (i >= 0) serveur.contacts[i] = entier;
-      else serveur.contacts.push(entier);
-      serveur.contacts.sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
-    }
-    if (op.kind === 'create') {
-      // Le contact a maintenant son identifiant définitif : la file le suit, la copie provisoire disparaît.
-      const i = nouveaux.findIndex((c) => c.id === f.cle);
-      if (i >= 0) nouveaux.splice(i, 1);
-      files.delete(f.cle);
-      f.cle = r.item.id;
-      files.set(f.cle, f);
-    }
-    f.actif = false;
-    if (f.ops.length === 0) files.delete(f.cle);
-    rendre();
-    void pomper(f);
-    return;
-  }
-  let corps: { erreur?: string } = {};
-  try {
-    corps = (await reponse.json()) as { erreur?: string };
-  } catch { /* corps non JSON */ }
-  if (reponse.status === 401) {
-    sessionPerdue = true;
-    return rejouer(f, op, 10000);
-  }
-  if (reponse.status === 429 || reponse.status >= 500) {
-    const attente = Number(reponse.headers.get('Retry-After'));
-    return rejouer(f, op, Number.isFinite(attente) && attente > 0 ? attente * 1000 : DELAIS_MS[Math.min(op.tentatives, DELAIS_MS.length - 1)]);
-  }
-  // 4xx : la requête elle-même est refusée, la renvoyer telle quelle ne changerait rien.
-  op.etat = 'refus';
-  op.message = corps.erreur ?? `Refusé (${reponse.status}).`;
-  f.actif = false;
-  rendre();
-}
-
-function rejouer(f: FileOps, op: Op, delai: number): void {
-  op.etat = 'attente';
-  op.tentatives += 1;
-  f.actif = false;
-  f.minuteur = window.setTimeout(() => void pomper(f), delai);
-  rendre();
-}
-
-function reessayer(f: FileOps): void {
-  const op = f.ops[0];
-  if (!op) return;
-  op.etat = 'attente';
-  op.tentatives = 0;
-  op.message = undefined;
-  rendre();
-  void pomper(f);
-}
-
-function abandonner(f: FileOps): void {
-  const op = f.ops.shift();
-  if (op?.kind === 'create') {
-    // Un contact jamais créé n'existe nulle part ailleurs : on l'efface avec ses modifications.
-    const i = nouveaux.findIndex((c) => c.id === f.cle);
-    if (i >= 0) nouveaux.splice(i, 1);
-    f.ops.length = 0;
-  }
-  if (f.minuteur !== null) window.clearTimeout(f.minuteur);
-  f.minuteur = null;
-  if (f.ops.length === 0) files.delete(f.cle);
-  rendre();
-  void pomper(f);
-}
-
-/** Une réponse vient d'arriver : si le réseau était tombé, les écritures qui attendaient leur délai repartent aussitôt. */
-function reseauRetabli(): void {
-  const etait = reseauKO || sessionPerdue;
-  reseauKO = false;
-  sessionPerdue = false;
-  if (etait) toutRejouer();
-}
-
-function toutRejouer(): void {
-  for (const f of files.values()) if (f.ops[0]?.etat === 'attente') void pomper(f);
-}
-
 // ---------------------------------------------------------------- lecture de l'état affiché
 
 /** Le contact tel que l'utilisateur doit le voir : état du serveur recouvert des écritures en file. */
 function appliquer(c: Contact): Contact {
-  const f = files.get(c.id);
+  const f = fileExistante('contact', c.id);
   if (!f) return c;
   const v: Contact = { ...c };
   for (const op of f.ops) if (op.kind === 'patch') Object.assign(v, op.corps);
@@ -336,6 +193,17 @@ function appliquer(c: Contact): Contact {
 }
 
 const tousContacts = (): Contact[] => (serveur ? [...serveur.contacts, ...nouveaux].map(appliquer) : []);
+
+/** Le sujet tel que l'utilisateur doit le voir, de la même façon : un sujet avancé depuis le kanban change aussitôt partout. */
+function appliquerSujet(x: Sujet): Sujet {
+  const f = fileExistante('sujet', x.id);
+  if (!f) return x;
+  const v: Sujet = { ...x };
+  for (const op of f.ops) Object.assign(v, op.corps);
+  return v;
+}
+
+const tousSujets = (): Sujet[] => (serveur ? serveur.sujets.map(appliquerSujet) : []);
 
 interface Avoirs { cents: number; le: string | null; portail: boolean }
 function avoirsDe(c: Contact): Avoirs | null {
@@ -347,8 +215,9 @@ function avoirsDe(c: Contact): Avoirs | null {
 const libelle = (liste: string, cle: string | null): string =>
   cle === null ? '' : (serveur?.listes[liste]?.find((v) => v.cle === cle)?.libelle ?? cle);
 
-/** « ouvert » : tout sujet non archivé dont le statut n'est pas « fait ». Les clés viennent de statut_sujet. */
-const estOuvert = (s: Sujet): boolean => s.archive === 0 && s.statut !== 'fait';
+/** « ouvert » : tout sujet non archivé dont le statut n'est pas terminal dans statut_sujet (voir estTerminal). */
+const estClos = (s: Sujet): boolean => estTerminal(serveur?.terminaux, 'statut_sujet', s.statut);
+const estOuvert = (s: Sujet): boolean => s.archive === 0 && !estClos(s);
 
 interface Calcul {
   actifs: Contact[];
@@ -364,7 +233,7 @@ function calculer(): Calcul {
   const actifs = tousContacts().filter((c) => c.archive === 0);
   const ids = new Set(actifs.map((c) => c.id));
   const sujetsDe = new Map<string, Sujet[]>();
-  for (const x of s.sujets) {
+  for (const x of tousSujets()) {
     if (x.archive !== 0 || !ids.has(x.contact_id)) continue;
     sujetsDe.set(x.contact_id, [...(sujetsDe.get(x.contact_id) ?? []), x]);
   }
@@ -406,19 +275,19 @@ function rendreEtat(): void {
   if (!el) return;
   let etat = 'ajour';
   let texte = 'À jour';
-  const ops = [...files.values()].flatMap((f) => f.ops);
+  const ops = toutesOps();
   const refus = ops.filter((o) => o.etat === 'refus').length;
   const enAttente = ops.filter((o) => o.etat !== 'refus');
   const nonPartie = enAttente.filter((o) => o.tentatives > 0).length;
   if (!serveur) {
-    etat = reseauKO || sessionPerdue ? 'horsligne' : 'chargement';
-    texte = reseauKO ? 'Hors connexion' : sessionPerdue ? 'Connexion perdue' : 'Chargement…';
+    etat = liaison.ko || liaison.sessionPerdue ? 'horsligne' : 'chargement';
+    texte = liaison.ko ? 'Hors connexion' : liaison.sessionPerdue ? 'Connexion perdue' : 'Chargement…';
   } else if (refus > 0) {
     etat = 'refus';
     texte = `${refus} modification${refus > 1 ? 's' : ''} refusée${refus > 1 ? 's' : ''}`;
-  } else if (reseauKO || sessionPerdue || nonPartie > 0) {
+  } else if (liaison.ko || liaison.sessionPerdue || nonPartie > 0) {
     etat = 'horsligne';
-    texte = `${sessionPerdue ? 'Connexion perdue' : 'Hors connexion'}${enAttente.length ? ` · ${enAttente.length} en attente d'envoi` : ''}`;
+    texte = `${liaison.sessionPerdue ? 'Connexion perdue' : 'Hors connexion'}${enAttente.length ? ` · ${enAttente.length} en attente d'envoi` : ''}`;
   } else if (enAttente.length > 0) {
     etat = 'attente';
     texte = 'Enregistrement…';
@@ -429,7 +298,7 @@ function rendreEtat(): void {
   const alertes = document.getElementById('suivi-alertes');
   if (alertes) {
     alertes.querySelector('[data-session]')?.remove();
-    if (sessionPerdue) {
+    if (liaison.sessionPerdue) {
       alertes.prepend(
         h('p', { class: 'info alerte', role: 'alert', 'data-session': '' },
           'Votre session a expiré. Reconnectez-vous dans un autre onglet : les modifications en attente repartiront ensuite d\'elles-mêmes.'),
@@ -450,7 +319,7 @@ function annoncer(message: string, annuler?: () => void): void {
   window.setTimeout(() => p.remove(), 12000);
 }
 
-function rendre(): void {
+function rendreMaintenant(): void {
   const racine = corps();
   if (!serveur) return;
   const actif = document.activeElement as HTMLElement | null;
@@ -500,7 +369,7 @@ function rendre(): void {
       ...(['liste', 'kanban', 'parcours'] as Vue[]).map((v) =>
         h('button', {
           type: 'button', 'aria-pressed': vue === v ? 'true' : 'false', 'data-f': `vue:${v}`,
-          onclick: () => { vue = v; rendre(); },
+          onclick: () => { vue = v; retenirVue(v); rendre(); },
         }, v === 'liste' ? 'Liste' : v === 'kanban' ? 'Kanban' : 'Parcours')),
     ),
     membres.length > 0 && h('div', { class: 'suivi-membres', role: 'group', 'aria-label': 'En charge' },
@@ -517,16 +386,11 @@ function rendre(): void {
     h('button', { type: 'button', class: 'btn-plein suivi-nouveau', 'data-f': 'nouveau', onclick: (e) => ouvrirDialogue(null, e.currentTarget as HTMLElement) }, 'Nouveau contact'),
   );
 
-  const principal = h('div', {});
-  if (vue !== 'liste') {
-    principal.append(h('p', { class: 'suivi-vide' }, `La vue ${vue === 'kanban' ? 'Kanban' : 'Parcours'} n’est pas encore disponible.`));
-  } else {
-    principal.append(liste(c));
-  }
+  const principal = h('div', {}, vue === 'kanban' ? kanban(c) : vue === 'parcours' ? parcours(c) : liste(c));
 
-  racine.replaceChildren(kpis, outils, principal,
-    h('p', { class: 'suivi-note' },
-      `Les avoirs d’un contact rattaché au portail viennent de ses enveloppes et portent la date de son dernier arrêté ; ils ne sont pas saisis ici. Une date en rouge signale un arrêté de plus de ${s.arrete} jours.`));
+  const note = h('p', { class: 'suivi-note' },
+    `Les avoirs d’un contact rattaché au portail viennent de ses enveloppes et portent la date de son dernier arrêté ; ils ne sont pas saisis ici. Une date en rouge signale un arrêté de plus de ${s.arrete} jours.`);
+  racine.replaceChildren(kpis, outils, principal, ...(vue === 'kanban' ? [] : [note]));
 
   // Le rendu reconstruit les nœuds : le focus (et la sélection du champ de recherche) est remis là où il était.
   if (cible) racine.querySelector<HTMLElement>(`[data-f="${CSS.escape(cible)}"]`)?.focus();
@@ -545,14 +409,15 @@ function avatar(m: Membre | undefined): HTMLElement | null {
   return a;
 }
 
-function liste(c: Calcul): HTMLElement {
-  const s = serveur!;
-  const aujourd = aujourdhui();
-  const limite = ajouterJours(aujourd, s.seuils.relance);
+/**
+ * Les contacts que les trois vues ont à montrer : archivés ou non selon la case, puis indicateur, membre en
+ * charge et recherche. `base` : ceux qu'on aurait sans filtre (pour distinguer « rien » de « rien ne correspond »).
+ */
+function portee(c: Calcul): { base: Contact[]; visibles: Contact[]; q: string } {
   const q = norm(recherche.trim());
   const base = tousContacts().filter((x) => archives || x.archive === 0);
   const sujetsTous = new Map<string, Sujet[]>();
-  for (const x of s.sujets) if (x.archive === 0) sujetsTous.set(x.contact_id, [...(sujetsTous.get(x.contact_id) ?? []), x]);
+  for (const x of tousSujets()) if (x.archive === 0) sujetsTous.set(x.contact_id, [...(sujetsTous.get(x.contact_id) ?? []), x]);
   const visibles = base.filter((x) => {
     if (indicateur && !c.filtres[indicateur](x)) return false;
     if (membreFiltre && x.responsable_id !== membreFiltre) return false;
@@ -562,6 +427,14 @@ function liste(c: Calcul): HTMLElement {
     }
     return true;
   });
+  return { base, visibles, q };
+}
+
+function liste(c: Calcul): HTMLElement {
+  const s = serveur!;
+  const aujourd = aujourdhui();
+  const limite = ajouterJours(aujourd, s.seuils.relance);
+  const { base, visibles } = portee(c);
   if (visibles.length === 0) {
     return h('p', { class: 'suivi-vide' }, base.length === 0 ? 'Aucun contact pour l’instant. Créez le premier avec « Nouveau contact ».' : 'Aucun contact ne correspond à ces filtres.');
   }
@@ -578,8 +451,6 @@ function liste(c: Calcul): HTMLElement {
     const membre = s.membres.find((m) => m.id === x.responsable_id);
     const av = avoirsDe(x);
     const apportes = apports.get(x.id) ?? [];
-    const f = files.get(x.id);
-    const op = f?.ops.find((o) => o.etat === 'refus') ?? f?.ops[0];
     const sous = [libelle('metier', x.metier), x.structure].filter(Boolean).join(' · ');
     const perime = av?.portail && av.le !== null && ecartJours(av.le, aujourd) > s.seuils.arrete;
 
@@ -595,7 +466,7 @@ function liste(c: Calcul): HTMLElement {
           !x.id.startsWith('tmp-') && h('button', { type: 'button', class: 'suivi-modifier', 'data-f': `modifier:${x.id}`, 'aria-label': `Modifier ${x.nom}`, onclick: (e) => ouvrirDialogue(x.id, e.currentTarget as HTMLElement) }, 'Modifier'),
           sous && h('span', { class: 'suivi-sous' }, sous),
           x.archive === 1 && h('span', { class: 'suivi-marque' }, 'Archivé'),
-          op && marque(f!, op),
+          marque('contact', x.id, 'suivi-marque'),
         ),
         h('td', {},
           ...x.types.map((t) => h('span', { class: `suivi-pastille${t === 'client' ? ' client' : ''}` }, libelle('type_contact', t))),
@@ -636,14 +507,135 @@ function celluleRelance(r: string | null, aujourd: string, limite: string): Enfa
   return r <= limite ? h('span', { style: 'color: var(--accent-clair)' }, dateCourte(r)) : dateCourte(r);
 }
 
-function marque(f: FileOps, op: Op): HTMLElement {
-  if (op.etat === 'refus') {
-    return h('span', { class: 'suivi-marque refus', role: 'alert' },
-      `Non enregistré : ${op.message ?? 'refusé'}`,
-      h('button', { type: 'button', onclick: () => reessayer(f) }, 'Réessayer'),
-      h('button', { type: 'button', onclick: () => abandonner(f) }, 'Abandonner'));
+// ---------------------------------------------------------------- kanban et parcours
+
+const nomComplet = (c: Contact): string => `${c.nom.toLocaleUpperCase('fr')}${c.prenom ? ` ${c.prenom}` : ''}`;
+
+function lienContact(x: Contact): HTMLElement {
+  // Un contact pas encore créé n'a pas de fiche.
+  return x.id.startsWith('tmp-')
+    ? h('span', { class: 'suivi-nom' }, nomComplet(x))
+    : h('a', { class: 'suivi-nom', href: `/gestionnaire/suivi/${encodeURIComponent(x.id)}` }, nomComplet(x));
+}
+
+function colonneDe(classe: string, id: string, titre: string, entete: Enfant[], cartes: HTMLElement[], vide: string): HTMLElement {
+  return h('section', { class: `suivi-colonne ${classe}`.trim(), 'aria-labelledby': id },
+    h('header', {}, h('h2', { id }, titre), ...entete),
+    cartes.length ? h('ul', { class: 'suivi-cartes' }, ...cartes) : h('p', { class: 'suivi-colonne-vide' }, vide));
+}
+
+const nombre = (n: number): HTMLElement => h('span', { class: 'suivi-colonne-n' }, String(n));
+
+/** Une colonne par statut de statut_sujet, dans l'ordre de la liste ; les sujets dont le statut n'y est plus dans une colonne à part. */
+function kanban(c: Calcul): HTMLElement {
+  const s = serveur!;
+  const { visibles, q } = portee(c);
+  const statuts = s.listes.statut_sujet ?? [];
+  const parId = new Map(visibles.map((x) => [x.id, x]));
+  const sujets = tousSujets()
+    .filter((x) => {
+      const ct = parId.get(x.contact_id);
+      if (!ct || x.archive !== 0) return false;
+      // Une recherche qui ne tient qu'au texte d'un sujet ne garde que ce sujet, pas toutes les cartes du contact.
+      return !q || norm([ct.nom, ct.prenom, ct.structure].filter(Boolean).join(' ')).includes(q) || norm(x.texte).includes(q);
+    })
+    .sort((a, b) => {
+      const ea = a.echeance ?? '9999';
+      const eb = b.echeance ?? '9999';
+      return ea !== eb ? (ea < eb ? -1 : 1) : a.cree_le < b.cree_le ? -1 : a.cree_le > b.cree_le ? 1 : 0;
+    });
+  const connus = new Set(statuts.map((v) => v.cle));
+  const colonnes = statuts.map((v, i) => {
+    const items = sujets.filter((x) => x.statut === v.cle);
+    const suivant = statuts[i + 1] ?? null;
+    return colonneDe(estTerminal(s.terminaux, 'statut_sujet', v.cle) ? 'terminale' : '', `kb-${i}`, v.libelle,
+      [nombre(items.length)], items.map((x) => carteSujet(x, parId.get(x.contact_id)!, suivant, false)), 'Aucun sujet');
+  });
+  const hors = sujets.filter((x) => !connus.has(x.statut));
+  if (hors.length > 0) {
+    colonnes.push(colonneDe('hors', 'kb-hors', 'Statut hors liste', [nombre(hors.length)], hors.map((x) => carteSujet(x, parId.get(x.contact_id)!, null, true)), ''));
   }
-  return h('span', { class: 'suivi-marque' }, op.tentatives > 0 ? 'Non envoyé · nouvelle tentative en cours' : 'Enregistrement…');
+  if (colonnes.length === 0) return h('p', { class: 'suivi-vide' }, 'Aucun statut n’est défini pour les sujets.');
+  return h('div', { class: 'suivi-colonnes', role: 'group', 'aria-label': 'Sujets par statut' }, ...colonnes);
+}
+
+function carteSujet(x: Sujet, ct: Contact, suivant: ValeurListe | null, hors: boolean): HTMLElement {
+  const retard = !estClos(x) && x.echeance !== null && x.echeance < aujourdhui();
+  return h('li', { class: 'suivi-carte' },
+    h('p', { class: 'suivi-carte-texte' }, x.texte),
+    h('p', { class: 'suivi-carte-sous' }, lienContact(ct)),
+    h('p', { class: 'suivi-carte-sous' },
+      x.echeance ? `Échéance ${dateCourte(x.echeance)}` : 'Sans échéance',
+      retard && h('span', { class: 'alerte' }, ' · en retard')),
+    hors && h('p', { class: 'suivi-carte-sous' }, `Le statut « ${x.statut} » n’est plus dans la liste.`),
+    marque('sujet', x.id, 'suivi-marque'),
+    // Faire avancer : un bouton, jamais un glisser-déposer. Le dernier statut n'a pas de suite.
+    suivant && h('button', {
+      type: 'button', class: 'suivi-avancer', 'data-f': `avancer:${x.id}`,
+      'aria-label': `Passer « ${x.texte} » à « ${suivant.libelle} »`,
+      onclick: () => avancer(x.id),
+    }, `→ ${suivant.libelle}`));
+}
+
+/** Le sujet passe au statut suivant de la liste ; entrant dans un statut terminal, il prend la date du jour comme date de clôture. */
+function avancer(id: string): void {
+  const s = serveur;
+  const x = tousSujets().find((y) => y.id === id);
+  const statuts = s?.listes.statut_sujet ?? [];
+  const i = x ? statuts.findIndex((v) => v.cle === x.statut) : -1;
+  const suivant = i >= 0 ? statuts[i + 1] : undefined;
+  if (!s || !x || !suivant) return;
+  empiler('sujet', id, 'patch', { statut: suivant.cle, fait_le: estTerminal(s.terminaux, 'statut_sujet', suivant.cle) ? aujourdhui() : null });
+}
+
+/**
+ * Une colonne par étape de la liste etape, les prospects rangés dedans, leurs avoirs et le total par colonne.
+ * Une étape terminale est une sortie (perdu, par défaut) : elle passe en dernier, en retrait. Les prospects
+ * sans étape, ou dont l'étape a quitté la liste, ont une colonne à part au début : on ne les perd pas de vue.
+ *
+ * « Prospect » est la seule clé de liste que ce fichier écrive en dur (TYPE_PROSPECT) : type_contact n'a pas,
+ * comme les statuts et les étapes, de colonne qui dise laquelle de ses valeurs est celle-ci. Si le cabinet
+ * n'a plus de type de cette clé, on le dit au lieu d'afficher un parcours vide.
+ */
+function parcours(c: Calcul): HTMLElement {
+  const s = serveur!;
+  if (!(s.listes.type_contact ?? []).some((v) => v.cle === TYPE_PROSPECT)) {
+    return h('p', { class: 'suivi-vide' }, `Aucun type « ${TYPE_PROSPECT} » dans la liste des types de contact : le parcours n’a personne à ranger.`);
+  }
+  const etapes = s.listes.etape ?? [];
+  if (etapes.length === 0) return h('p', { class: 'suivi-vide' }, 'Aucune étape de prospection n’est définie.');
+  const aujourd = aujourdhui();
+  const prospects = portee(c).visibles.filter((x) => x.types.includes(TYPE_PROSPECT));
+  const sortie = (v: ValeurListe): boolean => estTerminal(s.terminaux, 'etape', v.cle);
+  const connues = new Set(etapes.map((v) => v.cle));
+
+  const colonne = (classe: string, id: string, titre: string, items: Contact[], hors: boolean, tag?: string): HTMLElement => {
+    const total = items.reduce((t, x) => t + (avoirsDe(x)?.cents ?? 0), 0);
+    return colonneDe(classe, id, titre,
+      [tag && h('span', { class: 'suivi-colonne-tag' }, tag), nombre(items.length), h('span', { class: 'suivi-colonne-total' }, euros(total))],
+      items.map((x) => {
+        const av = avoirsDe(x);
+        const membre = s.membres.find((m) => m.id === x.responsable_id);
+        const sous = [libelle('metier', x.metier), x.structure].filter(Boolean).join(' · ');
+        const perime = av?.portail && av.le !== null && ecartJours(av.le, aujourd) > s.seuils.arrete;
+        return h('li', { class: 'suivi-carte' },
+          h('p', { class: 'suivi-carte-texte' }, lienContact(x)),
+          sous && h('p', { class: 'suivi-carte-sous' }, sous),
+          h('p', { class: 'suivi-carte-avoirs' }, celluleAvoirs(x, av, [], perime)),
+          membre && h('p', { class: 'suivi-carte-sous' }, avatar(membre), ' ', membre.nom),
+          hors && x.etape && h('p', { class: 'suivi-carte-sous' }, `L’étape « ${x.etape} » n’est plus dans la liste.`),
+          marque('contact', x.id, 'suivi-marque'));
+      }),
+      'Aucun prospect');
+  };
+
+  const colonnes: HTMLElement[] = [];
+  const sans = prospects.filter((x) => x.etape === null || !connues.has(x.etape));
+  if (sans.length > 0) colonnes.push(colonne('hors', 'pc-hors', 'Sans étape', sans, true));
+  [...etapes.filter((v) => !sortie(v)), ...etapes.filter(sortie)].forEach((v, i) => {
+    colonnes.push(colonne(sortie(v) ? 'sortie' : '', `pc-${i}`, v.libelle, prospects.filter((x) => x.etape === v.cle), false, sortie(v) ? 'Sortie' : undefined));
+  });
+  return h('div', { class: 'suivi-colonnes', role: 'group', 'aria-label': 'Prospects par étape' }, ...colonnes);
 }
 
 // ---------------------------------------------------------------- fenêtre de saisie
@@ -778,30 +770,57 @@ function enregistrer(contact: Contact | null, initial: Valeurs, v: Valeurs, lieP
     nouveaux.push({
       id: cle, nom: v.nom, prenom: null, email: null, tel: null, metier: null, structure: null, responsable_id: null, relance: null,
       dernier_echange: null, type_echange: null, avoirs_cents: null, avoirs_le: null, apporteur_id: null, viewer_id: null,
-      archive: 0, types: [], avoirs_portail: null, ...(corps as Partial<Contact>),
+      archive: 0, etape: null, types: [], avoirs_portail: null, ...(corps as Partial<Contact>),
     });
-    empiler(cle, 'create', corps);
+    empiler('contact', cle, 'create', corps);
   } else {
-    empiler(contact.id, 'patch', corps);
+    empiler('contact', contact.id, 'patch', corps);
   }
 }
 
 function archiver(c: Contact, archive: boolean): void {
-  empiler(c.id, 'patch', { archive: archive ? 1 : 0 });
+  empiler('contact', c.id, 'patch', { archive: archive ? 1 : 0 });
   const nom = `${c.nom.toLocaleUpperCase('fr')}${c.prenom ? ` ${c.prenom}` : ''}`;
-  annoncer(`${nom} : contact ${archive ? 'archivé' : 'désarchivé'}.`, () => empiler(c.id, 'patch', { archive: archive ? 0 : 1 }));
+  annoncer(`${nom} : contact ${archive ? 'archivé' : 'désarchivé'}.`, () => empiler('contact', c.id, 'patch', { archive: archive ? 0 : 1 }));
 }
+
+/** Le rendu attend le relâchement d'un clic en cours : voir sansPerdreLeClic (commun.ts). */
+const rendre = sansPerdreLeClic(rendreMaintenant);
 
 // ---------------------------------------------------------------- démarrage
 
 function demarrer(): void {
   const racine = document.getElementById('suivi-corps');
   if (!racine) return;
+  brancher({
+    rendre,
+    rendreEtat,
+    integrer: (entite, item) => {
+      if (!serveur) return;
+      if (entite === 'contact') {
+        const i = serveur.contacts.findIndex((c) => c.id === item.id);
+        const entier = { ...(i >= 0 ? serveur.contacts[i] : {}), ...item } as Contact;
+        if (i >= 0) serveur.contacts[i] = entier;
+        else serveur.contacts.push(entier);
+        serveur.contacts.sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+      } else if (entite === 'sujet') {
+        const i = serveur.sujets.findIndex((x) => x.id === item.id);
+        const entier = { ...(i >= 0 ? serveur.sujets[i] : {}), ...item } as Sujet;
+        if (i >= 0) serveur.sujets[i] = entier;
+        else serveur.sujets.push(entier);
+      }
+    },
+    retirerProvisoire: (entite, cle) => {
+      if (entite !== 'contact') return;
+      const i = nouveaux.findIndex((c) => c.id === cle);
+      if (i >= 0) nouveaux.splice(i, 1);
+    },
+  });
   const ecran = (message: string, retour = false): void => {
     racine.replaceChildren(h('p', { class: 'suivi-vide' }, message, retour && h('button', { type: 'button', class: 'btn', onclick: () => void initial() }, 'Réessayer')));
   };
   const initial = async (): Promise<void> => {
-    if (!(await charger())) ecran(sessionPerdue ? 'Votre session a expiré : reconnectez-vous.' : 'Le suivi n’a pas pu être chargé. ', !sessionPerdue);
+    if (!(await charger())) ecran(liaison.sessionPerdue ? 'Votre session a expiré : reconnectez-vous.' : 'Le suivi n’a pas pu être chargé. ', !liaison.sessionPerdue);
   };
   void initial();
   demarrerSondage();
@@ -813,16 +832,16 @@ function demarrer(): void {
     }
   });
   window.addEventListener('online', () => {
-    reseauKO = false;
+    liaison.ko = false;
     toutRejouer();
     void sonder();
   });
   window.addEventListener('offline', () => {
-    reseauKO = true;
+    liaison.ko = true;
     rendreEtat();
   });
   window.addEventListener('beforeunload', (e) => {
-    if ([...files.values()].some((f) => f.ops.length > 0)) e.preventDefault();
+    if (ecrituresEnFile()) e.preventDefault();
   });
 }
 

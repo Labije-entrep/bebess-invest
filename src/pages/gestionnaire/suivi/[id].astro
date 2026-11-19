@@ -185,7 +185,7 @@ const visite = portail?.derniereVisite ? dateLongue(portail.derniereVisite.slice
   .fiche-statut { flex: none; min-width: 5.5rem; text-align: center; font-family: var(--mono); font-size: 0.5625rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--texte-2); background: transparent; border: 1px solid var(--filet); padding: 0.3125rem 0.5625rem; cursor: pointer; }
   .fiche-statut:hover { background: var(--marine); }
   .fiche-statut[data-statut='encours'] { color: var(--accent-clair); border-color: var(--accent); }
-  .fiche-statut[data-statut='fait'] { color: var(--positif); border-color: color-mix(in srgb, var(--positif) 45%, transparent); }
+  .fiche-statut[data-terminal] { color: var(--positif); border-color: color-mix(in srgb, var(--positif) 45%, transparent); }
   .fiche-statut.retard { color: var(--alerte); border-color: color-mix(in srgb, var(--alerte) 45%, transparent); }
   .fiche-sujet { flex: 1 1 auto; min-width: 0; font-size: 0.9375rem; }
   .fiche-sous { display: block; margin-top: 0.3125rem; font-size: 0.75rem; color: var(--texte-2); }

@@ -69,6 +69,10 @@ INSERT INTO liste_valeur (tenant_id, liste, cle, libelle, ordre, actif) VALUES
   ('tnt_demo', 'type_portefeuille', 'assurance_vie', 'Assurance-vie', 4, 1),
   ('tnt_demo', 'type_portefeuille', 'autre', 'Autre', 5, 1);
 
+-- Valeurs terminales (migration 0005) : le sujet « fait » est clos, l'étape « perdu » sort du parcours.
+UPDATE liste_valeur SET terminal = 1
+ WHERE tenant_id = 'tnt_demo' AND ((liste = 'statut_sujet' AND cle = 'fait') OR (liste = 'etape' AND cle = 'perdu'));
+
 -- Un portefeuille par viewer ; Claire en a un second, vide, pour éprouver le cas.
 INSERT INTO portefeuille (id, tenant_id, viewer_id, libelle, type, ordre, cree_le) VALUES
   ('pf_claire',   'tnt_demo', 'usr_claire', 'Patrimoine',      'personne', 0, '2023-11-01T09:00:00Z'),
