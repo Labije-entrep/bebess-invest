@@ -1,0 +1,198 @@
+---
+export const prerender = false;
+import Gestion from '../../layouts/Gestion.astro';
+import { envDe } from '../../lib/mail';
+import { actuDuJour, actusRecentes, enregistrerActu, type SaisieActu } from '../../lib/actus';
+import {
+  assurerCours, derniersCours, formaterValeur, formaterVariation, incidentsCours, jourUtc, symbolesDe, SYMBOLE_SENS,
+} from '../../lib/cours';
+import { dateCourte, dateLongue } from '../../lib/format';
+
+// Vue Actus (lot 06) : une fiche par jour. Le bloc Chiffres vient de la table cours, récupérée paresseusement
+// à l'ouverture de cette vue ; le reste est saisi à la main. Aucun texte n'est produit par l'outil.
+const { utilisateur, tenant } = Astro.locals;
+if (!utilisateur || !tenant) return Astro.redirect('/connexion');
+const env = envDe(Astro.locals);
+const db = env.DB;
+
+const dateValide = (s: string): boolean => {
+  const r = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!r) return false;
+  const x = new Date(Date.UTC(+r[1], +r[2] - 1, +r[3]));
+  return x.getUTCFullYear() === +r[1] && x.getUTCMonth() === +r[2] - 1 && x.getUTCDate() === +r[3];
+};
+// La fiche du jour : la date civile à Paris, pas celle du serveur.
+const aujourdhui = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Paris' }).format(new Date());
+const demande = Astro.url.searchParams.get('date') ?? aujourdhui;
+const date = dateValide(demande) ? demande : aujourdhui;
+
+const symboles = await symbolesDe(db, tenant.id);
+const erreurs: Record<string, string> = {};
+const v = { titre: '', resume: '', faits: '', a_dire: '', mots_cles: '', source: '', brut: '' };
+
+if (Astro.request.method === 'POST') {
+  const origine = Astro.request.headers.get('Origin');
+  if (origine && new URL(origine).host !== Astro.url.host) return new Response('Origine refusée.', { status: 403 });
+  const f = await Astro.request.formData();
+  const lire = (k: string) => String(f.get(k) ?? '').replace(/\r\n/g, '\n');
+  v.titre = lire('titre').trim();
+  v.resume = lire('resume').trim();
+  v.faits = lire('faits');
+  v.a_dire = lire('a_dire').trim();
+  v.mots_cles = lire('mots_cles').trim();
+  v.source = lire('source').trim();
+  v.brut = String(f.get('brut') ?? ''); // tel que reçu : le texte d'origine n'est pas retouché
+  const faits = v.faits.split('\n').map((x) => x.trim()).filter(Boolean);
+
+  if (!v.titre) erreurs.titre = 'Le titre est obligatoire.';
+  else if (v.titre.length > 200) erreurs.titre = '200 caractères au plus.';
+  if (v.resume.length > 5000) erreurs.resume = '5 000 caractères au plus.';
+  if (faits.length > 20 || faits.some((x) => x.length > 500)) erreurs.faits = '20 faits au plus, 500 caractères chacun.';
+  if (v.a_dire.length > 5000) erreurs.a_dire = '5 000 caractères au plus.';
+  if (v.mots_cles.length > 300) erreurs.mots_cles = '300 caractères au plus.';
+  if (v.source.length > 300) erreurs.source = '300 caractères au plus.';
+  if (v.brut.length > 50000) erreurs.brut = '50 000 caractères au plus.';
+
+  if (Object.keys(erreurs).length === 0) {
+    const saisie: SaisieActu = {
+      titre: v.titre, resume: v.resume || null, a_dire: v.a_dire || null, faits,
+      mots_cles: v.mots_cles || null, source: v.source || null, brut: v.brut || null,
+    };
+    await enregistrerActu(db, tenant.id, date, saisie, symboles);
+    return Astro.redirect(`/gestionnaire/actus?date=${date}&ok=1`, 303);
+  }
+}
+
+// Ouvrir la vue déclenche, au plus une fois par symbole et par jour, la récupération des cours manquants.
+// Elle ne lève jamais : un échec écrit dans incident, et la page affiche la dernière valeur connue.
+await assurerCours(db, env, tenant.id, symboles);
+
+const existante = await actuDuJour(db, tenant.id, date);
+if (existante && Astro.request.method !== 'POST') {
+  v.titre = existante.titre;
+  v.resume = existante.resume ?? '';
+  v.faits = existante.faits.join('\n');
+  v.a_dire = existante.a_dire ?? '';
+  v.mots_cles = existante.mots_cles ?? '';
+  v.source = existante.source ?? '';
+  v.brut = existante.brut ?? '';
+}
+// Fiche enregistrée : les chiffres figés à son enregistrement. Sinon : la dernière valeur connue de chaque symbole.
+const chiffres = existante ? existante.chiffres : await derniersCours(db, symboles, date);
+const manquants = symboles.filter((s) => !chiffres.some((c) => c.cle === s.cle));
+const cleAbsente = !env.COURS_API_KEY?.trim();
+const incidents = (await incidentsCours(db, tenant.id, jourUtc())).filter((i) => i.quoi !== 'cours_cle');
+const recentes = await actusRecentes(db, tenant.id);
+const ok = Astro.url.searchParams.get('ok') === '1';
+---
+<Gestion titre="Actus">
+  <span class="etiquette">Veille</span>
+  <h1>Actus du {dateLongue(date)}</h1>
+  {ok && <p class="info">Enregistré.</p>}
+
+  {cleAbsente && (
+    <p class="info alerte" role="alert">
+      La clé d’API des cours n’est pas configurée (COURS_API_KEY) : aucun cours n’est récupéré. Les dernières valeurs connues s’affichent, avec leur date.
+    </p>
+  )}
+  {incidents.length > 0 && (
+    <div class="info alerte" role="alert">
+      <p>Des cours n’ont pas pu être récupérés aujourd’hui ; les dernières valeurs connues s’affichent, avec leur date.</p>
+      <ul>{incidents.map((i) => <li>{i.detail ?? i.quoi}</li>)}</ul>
+    </div>
+  )}
+
+  <section aria-labelledby="actu-chiffres">
+    <h2 id="actu-chiffres">Chiffres</h2>
+    {existante
+      ? <p class="aide">Chiffres figés à l’enregistrement de la fiche ; ils ne se modifient pas.</p>
+      : <p class="aide">Chiffres issus des cours, non modifiables. Ils seront figés à l’enregistrement de la fiche.</p>}
+    <div class="defile">
+      <table class="table actu-chiffres">
+        <thead><tr><th>Indicateur</th><th class="num">Valeur</th><th class="num">Variation</th><th>Séance</th></tr></thead>
+        <tbody>
+          {chiffres.map((c) => (
+            <tr>
+              <td>{c.libelle}</td>
+              <td class="num actu-valeur">{formaterValeur(c.valeur)}</td>
+              <td class="num">{c.sens ? <span aria-label={c.sens}>{SYMBOLE_SENS[c.sens]}</span> : null} {formaterVariation(c.variation_bp)}</td>
+              <td class={c.date < date ? 'actu-ancien' : undefined}>{dateCourte(c.date)}</td>
+            </tr>
+          ))}
+          {!existante && manquants.map((s) => (
+            <tr><td>{s.libelle}</td><td class="num">—</td><td class="num">—</td><td class="actu-ancien">aucun cours connu</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <form method="post" class="actu-form">
+    <h2>Fiche</h2>
+    <div class="groupe">
+      <label class="etiquette" for="titre">Titre</label>
+      <input class="champ" id="titre" name="titre" type="text" value={v.titre} maxlength="200" required />
+      {erreurs.titre && <p class="erreur">{erreurs.titre}</p>}
+    </div>
+    <div class="groupe">
+      <label class="etiquette" for="resume">Résumé</label>
+      <textarea class="champ" id="resume" name="resume" rows="4">{v.resume}</textarea>
+      {erreurs.resume && <p class="erreur">{erreurs.resume}</p>}
+    </div>
+    <div class="groupe">
+      <label class="etiquette" for="faits">Faits marquants (un par ligne)</label>
+      <textarea class="champ" id="faits" name="faits" rows="5">{v.faits}</textarea>
+      {erreurs.faits && <p class="erreur">{erreurs.faits}</p>}
+    </div>
+    <div class="groupe">
+      <label class="etiquette" for="a_dire">À dire aux clients</label>
+      <textarea class="champ" id="a_dire" name="a_dire" rows="5">{v.a_dire}</textarea>
+      {erreurs.a_dire && <p class="erreur">{erreurs.a_dire}</p>}
+    </div>
+    <div class="grille">
+      <div class="groupe">
+        <label class="etiquette" for="mots_cles">Mots-clés (séparés par des virgules)</label>
+        <input class="champ" id="mots_cles" name="mots_cles" type="text" value={v.mots_cles} />
+        {erreurs.mots_cles && <p class="erreur">{erreurs.mots_cles}</p>}
+      </div>
+      <div class="groupe">
+        <label class="etiquette" for="source">Source</label>
+        <input class="champ" id="source" name="source" type="text" value={v.source} />
+        {erreurs.source && <p class="erreur">{erreurs.source}</p>}
+      </div>
+    </div>
+    <div class="groupe">
+      <label class="etiquette" for="brut">Texte d’origine collé</label>
+      <p class="aide">Conservé tel quel, pour mémoire ; il n’est ni analysé ni repris ailleurs.</p>
+      <textarea class="champ" id="brut" name="brut" rows="8">{v.brut}</textarea>
+      {erreurs.brut && <p class="erreur">{erreurs.brut}</p>}
+    </div>
+    <div class="actions">
+      <button class="btn-plein" type="submit">Enregistrer</button>
+      <button class="btn" type="button" disabled title="Pas encore disponible">Publier vers le portail</button>
+    </div>
+  </form>
+
+  <section aria-labelledby="actu-liste">
+    <h2 id="actu-liste">Fiches enregistrées</h2>
+    {recentes.length === 0 ? <p class="aide">Aucune fiche pour le moment.</p> : (
+      <ul class="actu-liste">
+        {recentes.map((a) => (
+          <li><a href={`/gestionnaire/actus?date=${a.date}`} aria-current={a.date === date ? 'page' : undefined}>{dateCourte(a.date)}</a> · {a.titre}</li>
+        ))}
+      </ul>
+    )}
+    {date !== aujourdhui && <p class="aide"><a href="/gestionnaire/actus">Fiche du jour</a></p>}
+  </section>
+</Gestion>
+
+<style is:global>
+  .actu-chiffres .actu-valeur { font-family: var(--serif); font-size: 1.25rem; font-weight: 300; }
+  .actu-ancien { color: var(--texte-2); }
+  .actu-form { margin-top: var(--espace-l); }
+  .actu-form textarea.champ { resize: vertical; }
+  .actu-form .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+  .actu-liste { margin: 0; padding: 0; list-style: none; }
+  .actu-liste li { padding: var(--espace-xs) 0; border-bottom: 1px solid var(--filet); font-size: 0.875rem; color: var(--texte-2); }
+  .actu-liste a[aria-current='page'] { color: var(--accent-clair); }
+</style>

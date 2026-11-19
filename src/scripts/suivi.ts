@@ -9,7 +9,7 @@
 
 import {
   api, brancher, empiler, ecrituresEnFile, estTerminal, fileExistante, h, liaison, marque, reseauRetabli,
-  sansPerdreLeClic, toutesOps, toutRejouer,
+  sansPerdreLeClic, toutesOps, toutRejouer, TYPE_PROSPECT,
   type Corps, type Enfant, type Attribut,
 } from './commun';
 
@@ -70,8 +70,8 @@ let vue: Vue = vueRetenue();
 let archives = false;
 
 const INTERVALLE_MS = 10000;
-/** Le parcours range les contacts de ce type. Seule clé de liste que ce fichier écrive en dur : voir parcours(). */
-const TYPE_PROSPECT = 'prospect';
+/** Les sujets clos ne restent dans le kanban que ce nombre de jours (date de clôture). */
+const JOURS_CLOS = 30;
 
 /** La vue choisie la dernière fois ; le stockage du navigateur peut manquer ou refuser, la liste est alors la vue. */
 function vueRetenue(): Vue {
@@ -518,10 +518,23 @@ function lienContact(x: Contact): HTMLElement {
     : h('a', { class: 'suivi-nom', href: `/gestionnaire/suivi/${encodeURIComponent(x.id)}` }, nomComplet(x));
 }
 
-function colonneDe(classe: string, id: string, titre: string, entete: Enfant[], cartes: HTMLElement[], vide: string): HTMLElement {
+function colonneDe(classe: string, id: string, titre: string, entete: Enfant[], cartes: HTMLElement[], vide: string, pied?: string): HTMLElement {
   return h('section', { class: `suivi-colonne ${classe}`.trim(), 'aria-labelledby': id },
     h('header', {}, h('h2', { id }, titre), ...entete),
-    cartes.length ? h('ul', { class: 'suivi-cartes' }, ...cartes) : h('p', { class: 'suivi-colonne-vide' }, vide));
+    cartes.length ? h('ul', { class: 'suivi-cartes' }, ...cartes) : h('p', { class: 'suivi-colonne-vide' }, vide),
+    pied && h('p', { class: 'suivi-colonne-pied' }, pied));
+}
+
+/**
+ * Une colonne de sujets clos n'affiche que ceux clos depuis JOURS_CLOS jours ; les autres ne sont que comptés.
+ * Date de clôture : `fait_le`, à défaut la date de création (un sujet clos ne l'a pas été avant d'être créé :
+ * créé récemment, il a été clos récemment). Sans l'une ni l'autre qui soit récente, il compte parmi les anciens.
+ */
+function bornerClos(items: Sujet[]): { recents: Sujet[]; pied: string | undefined } {
+  const limite = ajouterJours(aujourdhui(), -JOURS_CLOS);
+  const recents = items.filter((x) => (x.fait_le ?? x.cree_le.slice(0, 10)) >= limite);
+  const n = items.length - recents.length;
+  return { recents, pied: n > 0 ? `${n} sujet${n > 1 ? 's' : ''} clos plus ancien${n > 1 ? 's' : ''}` : undefined };
 }
 
 const nombre = (n: number): HTMLElement => h('span', { class: 'suivi-colonne-n' }, String(n));
@@ -546,14 +559,20 @@ function kanban(c: Calcul): HTMLElement {
     });
   const connus = new Set(statuts.map((v) => v.cle));
   const colonnes = statuts.map((v, i) => {
-    const items = sujets.filter((x) => x.statut === v.cle);
+    const terminale = estTerminal(s.terminaux, 'statut_sujet', v.cle);
+    const tous = sujets.filter((x) => x.statut === v.cle);
+    const { recents, pied } = terminale ? bornerClos(tous) : { recents: tous, pied: undefined };
     const suivant = statuts[i + 1] ?? null;
-    return colonneDe(estTerminal(s.terminaux, 'statut_sujet', v.cle) ? 'terminale' : '', `kb-${i}`, v.libelle,
-      [nombre(items.length)], items.map((x) => carteSujet(x, parId.get(x.contact_id)!, suivant, false)), 'Aucun sujet');
+    return colonneDe(terminale ? 'terminale' : '', `kb-${i}`, v.libelle,
+      [nombre(recents.length)], recents.map((x) => carteSujet(x, parId.get(x.contact_id)!, suivant, false)), 'Aucun sujet', pied);
   });
+  // Un statut retiré de la liste mais terminal clôt encore ses sujets : même bornage que sa colonne d'origine.
   const hors = sujets.filter((x) => !connus.has(x.statut));
   if (hors.length > 0) {
-    colonnes.push(colonneDe('hors', 'kb-hors', 'Statut hors liste', [nombre(hors.length)], hors.map((x) => carteSujet(x, parId.get(x.contact_id)!, null, true)), ''));
+    const ouverts = hors.filter((x) => !estClos(x));
+    const { recents, pied } = bornerClos(hors.filter(estClos));
+    const visibles = hors.filter((x) => ouverts.includes(x) || recents.includes(x));
+    colonnes.push(colonneDe('hors', 'kb-hors', 'Statut hors liste', [nombre(visibles.length)], visibles.map((x) => carteSujet(x, parId.get(x.contact_id)!, null, true)), '', pied));
   }
   if (colonnes.length === 0) return h('p', { class: 'suivi-vide' }, 'Aucun statut n’est défini pour les sujets.');
   return h('div', { class: 'suivi-colonnes', role: 'group', 'aria-label': 'Sujets par statut' }, ...colonnes);
@@ -593,7 +612,7 @@ function avancer(id: string): void {
  * Une étape terminale est une sortie (perdu, par défaut) : elle passe en dernier, en retrait. Les prospects
  * sans étape, ou dont l'étape a quitté la liste, ont une colonne à part au début : on ne les perd pas de vue.
  *
- * « Prospect » est la seule clé de liste que ce fichier écrive en dur (TYPE_PROSPECT) : type_contact n'a pas,
+ * « Prospect » est la seule clé de liste écrite en dur (TYPE_PROSPECT, commun.ts) : type_contact n'a pas,
  * comme les statuts et les étapes, de colonne qui dise laquelle de ses valeurs est celle-ci. Si le cabinet
  * n'a plus de type de cette clé, on le dit au lieu d'afficher un parcours vide.
  */
@@ -609,6 +628,16 @@ function parcours(c: Calcul): HTMLElement {
   const sortie = (v: ValeurListe): boolean => estTerminal(s.terminaux, 'etape', v.cle);
   const connues = new Set(etapes.map((v) => v.cle));
 
+  // Étape suivante : la suivante parmi les étapes qui ne sont pas des sorties, dans l'ordre de la liste. Un
+  // prospect sans étape (ou d'une étape retirée) entre à la première ; la dernière étape et les sorties n'ont
+  // pas de suite : sortir du parcours se décide sur la fiche.
+  const enAvant = etapes.filter((v) => !sortie(v));
+  const suivantDe = (x: Contact): ValeurListe | null => {
+    if (x.etape === null || !connues.has(x.etape)) return enAvant[0] ?? null;
+    const i = enAvant.findIndex((v) => v.cle === x.etape);
+    return i >= 0 ? (enAvant[i + 1] ?? null) : null;
+  };
+
   const colonne = (classe: string, id: string, titre: string, items: Contact[], hors: boolean, tag?: string): HTMLElement => {
     const total = items.reduce((t, x) => t + (avoirsDe(x)?.cents ?? 0), 0);
     return colonneDe(classe, id, titre,
@@ -618,13 +647,20 @@ function parcours(c: Calcul): HTMLElement {
         const membre = s.membres.find((m) => m.id === x.responsable_id);
         const sous = [libelle('metier', x.metier), x.structure].filter(Boolean).join(' · ');
         const perime = av?.portail && av.le !== null && ecartJours(av.le, aujourd) > s.seuils.arrete;
+        const suivant = suivantDe(x);
         return h('li', { class: 'suivi-carte' },
           h('p', { class: 'suivi-carte-texte' }, lienContact(x)),
           sous && h('p', { class: 'suivi-carte-sous' }, sous),
           h('p', { class: 'suivi-carte-avoirs' }, celluleAvoirs(x, av, [], perime)),
           membre && h('p', { class: 'suivi-carte-sous' }, avatar(membre), ' ', membre.nom),
           hors && x.etape && h('p', { class: 'suivi-carte-sous' }, `L’étape « ${x.etape} » n’est plus dans la liste.`),
-          marque('contact', x.id, 'suivi-marque'));
+          marque('contact', x.id, 'suivi-marque'),
+          // Faire avancer : un bouton, jamais un glisser-déposer.
+          suivant && h('button', {
+            type: 'button', class: 'suivi-avancer', 'data-f': `etape:${x.id}`,
+            'aria-label': `Passer ${nomComplet(x)} à « ${suivant.libelle} »`,
+            onclick: () => { empiler('contact', x.id, 'patch', { etape: suivant.cle }); },
+          }, `→ ${suivant.libelle}`));
       }),
       'Aucun prospect');
   };
