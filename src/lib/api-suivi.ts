@@ -281,6 +281,20 @@ export async function creer(ctx: APIContext, entite: Entite): Promise<Response> 
         a.db.prepare('INSERT INTO contact_type (tenant_id, contact_id, type) VALUES (?, ?, ?)').bind(a.tenant.id, id, ty),
       ),
     ];
+    if (entite.table === 'echange') {
+      // Le contact porte son dernier échange : un échange plus ancien que celui déjà noté ne le remplace pas,
+      // un échange du même jour le remplace. Même transaction que l'insertion.
+      const dateEchange = vals[cols.indexOf('date')];
+      const typeEchange = vals[cols.indexOf('type')];
+      requetes.push(
+        a.db
+          .prepare(
+            `UPDATE contact SET dernier_echange = ?, type_echange = ?, maj_le = ?
+              WHERE id = ? AND tenant_id = ? AND (dernier_echange IS NULL OR dernier_echange <= ?)`,
+          )
+          .bind(dateEchange, typeEchange, maintenantIso, vals[cols.indexOf('contact_id')], a.tenant.id, dateEchange),
+      );
+    }
     await a.db.batch(requetes);
     const version = await incrementerVersion(a.db, a.tenant.id);
     return json({ item: await lire(a, entite, id), version }, 201);

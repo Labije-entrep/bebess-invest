@@ -1,11 +1,12 @@
 ---
+import type { HTMLAttributes } from 'astro/types';
 // Champ de formulaire : étiquette, message d'erreur au-dessus du champ, aide.
 interface Props {
   nom: string;
   label: string;
   valeur?: string;
   erreur?: string;
-  type?: string;
+  type?: HTMLAttributes<'input'>['type'];
   aide?: string;
   lignes?: number;
   inputmode?: 'decimal' | 'numeric' | 'text';

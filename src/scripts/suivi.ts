@@ -586,8 +586,13 @@ function liste(c: Calcul): HTMLElement {
     tbody.append(
       h('tr', { class: x.archive ? 'archive' : undefined },
         h('td', {},
-          h('button', { type: 'button', class: 'suivi-nom', 'data-f': `nom:${x.id}`, onclick: (e) => ouvrirDialogue(x.id, e.currentTarget as HTMLElement) },
-            `${x.nom.toLocaleUpperCase('fr')}${x.prenom ? ` ${x.prenom}` : ''}`),
+          // Contact enregistré : le nom ouvre sa fiche (lot 04). Contact pas encore créé : pas de fiche, on garde la fenêtre.
+          x.id.startsWith('tmp-')
+            ? h('button', { type: 'button', class: 'suivi-nom', 'data-f': `nom:${x.id}`, onclick: (e) => ouvrirDialogue(x.id, e.currentTarget as HTMLElement) },
+              `${x.nom.toLocaleUpperCase('fr')}${x.prenom ? ` ${x.prenom}` : ''}`)
+            : h('a', { class: 'suivi-nom', 'data-f': `nom:${x.id}`, href: `/gestionnaire/suivi/${encodeURIComponent(x.id)}` },
+              `${x.nom.toLocaleUpperCase('fr')}${x.prenom ? ` ${x.prenom}` : ''}`),
+          !x.id.startsWith('tmp-') && h('button', { type: 'button', class: 'suivi-modifier', 'data-f': `modifier:${x.id}`, 'aria-label': `Modifier ${x.nom}`, onclick: (e) => ouvrirDialogue(x.id, e.currentTarget as HTMLElement) }, 'Modifier'),
           sous && h('span', { class: 'suivi-sous' }, sous),
           x.archive === 1 && h('span', { class: 'suivi-marque' }, 'Archivé'),
           op && marque(f!, op),
