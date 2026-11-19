@@ -1,10 +1,13 @@
 // Envoi d'e-mails. Deux pilotes, choisis par MAIL_DRIVER : "console" ou "scaleway". Aucun autre.
 
 import type { Base } from './db';
+import type { Bucket } from './fichiers';
 
 /** Liaisons et variables du Worker (wrangler.toml, secrets, .dev.vars). */
 export interface Env {
   DB: Base;
+  /** Bucket R2 des fichiers (lot 08). Jamais d'URL publique : tout passe par les routes du Worker. */
+  FICHIERS: Bucket;
   MAIL_DRIVER?: string;
   SCW_SECRET_KEY?: string;
   SCW_PROJECT_ID?: string;

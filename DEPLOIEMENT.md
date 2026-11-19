@@ -5,6 +5,7 @@ Prérequis : Node 20, un compte Cloudflare (`npx wrangler login`).
 ```bash
 npm install
 npx wrangler d1 create bebess                                  # reporter database_id dans wrangler.toml
+npx wrangler r2 bucket create bebess-fichiers                  # fichiers : ne PAS activer le domaine public ni r2.dev
 npx wrangler d1 migrations apply bebess --local                # migrations, base locale
 npx wrangler d1 execute bebess --local --file=seeds/demo.sql   # jeu de démonstration, local seulement
 npm run dev                                                    # http://localhost:4321

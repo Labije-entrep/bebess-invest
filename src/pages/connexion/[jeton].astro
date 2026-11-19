@@ -11,6 +11,9 @@ const tenant = Astro.locals.tenant;
 const jeton = Astro.params.jeton ?? '';
 
 let invalide = false;
+// ?refus=1 : le POST a été refusé avant la page (src/worker.ts). Le jeton n'a pas été consommé,
+// mais ce navigateur n'a pas pu confirmer : on explique et on propose un nouveau lien.
+const refuse = Astro.request.method === 'GET' && Astro.url.searchParams.get('refus') === '1';
 if (Astro.request.method === 'POST') {
   const utilisateur = tenant ? await consommerJeton(DB, Astro.cookies, jeton, tenant.id) : null;
   if (utilisateur) {
@@ -23,12 +26,20 @@ if (Astro.request.method === 'POST') {
 ---
 
 {
-  invalide ? (
+  refuse ? (
+    <Connexion titre="Connexion non confirmée">
+      <h1>La connexion n'a pas pu être confirmée</h1>
+      <p>Votre navigateur n'a pas pu valider ce lien. Rien n'a été modifié : demandez-en un nouveau.</p>
+      <p>
+        <a class="btn" href="/connexion">Demander un nouveau lien</a>
+      </p>
+    </Connexion>
+  ) : invalide ? (
     <Connexion titre="Lien expiré">
       <h1>Ce lien n'est plus valable</h1>
-      <p>Il a expiré ou a déjà été utilisé. Demandez-en un nouveau.</p>
+      <p>Il a expiré, a déjà été utilisé ou n'est pas reconnu. Demandez-en un nouveau.</p>
       <p>
-        <a class="btn" href="/connexion">Retour à la connexion</a>
+        <a class="btn" href="/connexion">Demander un nouveau lien</a>
       </p>
     </Connexion>
   ) : (

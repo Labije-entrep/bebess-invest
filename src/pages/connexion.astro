@@ -32,10 +32,13 @@ if (Astro.request.method === 'POST') {
 }
 
 const envoye = Astro.url.searchParams.get('envoye') === '1';
+// ?refus=1 : le POST a été rejeté avant la page (src/worker.ts). Rien n'a été envoyé.
+const refuse = Astro.url.searchParams.get('refus') === '1';
 ---
 
 <Connexion titre="Connexion">
   <h1>Connexion</h1>
+  {refuse && <p role="alert">Votre demande n'a pas pu être envoyée depuis ce navigateur. Réessayez ci-dessous.</p>}
   {
     envoye ? (
       <p role="status">

@@ -13,7 +13,10 @@ const { titre } = Astro.props;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
-    <meta name="referrer" content="no-referrer" />
+    <!-- same-origin, pas no-referrer : sous no-referrer, le navigateur envoie « Origin: null » avec tout POST de
+         formulaire et le contrôle d'origine d'Astro rejette la confirmation (403). same-origin n'envoie
+         aucun Referer vers l'extérieur : le jeton de l'URL ne fuit toujours pas. -->
+    <meta name="referrer" content="same-origin" />
     <title>{titre} · BeBess'Invest</title>
   </head>
   <body>

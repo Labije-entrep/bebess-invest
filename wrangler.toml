@@ -6,3 +6,9 @@ pages_build_output_dir = "dist"
 binding = "DB"
 database_name = "bebess"
 database_id = "A_REMPLIR"
+
+# Fichiers (lot 08) : rapports des viewers, logos. Aucun domaine public ni accès r2.dev sur ce bucket :
+# les objets ne sortent que par les routes du Worker, après contrôle de session, de locataire et de rôle.
+[[r2_buckets]]
+binding = "FICHIERS"
+bucket_name = "bebess-fichiers"

@@ -3,6 +3,7 @@ export const prerender = false;
 import Gestion from '../../layouts/Gestion.astro';
 import { contexte, viewersResumes, dernierImport, seuilArrete } from '../../lib/gestion';
 import { euros, dateCourte } from '../../lib/format';
+import { urlLogoCabinet, MESSAGES_REFUS } from '../../lib/fichiers';
 
 const c = contexte(Astro);
 if (c instanceof Response) return c;
@@ -17,10 +18,14 @@ const actifs = viewers.filter((v) => v.actif === 1).length;
 const arretes = viewers.map((v) => v.arrete).filter((d): d is string => !!d).sort();
 const derniere = arretes.length ? arretes[arretes.length - 1] : null;
 const importe = Astro.url.searchParams.get('importe') === '1';
+const logo = await urlLogoCabinet(c.db, c.tenant.id);
+const retourLogo = Astro.url.searchParams.get('logo') ?? '';
+const MSG_LOGO: Record<string, string> = { ok: 'Logo du cabinet enregistré.', retire: 'Logo du cabinet retiré.', ...MESSAGES_REFUS };
 ---
 <Gestion titre="Tableau de bord">
   <h1>Tableau de bord</h1>
   {importe && <p class="info">Import enregistré.</p>}
+  {MSG_LOGO[retourLogo] && <p class={retourLogo in MESSAGES_REFUS ? 'info alerte' : 'info'} role="status">{MSG_LOGO[retourLogo]}</p>}
   {enRetard.length > 0 && (
     <div class="info alerte" role="status">
       <strong>{enRetard.length} viewer{enRetard.length > 1 ? 's' : ''} à mettre à jour</strong> : arrêté de plus de 45 jours ou absent.
@@ -73,5 +78,31 @@ const importe = Astro.url.searchParams.get('importe') === '1';
   <div class="actions">
     <a class="btn-plein" href="/gestionnaire/viewers/nouveau">Nouveau viewer</a>
     <a class="btn" href="/gestionnaire/import">Importer un CSV</a>
+  </div>
+
+  <hr class="filet" />
+  <span class="etiquette">Logo du cabinet</span>
+  <p class="aide">Affiché sur le site et dans l'espace des clients. PNG, JPEG ou WebP, 512 Ko au plus.</p>
+  {logo && <p><img src={logo} alt="Logo actuel" height="48" /></p>}
+  <form method="post" action="/gestionnaire/fichiers/logo-cabinet" enctype="multipart/form-data" class="actions">
+    <input name="fichier" type="file" accept="image/png,image/jpeg,image/webp" required aria-label="Fichier du logo" />
+    <button class="btn" type="submit">Enregistrer le logo</button>
+  </form>
+  {logo && (
+    <form method="post" action="/gestionnaire/fichiers/logo-cabinet" enctype="multipart/form-data" class="actions">
+      <input type="hidden" name="action" value="retirer" />
+      <button class="btn" type="submit">Retirer le logo</button>
+    </form>
+  )}
+
+  <hr class="filet" />
+  <span class="etiquette">Exports</span>
+  <p class="aide">Fichiers CSV (séparateur point-virgule, UTF-8, ouverts par Excel). Montants en centimes, dates ISO 8601.</p>
+  <div class="actions">
+    <a class="btn" href="/gestionnaire/export/contacts" download>Contacts</a>
+    <a class="btn" href="/gestionnaire/export/sujets" download>Sujets</a>
+    <a class="btn" href="/gestionnaire/export/echanges" download>Échanges</a>
+    <a class="btn" href="/gestionnaire/export/actus" download>Actus</a>
+    <a class="btn" href="/gestionnaire/export/locataire" download>Tout le cabinet (fin de contrat)</a>
   </div>
 </Gestion>

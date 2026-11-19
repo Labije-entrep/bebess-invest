@@ -155,14 +155,31 @@ doublon éprouvée à six clics simultanés, note de marché créée mot pour mo
 trouvé et corrigé au passage : sans normalisation CRLF en LF, le texte changeait à la
 publication. Cloisonnement 404 dans les deux sens.
 
-## À élucider avant le pilote — la confirmation de connexion
+## Lot 08 — 19 novembre
 
-Un 403 « Cross-site POST » est survenu une fois sur `/connexion/<jeton>` depuis le
-navigateur du volet, là où le même POST passe en curl (curl n'envoie pas d'en-tête
-`Origin`). Astro 5 active `security.checkOrigin` par défaut et rejette la requête
-**avant** que la page ne s'exécute : la page « Ce lien n'est plus valable », qui
-existe et est bien faite, n'est donc jamais rendue. L'utilisateur voit un 403 nu,
-sans explication ni moyen de continuer.
+**403 sur la connexion : élucidé et corrigé.** Cause mesurée dans Chromium (156) : `Connexion.astro` posait
+`<meta name="referrer" content="no-referrer">`. Sous cette politique, le navigateur envoie `Origin: null` avec tout POST
+de formulaire (spec Fetch), et `checkOrigin` d'Astro, qui exige `Origin == url.origin`, répond 403. Valeurs relevées sur
+`/connexion` comme sur `/connexion/<jeton>` : `Origin: null`, `Host: localhost:8788`, pas de `Referer` ; curl passait parce
+qu'il envoyait le bon `Origin`. Correctif : `same-origin` (aucun `Referer` vers l'extérieur, le jeton de l'URL ne fuit
+toujours pas, mais le POST porte son vrai `Origin`). Après correctif : dix parcours complets, dix 303, `Origin:
+http://localhost:8788` = `Host`. **`checkOrigin` n'est pas touché.**
 
-C'est le chemin le plus critique du produit : s'il échoue, personne ne se connecte.
-À traiter au lot 08 avant le reste.
+Astro place `checkOrigin` **avant** `src/middleware.ts` (`unshift` dans `base-pipeline.js`) : le journal du middleware ne
+voit donc jamais un rejet. `src/worker.ts` (`workerEntryPoint`) est le seul endroit qui les voit ; il journalise (jeton
+masqué) et renvoie 303 vers `?refus=1` (page d'explication + « Demander un nouveau lien ») pour tout POST en échec sur
+`/connexion` et `/connexion/<jeton>`. Le jeton n'est pas consommé par un POST rejeté. Sous `astro dev`, ce point d'entrée
+n'est pas exécuté : le filet ne se voit que sur un build (`wrangler pages dev dist`).
+
+**Fichiers (R2)** : binding `FICHIERS`, `src/lib/fichiers.ts`. Aucune URL publique de R2 ; clés `<tenant>/…` ; type lu sur
+les premiers octets (PDF, PNG, JPEG, WebP ; SVG refusé) ; 10 Mo (rapports), 512 Ko (logos). Documents : 404 hors
+locataire, hors viewer, sans session. Le logo du cabinet (`/logo-cabinet`) est la seule route sans session : c'est une
+marque affichée sur le site public ; le locataire vient de l'hôte.
+
+**Exports** : suivi (4 CSV), un contact seul (un fichier : fiche, notes, sujets, échanges), locataire entier (ZIP de 25 CSV,
+sans session ni jeton ; le contenu des PDF n'y est pas). CSV `;`, UTF-8 avec BOM, cellules en `= + - @` préfixées d'une
+apostrophe.
+
+- **Non vérifié** : R2 réel (seulement l'émulation locale) ; Safari et Firefox (seul Chromium a été mesuré : ils appliquent
+  la même règle de la spec) ; `Content-Length` absent (corps chunked) : la taille est alors contrôlée après lecture.
+- **À créer côté Cloudflare** : `wrangler r2 bucket create bebess-fichiers`, sans domaine public ni `r2.dev`.

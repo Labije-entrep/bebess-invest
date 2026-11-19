@@ -1,11 +1,14 @@
 ---
 import '../styles/app.css';
+import { envDe } from '../lib/mail';
+import { urlLogoCabinet } from '../lib/fichiers';
 
 interface Props {
   titre: string;
 }
 const { titre } = Astro.props;
 const nom = Astro.locals.utilisateur?.nom ?? '';
+const logo = Astro.locals.tenant ? await urlLogoCabinet(envDe(Astro.locals).DB, Astro.locals.tenant.id) : null;
 const liens: [string, string][] = [
   ['/espace', 'Tableau de bord'],
   ['/espace/portefeuille', 'Portefeuille'],
@@ -33,6 +36,7 @@ const suite = choix && /^[\w-]{1,64}$/.test(choix) ? `?p=${encodeURIComponent(ch
         <nav id="esp-menu" class="esp-menu" aria-label="Navigation">
           {liens.map(([href, libelle]) => <a href={`${href}${suite}`} aria-current={ici === href ? 'page' : undefined}>{libelle}</a>)}
         </nav>
+        {logo && <img class="logo-cabinet" src={logo} alt={Astro.locals.tenant?.nom ?? ''} height="32" />}
         <div class="esp-utilisateur">
           <span>{nom}</span>
           <form method="post" action="/deconnexion"><button type="submit" class="esp-sortie">Déconnexion</button></form>
@@ -51,6 +55,7 @@ const suite = choix && /^[\w-]{1,64}$/.test(choix) ? `?p=${encodeURIComponent(ch
 </html>
 
 <style is:global>
+  .logo-cabinet { height: 2rem; width: auto; }
   .esp .etiquette, .esp .table th { font-family: var(--mono); font-weight: 400; }
   .esp h1 { font-weight: 300; font-size: 2rem; }
   .esp h2 { font-weight: 300; font-size: 1.4rem; }

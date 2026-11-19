@@ -8,7 +8,11 @@ const SITE = 'https://www.bebess-invest.fr';
 
 export default defineConfig({
   output: 'server',
-  adapter: cloudflare({ platformProxy: { enabled: true } }),
+  adapter: cloudflare({
+    platformProxy: { enabled: true },
+    // Voir src/worker.ts : seul point d'entrée qui voit les POST rejetés par le contrôle d'origine.
+    workerEntryPoint: { path: 'src/worker.ts' },
+  }),
   site: SITE,
   trailingSlash: 'never',
   build: { format: 'file' },

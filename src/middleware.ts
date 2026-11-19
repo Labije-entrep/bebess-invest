@@ -48,7 +48,9 @@ const GARDES: { prefixe: string; roles: Role[] }[] = [
 
 // Jamais en cache partagé : pages authentifiées, et pages qui lisent ou posent le cookie.
 // L'API du suivi n'est pas une « garde » : elle répond 401/403 en JSON au lieu de rediriger (src/lib/api-suivi.ts).
-const PRIVES = [...GARDES.map((g) => g.prefixe), '/connexion', '/deconnexion', '/api/suivi'];
+// /fichiers : rapports et logos de contact, servis après contrôle de session, de locataire et de rôle.
+// Le logo du cabinet (/logo-cabinet) est public par nature : il s'affiche sur le site, sans session.
+const PRIVES = [...GARDES.map((g) => g.prefixe), '/connexion', '/deconnexion', '/api/suivi', '/fichiers'];
 
 function sous(chemin: string, prefixe: string): boolean {
   return chemin === prefixe || chemin.startsWith(`${prefixe}/`);
@@ -86,6 +88,16 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   const reponse = refuse ? context.redirect('/connexion') : await next();
   const resultat = new Response(reponse.body, reponse);
+
+  // Mesure (lot 08) : POST de confirmation de connexion. Ne voit que les requêtes que le contrôle
+  // d'origine d'Astro a laissées passer ; les rejets sont journalisés par src/worker.ts.
+  // Le jeton, qui est un secret, n'est jamais écrit.
+  if (context.request.method === 'POST' && chemin.startsWith('/connexion/')) {
+    console.log(
+      `[connexion] POST confirmation : statut=${resultat.status} origin=${context.request.headers.get('origin')} ` +
+        `host=${context.request.headers.get('host')} url=${context.url.origin}/connexion/<jeton>`,
+    );
+  }
 
   if (prive) {
     // Toujours, quel que soit le statut : une page authentifiée ne doit jamais être mise en cache.
