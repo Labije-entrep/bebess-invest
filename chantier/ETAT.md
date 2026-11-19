@@ -22,7 +22,7 @@ Un lot dont le prérequis n'est pas coché ne démarre pas.
 | 02 | API JSON et synchronisation | — | fait | 42a9443 |
 | 03 | Module de suivi : la liste des contacts | — | fait | 1357619 |
 | 04 | Module de suivi : la fiche | — | fait | 78eedcf |
-| 05 | Kanban et parcours | — | fait | (commit du lot) |
+| 05 | Kanban et parcours | — | fait | cb8fdce |
 | 06 | Actus, bibliothèque, cours | — | à faire | |
 | 07 | La passerelle | P2 | à faire | |
 | 08 | Fichiers et exports | — | à faire | |
