@@ -62,7 +62,8 @@ export interface VueAbonnement {
 export const LIBELLES_ROLE: Record<string, string> = { associe: 'Associé', collaborateur: 'Collaborateur', lecture: 'Lecture' };
 
 function formuleEnMots(c: Contrat): string {
-  const modules = [c.module_pilotage ? 'module Pilotage' : '', c.module_site ? 'module Site vitrine' : ''].filter(Boolean);
+  const jusqua = (fin: string | null): string => (fin ? ` (jusqu’au ${dateCourte(fin)})` : '');
+  const modules = [c.module_pilotage ? `module Pilotage${jusqua(c.module_pilotage_fin_le)}` : '', c.module_site ? `module Site vitrine${jusqua(c.module_site_fin_le)}` : ''].filter(Boolean);
   if (modules.length === 0) return 'Socle seul';
   return `Socle${modules.length === 1 ? ' et ' : ', '}${modules.join(' et ')}`;
 }
@@ -103,7 +104,13 @@ export async function vueAbonnement(db: Base, tenantId: string, jour: string): P
   }
 
   // Le calcul est celui du bon (tarif.ts) sur les accès d'aujourd'hui : ce que le prochain bon dirait, pas une estimation.
-  const bon = calculerBon({ ...contrat, acces_facturables: compteurs.facturables, parrainages_valides: valides });
+  // Un module dont la désactivation est programmée part à la prochaine date anniversaire : le prochain bon ne le porte plus.
+  const bon = calculerBon({
+    ...contrat,
+    module_pilotage: contrat.module_pilotage_fin_le ? 0 : contrat.module_pilotage,
+    module_site: contrat.module_site_fin_le ? 0 : contrat.module_site,
+    acces_facturables: compteurs.facturables, parrainages_valides: valides,
+  });
   const mensuel = contrat.periodicite === 'mensuelle';
   const annuel = mensuel ? bon.total_ht * 12 : bon.total_ht;
   const mois = mensuel ? bon.total_ht : Math.floor((bon.total_ht + 6) / 12);

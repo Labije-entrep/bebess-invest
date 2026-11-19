@@ -86,7 +86,7 @@ const oui = (n: number) => (n ? 'oui' : 'non');
                 <td class="num">{eurosPrecis(c.prix_pilotage)}</td>
                 <td class="num">{eurosPrecis(c.prix_site)}</td>
                 <td class="num">{eurosPrecis(c.prix_acces_sup)}</td>
-                <td>Pilotage : {oui(c.module_pilotage)}<br />Site : {oui(c.module_site)}</td>
+                <td>Pilotage : {oui(c.module_pilotage)}{c.module_pilotage_fin_le && <> <span class="aide">(jusqu’au {dateCourte(c.module_pilotage_fin_le)})</span></>}<br />Site : {oui(c.module_site)}{c.module_site_fin_le && <> <span class="aide">(jusqu’au {dateCourte(c.module_site_fin_le)})</span></>}</td>
                 <td class="num">{c.acces_inclus}</td>
                 <td>
                   Parrainage : {tauxEnTexte(c.remise_parrainage_taux)}<br />

@@ -187,11 +187,20 @@ export async function genererBons(ctx: Contexte): Promise<RapportBons> {
     const acces = await accesFacturables(ctx.db, c.tenant_id);
     const valides = await parrainagesValides(ctx.db, c.tenant_id);
     await recalculerRemiseParrainage(ctx.db, c, valides);
-    const calc: Calcul = {
-      ...calculerBon({ ...c, acces_facturables: acces, parrainages_valides: valides }),
-      remise_motif: motifRemise({ parrainages_valides: valides, remise_commerciale_taux: c.remise_commerciale_taux, motif_commercial: c.remise_motif }),
-    };
+    const motif = motifRemise({ parrainages_valides: valides, remise_commerciale_taux: c.remise_commerciale_taux, motif_commercial: c.remise_motif });
     for (const p of periodes) {
+      // Une désactivation prend effet à la date anniversaire : le drapeau reste à 1 jusque-là, mais une période qui commence à cette date
+      // (ou après) ne porte plus le module. Le bon est posé 30 jours avant : c'est lui qui doit déjà le savoir.
+      const sortant = (fin: string | null): boolean => fin !== null && fin <= p.debut;
+      const calc: Calcul = {
+        ...calculerBon({
+          ...c,
+          module_pilotage: sortant(c.module_pilotage_fin_le) ? 0 : c.module_pilotage,
+          module_site: sortant(c.module_site_fin_le) ? 0 : c.module_site,
+          acces_facturables: acces, parrainages_valides: valides,
+        }),
+        remise_motif: motif,
+      };
       const etat = await poserBon(ctx.db, c, 'periode', p, calc, acces);
       if (etat === 'cree') rapport.crees++;
       if (etat === 'actualise') rapport.actualises++;

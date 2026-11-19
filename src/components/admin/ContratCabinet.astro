@@ -30,8 +30,11 @@ const gele = c ? tarifGele(c, jour) : false;
 const fondateur = c ? estFondateur(c) : false;
 const parrainage = tauxParrainage(parrainagesValides);
 const effectif = c ? tauxRemise(parrainage, c.remise_commerciale_taux) : 0;
-const MODULES: { code: 'pilotage' | 'site'; nom: string; actif: boolean }[] = c
-  ? [{ code: 'pilotage', nom: 'Pilotage', actif: !!c.module_pilotage }, { code: 'site', nom: 'Site vitrine', actif: !!c.module_site }]
+const MODULES: { code: 'pilotage' | 'site'; nom: string; actif: boolean; fin: string | null }[] = c
+  ? [
+      { code: 'pilotage', nom: 'Pilotage', actif: !!c.module_pilotage, fin: c.module_pilotage_fin_le },
+      { code: 'site', nom: 'Site vitrine', actif: !!c.module_site, fin: c.module_site_fin_le },
+    ]
   : [];
 ---
 <h2 id="contrat">Contrat</h2>
@@ -100,13 +103,18 @@ const MODULES: { code: 'pilotage' | 'site'; nom: string; actif: boolean }[] = c
             return (
               <tr>
                 <td>{m.nom}</td>
-                <td>{m.actif ? 'Actif' : 'Inactif'}</td>
+                <td>
+                  {m.actif ? 'Actif' : 'Inactif'}
+                  {m.actif && m.fin && <><br /><span class="aide">désactivation : effet le {dateCourte(m.fin)}{m.fin <= jour ? ' (bascule au prochain traitement quotidien)' : ''}</span></>}
+                </td>
                 <td class="num">{eurosPrecis(prix)}</td>
                 <td>
-                  <form method="post" action={`${base}/contrat`} style="display:inline">
-                    <input type="hidden" name="action" value="module" /><input type="hidden" name="module" value={m.code} /><input type="hidden" name="actif" value={m.actif ? '0' : '1'} />
-                    <button class="btn" type="submit">{m.actif ? 'Désactiver' : 'Activer'}</button>
-                  </form>
+                  {!(m.actif && m.fin && m.fin <= jour) && (
+                    <form method="post" action={`${base}/contrat`} style="display:inline">
+                      <input type="hidden" name="action" value="module" /><input type="hidden" name="module" value={m.code} /><input type="hidden" name="actif" value={m.actif && !m.fin ? '0' : '1'} />
+                      <button class="btn" type="submit">{m.actif ? (m.fin ? 'Annuler la désactivation' : 'Désactiver') : 'Activer'}</button>
+                    </form>
+                  )}
                   {!m.actif && (
                     <p class="aide">
                       {apercu
@@ -123,7 +131,8 @@ const MODULES: { code: 'pilotage' | 'site'; nom: string; actif: boolean }[] = c
         </tbody>
       </table>
     </div>
-    <p class="aide"><strong>La désactivation ne prend effet qu’à la date anniversaire.</strong> La période déjà facturée va à son terme, sans remboursement ; le module disparaît du bon de la période suivante.</p>
+    <p class="aide"><strong>La désactivation ne prend effet qu’à la date anniversaire.</strong> Elle enregistre une intention : le module reste actif, et ses écrans ouverts, jusqu’à la date indiquée, qui s’annule d’ici là. La période déjà facturée va à son terme, sans remboursement ; le module disparaît du bon de la période suivante. Les données du module restent en base : un module repris plus tard retrouve tout.</p>
+    <p class="aide">Un module inactif ferme ses écrans pour le cabinet (Pilotage : le module de suivi, qui répond 404 ; Site vitrine : les pages publiques, dont la racine mène à la connexion). Le socle est toujours ouvert.</p>
 
     <hr class="filet" />
     <h3>3. Remises</h3>
@@ -136,7 +145,7 @@ const MODULES: { code: 'pilotage' | 'site'; nom: string; actif: boolean }[] = c
       </div>
       <div class="groupe">
         <label class="etiquette" for="remise_motif">Motif — obligatoire dès que la remise n’est pas nulle</label>
-        <input class="champ" id="remise_motif" name="remise_motif" maxlength="500" value={fondateur ? '' : (c.remise_motif ?? '')} />
+        <input class="champ" id="remise_motif" name="remise_motif" maxlength="500" value={c.remise_motif ?? ''} />
       </div>
       <div class="groupe">
         <label class="etiquette" for="remise_revue_le">Date de revue — obligatoire dès que la remise n’est pas nulle</label>
@@ -179,23 +188,30 @@ const MODULES: { code: 'pilotage' | 'site'; nom: string; actif: boolean }[] = c
       <button class="btn" type="submit">Poser la mise en production</button>
     </form>
     <p class="aide">
-      DPA : {c.dpa_signe_le ? `signé le ${dateCourte(c.dpa_signe_le)}` : 'non signé'}. Mise en production : {c.date_mise_en_production ? `le ${dateCourte(c.date_mise_en_production)}, fin d’essai le ${dateCourte(c.date_fin_essai ?? c.date_mise_en_production)}` : 'pas encore posée'}.
+      DPA : {c.dpa_signe_le ? `signé le ${dateCourte(c.dpa_signe_le)}` : 'non signé'}. Contrat : {c.date_signature ? `signé le ${dateCourte(c.date_signature)}` : 'date de signature non renseignée (elle se pose avec le statut fondateur)'}. Mise en production : {c.date_mise_en_production ? `le ${dateCourte(c.date_mise_en_production)}, fin d’essai le ${dateCourte(c.date_fin_essai ?? c.date_mise_en_production)}` : 'pas encore posée'}.
     </p>
 
     <hr class="filet" />
     <h3>6. Statut fondateur</h3>
     <p class="aide">
       <strong>{fondateurs.fondateurs}</strong> cabinet{fondateurs.fondateurs > 1 ? 's' : ''} sur {fondateurs.contrats} porte{fondateurs.fondateurs > 1 ? 'nt' : ''} le statut fondateur. Il doit rester exceptionnel.
-      {fondateur && <> Ce cabinet le porte.</>}
+      {fondateur && c.fondateur_le && <> Ce cabinet le porte depuis le {dateCourte(c.fondateur_le)} : « {MOTIF_FONDATEUR} ».</>}
     </p>
     <form method="post" action={`${base}/contrat`} class="actions">
       <input type="hidden" name="action" value="fondateur" />
-      <label class="etiquette" for="signe_le">Signé le</label>
-      <input class="champ" id="signe_le" name="signe_le" type="date" required value={c.dpa_signe_le ?? c.debut_le ?? jour} style="max-width: 14rem" />
+      <label class="etiquette" for="signe_le">Contrat signé le</label>
+      <input class="champ" id="signe_le" name="signe_le" type="date" value={c.date_signature ?? ''} style="max-width: 14rem" />
       <button class="btn" type="submit">Poser le statut fondateur</button>
     </form>
     <p class="aide">
-      En une seule écriture : frais d’installation à 0, tarif gelé jusqu’à la signature + {MOIS_GEL_FONDATEUR} mois, motif « {MOTIF_FONDATEUR} ». Aucun pourcentage de remise. Le gel ne se raccourcira jamais : vérifiez la date de signature avant de poser. Le statut ne se cumule pas avec une remise commerciale.
+      En une seule écriture : frais d’installation à 0, date de signature enregistrée, tarif gelé jusqu’à la signature + {MOIS_GEL_FONDATEUR} mois. La date de signature est exigée, jamais déduite du DPA ni du début : sans elle, la pose est refusée. Aucun pourcentage de remise n’est posé, et une remise commerciale reste possible, avant comme après. Le gel ne se raccourcira jamais : vérifiez la date de signature avant de poser.
     </p>
+    {fondateur && (
+      <form method="post" action={`${base}/contrat`} class="actions">
+        <input type="hidden" name="action" value="fondateur_retirer" />
+        <button class="btn" type="submit">Retirer le statut fondateur</button>
+      </form>
+    )}
+    {fondateur && <p class="aide">Retirer le statut est journalisé. Il ne lève pas le gel du tarif déjà posé : un gel ne se raccourcit jamais.</p>}
   </>
 )}
