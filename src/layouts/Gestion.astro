@@ -1,7 +1,7 @@
 ---
 import '../styles/app.css';
 import { CABINET_ECRIT, REGLAGES, aLeRole } from '../lib/roles';
-import { MENU_PILOTAGE } from '../lib/modules';
+import { MENU_PILOTAGE, MENU_SITE_CONTENU } from '../lib/modules';
 
 interface Props {
   titre: string;
@@ -36,9 +36,10 @@ const role = Astro.locals.utilisateur?.role;
 const ECRITURE = ['/gestionnaire/viewers/nouveau', '/gestionnaire/import'];
 // Le module de suivi n'a pas été acheté : ses entrées n'apparaissent pas (ses routes répondent 404, middleware.ts).
 const pilotage = Astro.locals.modules?.pilotage !== false;
+const site = Astro.locals.modules?.site !== false;
 const visible = ([href]: [string, string]) =>
   (!ECRITURE.includes(href) || aLeRole(role, CABINET_ECRIT)) && (href !== '/gestionnaire/reglages' || aLeRole(role, REGLAGES)) &&
-  (pilotage || !MENU_PILOTAGE.includes(href));
+  (pilotage || !MENU_PILOTAGE.includes(href)) && (site || !MENU_SITE_CONTENU.includes(href));
 const liens = admin ? liensAdmin : liensGestionnaire.filter(visible);
 const ici = Astro.url.pathname.replace(/\/$/, '');
 ---
