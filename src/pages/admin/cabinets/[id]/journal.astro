@@ -1,0 +1,43 @@
+---
+export const prerender = false;
+import Gestion from '../../../../layouts/Gestion.astro';
+import { accesCabinet, cabinetDe, gardeAdmin } from '../../../../lib/admin';
+import { journalDe } from '../../../../lib/journal';
+import { dateCourte } from '../../../../lib/format';
+
+// Le journal d'événements d'un cabinet (lot 13) : du plus récent au plus ancien, en lecture seule. Il ne porte que des identifiants, des
+// types, des dates et des montants du contrat, l'adresse et le rôle d'un accès du personnel ; jamais une donnée d'un client final.
+const g = gardeAdmin(Astro);
+if (g instanceof Response) return g;
+const cabinet = await cabinetDe(g.db, Astro.params.id ?? '');
+if (!cabinet) return new Response('Introuvable.', { status: 404 });
+await accesCabinet(g, cabinet.id, `GET ${Astro.url.pathname}`);
+
+const LIMITE = 300;
+const lignes = await journalDe(g.db, cabinet.id, LIMITE);
+const horodate = (iso: string) => `${dateCourte(iso)} ${iso.slice(11, 19)} UTC`;
+const detail = (brut: string): string => (brut === '{}' ? '—' : brut);
+---
+<Gestion titre={`Journal · ${cabinet.nom}`} espace="admin">
+  <p class="aide"><a href={`/admin/cabinets/${encodeURIComponent(cabinet.id)}`}>← {cabinet.nom}</a></p>
+  <h1>Journal d’événements</h1>
+  {lignes.length === 0 ? <p class="aide">Aucun événement.</p> : (
+    <div class="defile">
+      <table class="table">
+        <thead><tr><th>Date</th><th>Événement</th><th>Acteur</th><th>Cible</th><th>Détail</th></tr></thead>
+        <tbody>
+          {lignes.map((e) => (
+            <tr>
+              <td>{horodate(e.cree_le)}</td>
+              <td><code>{e.type}</code></td>
+              <td>{e.acteur_role ?? 'système'}{e.acteur_id && <><br /><span class="aide">{e.acteur_id}</span></>}</td>
+              <td>{e.cible_type ? <>{e.cible_type}<br /><span class="aide">{e.cible_id}</span></> : '—'}</td>
+              <td><code>{detail(e.detail)}</code></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+  <p class="aide">Les {LIMITE} derniers événements. Le journal est en écriture seule : rien ne s’y modifie ni ne s’y efface.</p>
+</Gestion>

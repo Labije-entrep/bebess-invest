@@ -106,6 +106,17 @@ export function cleLogoCabinet(tenantId: string, type: string): string {
   return `${tenantId}/cabinet/logo-${crypto.randomUUID()}.${EXTENSIONS[type] ?? 'bin'}`;
 }
 
+/**
+ * Le PDF d'une facture (lot 13). Rangé HORS du préfixe du locataire : `factures/<locataire>/<bon>.pdf`. La purge du J+75 vide
+ * `<locataire>/` ; le bon d'un cabinet purgé reste (contrat, facture d'installation), son PDF aussi.
+ */
+export function cleFacture(tenantId: string, bonId: string): string {
+  if (!ID.test(tenantId) || !ID.test(bonId)) throw new Error('identifiant invalide');
+  return `factures/${tenantId}/${bonId}.pdf`;
+}
+export const cleDeFacture = (cle: string, tenantId: string): boolean =>
+  tenantId.length > 0 && cle.startsWith(`factures/${tenantId}/`) && !cle.includes('..');
+
 /** Une clé appartient au locataire si, et seulement si, elle commence par son identifiant suivi de « / ». */
 export const cleDuTenant = (cle: string, tenantId: string): boolean =>
   tenantId.length > 0 && cle.startsWith(`${tenantId}/`) && !cle.includes('..');
@@ -133,6 +144,16 @@ export interface OptionsServir {
 /** Sert un objet du locataire, ou 404. Le type annoncé est celui qui a été vérifié au dépôt. */
 export async function servir(bucket: Bucket, tenantId: string, cle: string | null, o: OptionsServir): Promise<Response> {
   if (!cle || !cleDuTenant(cle, tenantId)) return new Response('Introuvable.', { status: 404 });
+  return servirObjet(bucket, cle, o);
+}
+
+/** Sert la facture d'un locataire (`factures/<locataire>/…`), ou 404. Même réponse que `servir`, autre préfixe. */
+export async function servirFacture(bucket: Bucket, tenantId: string, cle: string | null, o: OptionsServir): Promise<Response> {
+  if (!cle || !cleDeFacture(cle, tenantId)) return new Response('Introuvable.', { status: 404 });
+  return servirObjet(bucket, cle, o);
+}
+
+async function servirObjet(bucket: Bucket, cle: string, o: OptionsServir): Promise<Response> {
   const objet = await bucket.get(cle);
   if (!objet) return new Response('Introuvable.', { status: 404 });
   const type = objet.httpMetadata?.contentType ?? 'application/octet-stream';

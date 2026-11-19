@@ -18,8 +18,13 @@ export const CABINET_LIT: Role[] = [...CABINET_ECRIT, 'lecture'];
 /** Les routes que l'éditeur partageait déjà avec le gestionnaire (API du suivi, fichiers, passerelle) : il y reste admis. */
 export const GESTION_ECRIT: Role[] = [...CABINET_ECRIT, 'editeur'];
 export const GESTION_LIT: Role[] = [...CABINET_LIT, 'editeur'];
-/** Les réglages et, au lot 13, la page d'abonnement : associe seul, et le support qui se comporte comme lui. */
+/** Les réglages : l'associé, et le support qui se comporte comme lui. */
 export const REGLAGES: Role[] = ['associe', 'support_editeur'];
+/**
+ * « Mon abonnement » (lot 13) : l'associé SEUL, support de l'éditeur compris. La page est dans les réglages, dont la garde laisse
+ * entrer le support : c'est la page qui le refuse, par un 404. Le support n'y est jamais compté ni affiché non plus.
+ */
+export const ABONNEMENT: Role[] = ['associe'];
 
 /**
  * L'export COMPLET d'un cabinet : la situation patrimoniale de tous ses clients en un fichier. L'associé le tire depuis son espace ;

@@ -90,6 +90,48 @@ export const tauxRemise = (parrainageTaux: number, commercialeTaux: number): num
 /** Montant × taux (centièmes de point), au centime, le demi-centime montant. */
 const appliquer = (montant: number, taux: number): number => Math.floor((montant * taux + 5000) / 10000);
 
+// ---------------------------------------------------------------- la TVA et le motif de la remise (lot 13)
+
+/**
+ * Le taux de TVA du bon, en centièmes de point : 20 %. Il est posé sur le bon à sa création (colonne `tva_taux`) et ne bouge plus une
+ * fois le bon émis ; un changement de taux légal se fait ICI, et ne touche que les bons suivants.
+ */
+export const TVA_TAUX = 2000;
+
+/** La TVA d'un total hors taxes, au centime (le demi-centime monte), et le total toutes taxes comprises. */
+export const calculerTva = (total_ht: number, taux: number = TVA_TAUX): { tva_taux: number; tva_montant: number; total_ttc: number } => {
+  const tva_montant = appliquer(total_ht, taux);
+  return { tva_taux: taux, tva_montant, total_ttc: total_ht + tva_montant };
+};
+
+/** 2500 → « 25 % », 1250 → « 12,5 % ». */
+export const tauxEnTexte = (taux: number): string => `${String(taux / 100).replace('.', ',')} %`;
+
+export interface EntreeMotif {
+  parrainages_valides: number;
+  remise_commerciale_taux: number;
+  /** Le texte libre du contrat (`remise_motif`) : il accompagne la remise commerciale, jamais celle de parrainage. */
+  motif_commercial: string | null;
+}
+
+/**
+ * Le motif de la remise EN CLAIR, tel que le bon et la page d'abonnement l'affichent : la part de parrainage (avec le nombre de
+ * parrainages validés), la part commerciale (avec le motif du contrat), et la mention du plafond quand les deux le dépassent.
+ * Rien n'est généré : des gabarits fixes. Null quand il n'y a aucune remise.
+ */
+export function motifRemise(e: EntreeMotif): string | null {
+  const valides = Math.max(0, Math.floor(e.parrainages_valides));
+  const parrainage = tauxParrainage(valides);
+  const commerciale = Math.max(0, e.remise_commerciale_taux);
+  const parties: string[] = [];
+  if (parrainage > 0) parties.push(`parrainage : ${valides} parrainage${valides > 1 ? 's' : ''} validé${valides > 1 ? 's' : ''}, ${tauxEnTexte(parrainage)}`);
+  if (commerciale > 0) parties.push(`remise commerciale de ${tauxEnTexte(commerciale)} : ${e.motif_commercial?.trim() || 'motif non renseigné'}`);
+  if (parties.length === 0) return null;
+  if (parrainage + commerciale > REMISE_MAX) parties.push(`remise plafonnée à ${tauxEnTexte(REMISE_MAX)}`);
+  const t = parties.join(' ; ');
+  return t[0].toUpperCase() + t.slice(1);
+}
+
 const unitePourPeriodicite = (p: Periodicite, prix: number): number => (p === 'mensuelle' ? prixMensuel(prix) : prix);
 const moisDePeriodicite = (p: Periodicite): number => (p === 'mensuelle' ? 1 : 12);
 

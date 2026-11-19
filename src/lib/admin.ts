@@ -15,6 +15,7 @@ import { joursOuRepli, REPLI } from './suivi';
 import { creerMailer, envDe, type Env } from './mail';
 import { requetesListesDefaut } from './listes-defaut';
 import { noterIncident } from './incidents';
+import { lireIdentite, MESSAGE_SIREN_PRIS, sirenPris } from './identite';
 import { THEMES, THEME_DEFAUT } from './themes';
 
 // ---------------------------------------------------------------- garde
@@ -120,6 +121,11 @@ export function accesCabinet(g: GardeAdmin, tenantId: string, route: string): Pr
   return journaliserAccesEditeur(g.db, tenantId, { id: g.utilisateur.id, role: g.utilisateur.role }, route);
 }
 
+/** Même chose pour une page de la console qui parle de plusieurs cabinets (bons, contrats, parrainages) : un accès par cabinet affiché. */
+export async function accesCabinets(g: GardeAdmin, tenantIds: Iterable<string>, route: string): Promise<void> {
+  for (const id of new Set(tenantIds)) await accesCabinet(g, id, route);
+}
+
 // ---------------------------------------------------------------- créer un cabinet
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -204,6 +210,10 @@ export async function creerCabinet(db: Base, f: FormData, acteur: Acteur): Promi
   // Une adresse n'est unique qu'au sein d'un cabinet : le cabinet est neuf, rien ne peut s'y heurter.
   if (!EMAIL.test(gEmail)) erreurs.gestionnaire_email = 'Adresse e-mail invalide.';
   if (!THEMES.some((t) => t.id === theme)) erreurs.theme = 'Thème inconnu.';
+  // L'identité de facturation (lot 13). Le SIREN est facultatif, mais un SIREN saisi doit être juste : neuf chiffres, clé de Luhn.
+  const identite = lireIdentite(f);
+  Object.assign(erreurs, identite.erreurs);
+  if (identite.valeurs.siren && !identite.erreurs.siren && (await sirenPris(db, identite.valeurs.siren))) erreurs.siren = MESSAGE_SIREN_PRIS;
   if (Object.keys(erreurs).length || !hote) return { erreurs };
 
   const id = `tnt_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
@@ -214,7 +224,9 @@ export async function creerCabinet(db: Base, f: FormData, acteur: Acteur): Promi
   const etatSupport: EtatSupport = !support ? 'non_configure' : support === gEmail ? 'adresse_prise' : 'cree';
   const sId = crypto.randomUUID();
   const requetes: Requete[] = [
-    db.prepare('INSERT INTO tenant (id, nom, domaine, cree_le) VALUES (?, ?, ?, ?)').bind(id, nom, hote, now),
+    db
+      .prepare('INSERT INTO tenant (id, nom, domaine, cree_le, siren, adresse_facturation, contact_facturation) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, nom, hote, now, identite.valeurs.siren || null, identite.valeurs.adresse_facturation || null, identite.valeurs.contact_facturation || null),
     db
       .prepare("INSERT INTO domaine (hote, tenant_id, principal, valide_le, statut, declare_le, verifie_le) VALUES (?, ?, 1, ?, 'actif', ?, ?)")
       .bind(hote, id, now, now, now),
@@ -237,8 +249,8 @@ export async function creerCabinet(db: Base, f: FormData, acteur: Acteur): Promi
   try {
     await db.batch(requetes);
   } catch {
-    // Nom d'hôte pris entre la vérification et l'écriture : rien n'a été écrit.
-    return { erreurs: { general: 'Le cabinet n’a pas été créé : le nom d’hôte vient d’être pris. Rien n’a été écrit.' } };
+    // Nom d'hôte ou SIREN pris entre la vérification et l'écriture : rien n'a été écrit.
+    return { erreurs: { general: 'Le cabinet n’a pas été créé : le nom d’hôte ou le SIREN vient d’être pris. Rien n’a été écrit.' } };
   }
   return { id, hote, nom, gestionnaire: { id: gId, nom: gNom, email: gEmail }, support: etatSupport };
 }
@@ -369,7 +381,8 @@ export type ResultatAction = { ok: boolean; code: CodeAction };
 
 export type CodeAction =
   | 'valide' | 'en_cours' | 'declare_sans_jeton' | 'retire' | 'cloudflare' | 'hote_invalide' | 'hote_pris' | 'domaine_inconnu'
-  | 'principal' | 'retrait_sans_jeton' | 'suspendu' | 'leve' | 'motif' | 'cabinet_inconnu' | 'editeur' | 'deja_suspendu' | 'pas_suspendu';
+  | 'principal' | 'retrait_sans_jeton' | 'suspendu' | 'leve' | 'motif' | 'cabinet_inconnu' | 'editeur' | 'deja_suspendu' | 'pas_suspendu'
+  | 'identite' | 'identite_inchangee' | 'siren_invalide' | 'siren_pris';
 
 export const MESSAGES_ACTION: Record<CodeAction, string> = {
   valide: 'Domaine validé par Cloudflare : il ouvre le cabinet.',
@@ -389,6 +402,10 @@ export const MESSAGES_ACTION: Record<CodeAction, string> = {
   editeur: 'Ce cabinet héberge un compte éditeur : il ne se suspend pas.',
   deja_suspendu: 'Ce cabinet est déjà suspendu.',
   pas_suspendu: 'Ce cabinet n’est pas suspendu.',
+  identite: 'Identité de facturation enregistrée.',
+  identite_inchangee: 'Rien à modifier : l’identité de facturation est déjà celle-ci.',
+  siren_invalide: 'SIREN invalide : neuf chiffres dont le dernier est une clé de contrôle (Luhn). Rien n’a été enregistré.',
+  siren_pris: MESSAGE_SIREN_PRIS,
 };
 
 const ok = (code: CodeAction): ResultatAction => ({ ok: true, code });

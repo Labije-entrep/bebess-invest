@@ -5,6 +5,8 @@ import { accesCabinet, cabinetDe, configCloudflare, domainesDe, gardeAdmin, MESS
 import { accesDuCabinet } from '../../../lib/acces';
 import { incidents, libelleIncident } from '../../../lib/incidents';
 import { dateCourte } from '../../../lib/format';
+import { identiteFacturation, identiteManquante, LIBELLES_IDENTITE } from '../../../lib/identite';
+import { afficherSiren } from '../../../lib/siren';
 
 const g = gardeAdmin(Astro);
 if (g instanceof Response) return g;
@@ -14,12 +16,14 @@ const cabinet = await cabinetDe(g.db, id);
 if (!cabinet) return new Response('Introuvable.', { status: 404 });
 await accesCabinet(g, cabinet.id, `GET ${Astro.url.pathname}`);
 
-const [domaines, acces, suspensions, recents] = await Promise.all([
+const [domaines, acces, suspensions, recents, identite] = await Promise.all([
   domainesDe(g.db, cabinet.id),
   accesDuCabinet(g.db, cabinet.id),
   suspensionsDe(g.db, cabinet.id),
   incidents(g.db, { tenantId: cabinet.id }, 5),
+  identiteFacturation(g.db, cabinet.id),
 ]);
+const manque = identite ? identiteManquante(identite) : [];
 const cf = configCloudflare(g.env);
 const base = `/admin/cabinets/${encodeURIComponent(cabinet.id)}`;
 const q = Astro.url.searchParams;
@@ -73,6 +77,30 @@ const horodate = (iso: string) => `${dateCourte(iso)} à ${iso.slice(11, 16)} UT
     </div>
   )}
   <p class="aide">Associés, collaborateurs et lecture. Le compte de support de l’éditeur n’est jamais compté ni affiché ici.</p>
+
+  <hr class="filet" />
+  <h2>Facturation</h2>
+  {manque.length > 0 && (
+    <p class="info alerte" role="status">Identité de facturation incomplète : {manque.map((m) => LIBELLES_IDENTITE[m]).join(', ')} {manque.length > 1 ? 'manquent' : 'manque'}. Le bon à facturer le signale et ne s’émet pas sans confirmation.</p>
+  )}
+  <p class="aide">La raison sociale est le nom du cabinet : {cabinet.nom}. Le SIREN, l’adresse et le contact figurent sur chaque bon à facturer ; ils survivent à la suppression du J+75, avec la raison sociale.</p>
+  <form method="post" action={`${base}/facturation`} style="max-width: 32rem">
+    <div class="groupe">
+      <label class="etiquette" for="siren">SIREN</label>
+      <input class="champ" id="siren" name="siren" inputmode="numeric" maxlength="40" value={identite?.siren ? afficherSiren(identite.siren) : ''} />
+      <p class="aide">Neuf chiffres, avec ou sans espaces. La clé de contrôle est vérifiée : un SIREN invalide est refusé.</p>
+    </div>
+    <div class="groupe">
+      <label class="etiquette" for="adresse_facturation">Adresse de facturation</label>
+      <textarea class="champ" id="adresse_facturation" name="adresse_facturation" rows="3" maxlength="400">{identite?.adresse_facturation ?? ''}</textarea>
+    </div>
+    <div class="groupe">
+      <label class="etiquette" for="contact_facturation">Contact de facturation</label>
+      <input class="champ" id="contact_facturation" name="contact_facturation" maxlength="200" value={identite?.contact_facturation ?? ''} />
+    </div>
+    <div class="actions"><button class="btn" type="submit">Enregistrer l’identité de facturation</button></div>
+  </form>
+  <p class="aide"><a href="/admin/facturation">Bons, contrats, remises et parrainages</a> · <a href={`${base}/journal`}>Journal d’événements de ce cabinet</a></p>
 
   <hr class="filet" />
   <h2>Domaines</h2>
