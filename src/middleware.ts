@@ -86,7 +86,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const role = context.locals.utilisateur?.role;
   const refuse = garde !== undefined && (role === undefined || !garde.roles.includes(role));
 
-  const reponse = refuse ? context.redirect('/connexion') : await next();
+  // La console de l'éditeur : sans session, la connexion ; avec la session d'un autre rôle (un gestionnaire, un viewer),
+  // un refus net, jamais une redirection vers une page qui l'accueillerait ailleurs.
+  const refusAdmin = refuse && garde?.prefixe === '/admin' && role !== undefined;
+  const reponse = refusAdmin
+    ? new Response('Accès refusé.', { status: 403 })
+    : refuse
+      ? context.redirect('/connexion')
+      : await next();
   const resultat = new Response(reponse.body, reponse);
 
   // Mesure (lot 08) : POST de confirmation de connexion. Ne voit que les requêtes que le contrôle

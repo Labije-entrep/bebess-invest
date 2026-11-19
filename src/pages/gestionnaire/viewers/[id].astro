@@ -90,12 +90,6 @@ const MSG_RAPPORTS: Record<string, string> = {
   portefeuille: 'Portefeuille inconnu pour ce viewer, ou archivé : choisissez un portefeuille actif, ou tout le dossier.',
 };
 const erreurRapport = MSG_RAPPORTS[p.get('erreur') ?? ''] ?? null;
-/** L'entité qu'un rapport vise : le portefeuille (avec la mention « archivé »), ou tout le dossier. */
-const entiteDe = (id: string | null): string => {
-  if (!id) return 'Tout le dossier';
-  const x = portefeuilles.find((y) => y.id === id);
-  return x ? `${x.libelle}${x.archive ? ' (archivé)' : ''}` : 'Portefeuille retiré';
-};
 const sansClos = onglet === 'mouvements' && (await clesMarqueesDe(db, tenant.id, 'statut_mouvement', MARQUEUR.CLOS)).length === 0;
 const mouvements = onglet === 'mouvements' ? await mouvementsDuViewer(db, viewer.id) : [];
 const ecarts = onglet === 'cibles' ? ecartAllocation(lignes, cibles) : [];
@@ -119,6 +113,7 @@ let compteur = 0;
   {p.get('ok') === '1' && <p class="info">Enregistré.</p>}
   {p.get('ok') === 'document' && <p class="info" role="status">Rapport déposé : le viewer peut le télécharger.</p>}
   {p.get('ok') === 'supprime' && <p class="info" role="status">Rapport retiré.</p>}
+  {p.get('ok') === 'rattache' && <p class="info" role="status">Rapport rattaché : le fichier n’a pas été touché.</p>}
   {erreurRapport && <p class="info alerte" role="alert">{erreurRapport}</p>}
   {erreurs.general && <p class="info alerte">{erreurs.general}</p>}
 
@@ -602,7 +597,18 @@ let compteur = 0;
                   <td>{dateCourte(d.date)}</td>
                   <td>{d.cle_fichier ? <a href={`/fichiers/document/${encodeURIComponent(d.id)}`}>{d.titre}</a> : d.titre}</td>
                   <td>{CATEGORIES_DOC.find(([k]) => k === d.categorie)?.[1] ?? d.categorie}</td>
-                  <td>{entiteDe(d.portefeuille_id)}</td>
+                  <td>
+                    <form method="post" action={`/gestionnaire/fichiers/rattacher/${encodeURIComponent(d.id)}`} class="actions" style="margin: 0">
+                      <select class="champ" name="portefeuille_id" aria-label={`Portefeuille concerné par « ${d.titre} »`} style="min-width: 10rem">
+                        <option value="" selected={!d.portefeuille_id}>Tout le dossier</option>
+                        {/* Le portefeuille actuel reste proposé même archivé, pour que la liste dise la vérité ; les autres archivés ne le sont pas. */}
+                        {portefeuilles.filter((x) => !x.archive || x.id === d.portefeuille_id).map((x) => (
+                          <option value={x.id} selected={x.id === d.portefeuille_id}>{x.libelle}{x.archive ? ' (archivé)' : ''}</option>
+                        ))}
+                      </select>
+                      <button class="btn" type="submit">Rattacher</button>
+                    </form>
+                  </td>
                   <td class="num">
                     <form method="post" action={`/gestionnaire/fichiers/supprimer/${encodeURIComponent(d.id)}`}><button class="btn" type="submit">Retirer</button></form>
                   </td>

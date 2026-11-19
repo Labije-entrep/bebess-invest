@@ -1,0 +1,65 @@
+---
+export const prerender = false;
+import Gestion from '../../layouts/Gestion.astro';
+import { cabinets, gardeAdmin } from '../../lib/admin';
+import { seuilArrete } from '../../lib/gestion';
+import { dateCourte } from '../../lib/format';
+
+const g = gardeAdmin(Astro);
+if (g instanceof Response) return g;
+
+const liste = await cabinets(g.db);
+// Un arrêté de plus de 45 jours (le seuil par défaut du produit) ou absent : le cabinet n'a plus rien mis à jour.
+const seuil = seuilArrete();
+const aSurveiller = (c: (typeof liste)[number]) => !c.suspendu_le && (!c.dernier_arrete || c.dernier_arrete < seuil);
+const suspendus = liste.filter((c) => c.suspendu_le).length;
+const viewers = liste.reduce((s, c) => s + c.viewers, 0);
+const contacts = liste.reduce((s, c) => s + c.contacts, 0);
+const cree = Astro.url.searchParams.get('cree') === '1';
+---
+<Gestion titre="Cabinets" espace="admin">
+  <h1>Cabinets</h1>
+  {cree && <p class="info" role="status">Cabinet créé.</p>}
+
+  <div class="kpis">
+    <div class="kpi"><span class="etiquette">Cabinets</span><span class="chiffre">{liste.length}</span></div>
+    <div class="kpi"><span class="etiquette">Suspendus</span><span class="chiffre">{suspendus}</span></div>
+    <div class="kpi"><span class="etiquette">Viewers</span><span class="chiffre">{viewers}</span></div>
+    <div class="kpi"><span class="etiquette">Contacts</span><span class="chiffre">{contacts}</span></div>
+  </div>
+
+  {
+    liste.length === 0 ? (
+      <p>Aucun cabinet. <a href="/admin/cabinets/nouveau">Créer le premier</a>.</p>
+    ) : (
+      <div class="defile">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Cabinet</th><th class="num">Viewers</th><th class="num">Contacts</th>
+              <th>Dernier arrêté</th><th>Dernier incident</th><th>État</th>
+            </tr>
+          </thead>
+          <tbody>
+            {liste.map((c) => (
+              <tr>
+                <td><a href={`/admin/cabinets/${encodeURIComponent(c.id)}`}>{c.nom}</a><br /><span class="aide">{c.domaine ?? '—'}</span></td>
+                <td class="num">{c.viewers}</td>
+                <td class="num">{c.contacts}</td>
+                <td class={aSurveiller(c) ? 'perime' : undefined}>{c.dernier_arrete ? dateCourte(c.dernier_arrete) : 'Aucun'}</td>
+                <td>{c.dernier_incident ? <a href={`/admin/incidents?cabinet=${encodeURIComponent(c.id)}`}>{dateCourte(c.dernier_incident)}</a> : '—'}</td>
+                <td class={c.suspendu_le ? 'perime' : undefined}>{c.suspendu_le ? `Suspendu le ${dateCourte(c.suspendu_le)}` : 'Actif'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+  <p class="aide">Dernier arrêté : la date la plus récente d’un point ou d’une enveloppe, tous portefeuilles du cabinet ; en rouge au-delà de 45 jours ou sans arrêté. Contacts : hors archivés. Viewers : tous les accès viewer du cabinet.</p>
+
+  <div class="actions">
+    <a class="btn-plein" href="/admin/cabinets/nouveau">Nouveau cabinet</a>
+    <a class="btn" href="/admin/incidents">Tous les incidents</a>
+  </div>
+</Gestion>

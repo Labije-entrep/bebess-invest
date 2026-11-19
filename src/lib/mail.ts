@@ -17,6 +17,16 @@ export interface Env {
   COURS_API_KEY?: string;
   COURS_API_URL?: string;
   COURS_BUDGET?: string;
+  /**
+   * Domaines personnalisés (lot 10, Cloudflare for SaaS), appelés côté serveur seulement. CF_API_TOKEN est un secret ;
+   * sans lui, la console le dit et continue de fonctionner pour le reste. CF_ZONE_ID : la zone qui porte les « custom
+   * hostnames ». CF_CNAME_CIBLE : l'hôte que le cabinet pointe par CNAME (l'origine de repli de la zone).
+   * CF_API_URL : seulement pour les essais, si autre que l'API de Cloudflare.
+   */
+  CF_API_TOKEN?: string;
+  CF_ZONE_ID?: string;
+  CF_CNAME_CIBLE?: string;
+  CF_API_URL?: string;
 }
 
 export interface Mailer {
