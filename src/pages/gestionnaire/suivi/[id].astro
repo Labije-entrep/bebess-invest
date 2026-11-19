@@ -2,7 +2,7 @@
 export const prerender = false;
 import Gestion from '../../../layouts/Gestion.astro';
 import { envDe } from '../../../lib/mail';
-import { panneauPortail } from '../../../lib/fiche';
+import { arretesPerimes, ecartsHorsSeuil, panneauPortail } from '../../../lib/fiche';
 import { dateLongue, euros, pourcent } from '../../../lib/format';
 import { signeBp, teinte } from '../../../lib/espace';
 
@@ -30,6 +30,31 @@ const horsSeuil = portail
   ? portail.portefeuilles.flatMap((b) => b.classes.filter((c) => depasse(c.ecartBp)).map((c) => portail.libellesClasses[c.classe] ?? c.classe))
   : [];
 const visite = portail?.derniereVisite ? dateLongue(portail.derniereVisite.slice(0, 10)) : null;
+
+// Passerelle (lot 07) : les boutons ne se déclenchent que par un geste ; les routes recalculent ce qu'elles écrivent.
+const estGestionnaire = utilisateur.role === 'gestionnaire';
+const ecarts = portail ? ecartsHorsSeuil(portail) : [];
+const perimes = portail ? arretesPerimes(portail) : [];
+const actionSujet = `/gestionnaire/passerelle/sujet/${encodeURIComponent(contact.id)}`;
+const actionPromotion = `/gestionnaire/passerelle/promotion/${encodeURIComponent(contact.id)}`;
+const sansPoints = (bp: number): string => (bp / 100).toLocaleString('fr-FR');
+// Messages de retour : textes fixes choisis par code (rien de ce qui est dans l'adresse n'est affiché).
+const MESSAGES: Record<string, [string, boolean]> = {
+  promu: ['Contact promu : le viewer, sa fiche et son portefeuille « Patrimoine » sont créés, et le lien de première connexion est envoyé.', false],
+  promu_sans_envoi: ['Contact promu : le viewer, sa fiche et son portefeuille « Patrimoine » sont créés et rattachés, mais le lien de première connexion n’a pas pu être envoyé. La personne peut demander un lien depuis la page de connexion ; le journal du serveur donne la cause.', true],
+  email_absent: ['Ce contact n’a pas d’adresse e-mail, et le lien de première connexion part par e-mail : il ne peut pas être promu. Renseignez l’adresse dans la fiche, puis recommencez.', true],
+  email_invalide: ['L’adresse e-mail de ce contact n’est pas valable : corrigez-la dans la fiche, puis recommencez.', true],
+  email_pris: ['Cette adresse e-mail est déjà celle d’un compte : ce contact ne peut pas être promu avec elle.', true],
+  deja: ['Ce contact est déjà rattaché à un viewer.', false],
+  sans_viewer: ['Ce contact n’est rattaché à aucun viewer : il n’y a ni écart ni arrêté à signaler.', true],
+  sujet_cree: ['Sujet créé sur ce contact : il est dans la liste des sujets, à son premier statut.', false],
+  sujet_existant: ['Un sujet non clos existe déjà pour cela : le voici, aucun doublon n’a été créé.', false],
+  ecart_sous_seuil: ['Cet écart ne dépasse plus le seuil : aucun sujet n’a été créé.', true],
+  arrete_a_jour: ['Cet arrêté n’est plus périmé : aucun sujet n’a été créé.', true],
+  statut_absent: ['Le cabinet n’a aucun statut de sujet qui ne soit pas terminal : le sujet n’a pas été créé.', true],
+  demande_inconnue: ['Demande inconnue : aucun sujet n’a été créé.', true],
+};
+const retour = MESSAGES[Astro.url.searchParams.get('pm') ?? ''] ?? null;
 ---
 <Gestion titre={`Fiche · ${contact.nom}`}>
   <div class="fiche" id="fiche" data-id={contact.id}>
@@ -40,6 +65,7 @@ const visite = portail?.derniereVisite ? dateLongue(portail.derniereVisite.slice
       </p>
     </div>
     <div id="fiche-alertes" class="fiche-alertes" aria-live="polite"></div>
+    {retour && <p class={retour[1] ? 'info alerte' : 'info'} role={retour[1] ? 'alert' : 'status'}>{retour[0]}</p>}
 
     <div class="fiche-cadre">
       <div class="fiche-principal" id="fiche-corps">
@@ -111,14 +137,51 @@ const visite = portail?.derniereVisite ? dateLongue(portail.derniereVisite.slice
               </>
             )}
 
-            <button type="button" class="btn-plein portail-action" disabled>Créer un sujet depuis l’écart</button>
-            <button type="button" class="btn portail-action" disabled>Saisir le nouvel arrêté</button>
+            {ecarts.length > 0 ? (
+              <>
+                {ecarts.map((e) => (
+                  <form method="post" action={actionSujet}>
+                    <input type="hidden" name="type" value="ecart" />
+                    <input type="hidden" name="cle" value={e.classe} />
+                    <button type="submit" class="btn-plein portail-action">Créer un sujet depuis l’écart{ecarts.length > 1 ? ` · ${e.libelle}` : ''}</button>
+                  </form>
+                ))}
+                <p class="portail-sous portail-aide">Crée un sujet sur ce contact, avec la classe, le réel et la cible. Un second clic ouvre le sujet déjà créé tant qu’il n’est pas clos.</p>
+              </>
+            ) : (
+              <p class="portail-sous portail-aide">Aucun écart au-delà du seuil de {sansPoints(portail.seuilEcartBp)} points : rien à transformer en sujet.</p>
+            )}
+
+            {perimes.length > 0 && (
+              <>
+                <p class="etiquette portail-titre-perime">Arrêté périmé</p>
+                {perimes.map((b) => (
+                  <form method="post" action={actionSujet}>
+                    <input type="hidden" name="type" value="arrete" />
+                    <input type="hidden" name="cle" value={b.id} />
+                    <p class="portail-sous portail-aide">{plusieurs ? `${b.libelle} : ` : ''}dernier arrêté le {dateLongue(b.arrete)}, au-delà de {portail.seuilArreteJours} jours.</p>
+                    <button type="submit" class="btn portail-action">Créer un sujet depuis l’arrêté périmé</button>
+                  </form>
+                ))}
+              </>
+            )}
+
+            {estGestionnaire && (
+              <a class="btn portail-action" href={`/gestionnaire/viewers/${encodeURIComponent(portail.viewer.id)}?onglet=arrete`}>Saisir le nouvel arrêté</a>
+            )}
           </div>
         ) : (
           <div class="portail-vide">
             <p class="etiquette">Non rattaché</p>
-            <p>Pour un contact sans accès au portail, ce panneau proposera la promotion : le viewer et sa fiche sont créés à partir des informations déjà saisies, et le lien de première connexion part aussitôt.</p>
-            <button type="button" class="btn portail-action" disabled>Promouvoir en viewer</button>
+            <p>Pour un contact sans accès au portail, ce panneau propose la promotion : le viewer, sa fiche et un portefeuille « Patrimoine » sont créés à partir des informations déjà saisies, et le lien de première connexion part aussitôt. Dès lors, les avoirs du contact sont calculés depuis ses portefeuilles et ne se saisissent plus.</p>
+            {estGestionnaire ? (
+              <form method="post" action={actionPromotion}>
+                <p class="portail-aide">Le lien de première connexion part à l’adresse e-mail de la fiche : sans adresse, la promotion est refusée et le motif s’affiche.</p>
+                <button type="submit" class="btn portail-action">Promouvoir en viewer</button>
+              </form>
+            ) : (
+              <p>La promotion crée un accès client : elle est réservée au gestionnaire.</p>
+            )}
           </div>
         )}
       </aside>
@@ -182,6 +245,7 @@ const visite = portail?.derniereVisite ? dateLongue(portail.derniereVisite.slice
   .fiche-ligne { display: flex; gap: var(--espace-m); align-items: flex-start; padding: 0.9375rem 0; border-top: 1px solid var(--filet); }
   .fiche-ligne:last-child { border-bottom: 1px solid var(--filet); }
   .fiche-ligne.fait { opacity: 0.55; }
+  .fiche-ligne.vise { outline: 1px solid var(--accent); outline-offset: 0.375rem; }
   .fiche-statut { flex: none; min-width: 5.5rem; text-align: center; font-family: var(--mono); font-size: 0.5625rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--texte-2); background: transparent; border: 1px solid var(--filet); padding: 0.3125rem 0.5625rem; cursor: pointer; }
   .fiche-statut:hover { background: var(--marine); }
   .fiche-statut[data-statut='encours'] { color: var(--accent-clair); border-color: var(--accent); }
@@ -233,6 +297,8 @@ const visite = portail?.derniereVisite ? dateLongue(portail.derniereVisite.slice
   .portail-ecart { display: block; font-size: 0.6875rem; }
   .portail-legende { margin: 0.25rem 0 1.125rem; line-height: 1.7; }
   .portail-action { display: block; width: 100%; text-align: center; margin-top: 0.625rem; }
+  .portail-aide { margin: 0.625rem 0 0; line-height: 1.7; }
+  .portail-titre-perime { margin: 1.25rem 0 0; }
   .portail-action:disabled { opacity: 0.45; cursor: not-allowed; }
   .portail-vide { border: 1px solid var(--filet); padding: 1.375rem 1.5rem; }
   .portail-vide p { margin: 0 0 1rem; font-size: 0.8125rem; line-height: 1.8; color: var(--texte-2); }

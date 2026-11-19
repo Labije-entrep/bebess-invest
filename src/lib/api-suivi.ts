@@ -312,6 +312,15 @@ export async function modifier(ctx: APIContext, entite: Entite): Promise<Respons
     // Identifiant du chemin : inconnu ou d'un autre locataire → 404, rien n'est écrit.
     if (id.length > 64 || !(await appartient(a.db, a.tenant.id, entite.table, id))) throw new Refus(404, 'Introuvable.');
     const corps = await lireCorps(ctx.request);
+    // Un contact rattaché à un viewer a ses avoirs calculés (somme de ses enveloppes) : ils ne s'écrivent plus.
+    // Les valeurs saisies avant le rattachement restent en base, intactes.
+    if (entite.table === 'contact' && ('avoirs_cents' in corps || 'avoirs_le' in corps)) {
+      const lie = await a.db
+        .prepare('SELECT 1 AS ok FROM contact WHERE id = ? AND tenant_id = ? AND viewer_id IS NOT NULL')
+        .bind(id, a.tenant.id)
+        .first();
+      if (lie) throw new Refus(422, 'Les avoirs de ce contact sont calculés depuis son portail : ils ne se saisissent plus.', { champ: 'avoirs_cents' });
+    }
     const modifiables = new Map(entite.champs.filter((c) => !c.creation).map((c) => [c.col, c]));
     const sets: string[] = [];
     const vals: (string | number | null)[] = [];

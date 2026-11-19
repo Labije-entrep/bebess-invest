@@ -300,6 +300,13 @@ export async function incidentsCours(db: Base, tenantId: string, jour: string): 
 
 // ---------------------------------------------------------------- mise en forme
 
+/**
+ * Un indice représenté par un fonds coté (libellé « … · fonds SPY ») : le prix du fonds, 80 € sous le titre
+ * « CAC 40 », n'apprend rien et déroute. Pour ces symboles on n'affiche que la variation et la date de séance.
+ * Les autres (indices cotés en points, changes, matières) gardent valeur et variation.
+ */
+export const variationSeule = (s: Pick<SymboleSuivi, 'type' | 'libelle'>): boolean => s.type === 'cotation' && /\bfonds\b/i.test(s.libelle);
+
 const NOMBRE = (d: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d });
 const POURCENT = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'exceptZero' });
 

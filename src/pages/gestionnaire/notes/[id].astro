@@ -26,8 +26,10 @@ if (Astro.request.method === 'POST') {
   const lire = (k: string) => String(f.get(k) ?? '').trim();
   v.titre = lire('titre');
   v.slug = slugifier(lire('slug') || v.titre);
-  v.chapeau = lire('chapeau');
-  v.corps_md = String(f.get('corps_md') ?? '');
+  // Un champ de texte du navigateur renvoie ses sauts de ligne en CRLF : on les ramène à LF, comme la fiche d'actu,
+  // pour qu'une note née d'une actu (lot 07) soit republiée à l'identique, au caractère près.
+  v.chapeau = lire('chapeau').replace(/\r\n/g, '\n');
+  v.corps_md = String(f.get('corps_md') ?? '').replace(/\r\n/g, '\n');
   v.date = lire('date');
   v.publiee = f.get('publiee') === 'oui';
 

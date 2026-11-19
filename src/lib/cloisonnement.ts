@@ -7,7 +7,7 @@ import type { Base } from './db';
 
 export type Ressource =
   | 'viewer' | 'enveloppe' | 'ligne' | 'cible' | 'point' | 'mouvement' | 'document' | 'note'
-  | 'contact' | 'sujet' | 'echange' | 'membre' | 'document_interne';
+  | 'contact' | 'sujet' | 'echange' | 'membre' | 'document_interne' | 'actu';
 
 // enveloppe, cible et point sont rattachées au portefeuille, qui porte le tenant.
 const VIA_PORTEFEUILLE = (table: string) =>
@@ -35,6 +35,8 @@ const REQUETES: Record<Ressource, string> = {
   membre: 'SELECT 1 AS ok FROM membre WHERE id = ? AND tenant_id = ?',
   // Bibliothèque interne du cabinet (lot 06), distincte de `document` (pièces des viewers).
   document_interne: 'SELECT 1 AS ok FROM document_interne WHERE id = ? AND tenant_id = ?',
+  // Fiche d'actu (lot 06) : la passerelle (lot 07) en fait une note de marché.
+  actu: 'SELECT 1 AS ok FROM actu WHERE id = ? AND tenant_id = ?',
 };
 
 export class AccesRefuse extends Error {
