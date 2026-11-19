@@ -23,8 +23,8 @@ Un lot dont le prérequis n'est pas coché ne démarre pas.
 | 03 | Module de suivi : la liste des contacts | — | fait | 1357619 |
 | 04 | Module de suivi : la fiche | — | fait | 78eedcf |
 | 05 | Kanban et parcours | — | fait | cb8fdce |
-| 06 | Actus, bibliothèque, cours | — | fait | |
-| 07 | La passerelle | P2 | fait (P2 non coché : vérifié avec le pilote console seulement) | |
+| 06 | Actus, bibliothèque, cours | — | fait | 6179d11 |
+| 07 | La passerelle | — | fait | 691a0db |
 | 08 | Fichiers et exports | — | à faire | |
 | 09 | Paramétrage par cabinet | — | à faire | |
 | 10 | Espace super admin | P3 | à faire | |
@@ -139,3 +139,30 @@ Une entrée par session terminée : lot, date, ce qui a été vérifié, ce qui 
 - **Non vérifié** : un vrai envoi Scaleway (P2 non coché) ; D1 hors local ; rendu mobile ; lecteur d'écran ; la page de confirmation `/connexion/<jeton>` a répondu « Cross-site POST form submissions are forbidden » une fois, depuis le navigateur du volet, alors que le même POST passe en `curl` avec l'en-tête `Origin` : non élucidé, hors périmètre (page de connexion inchangée), à rejouer dans un vrai navigateur.
 - **Choix à relire** : (1) `ecartAllocation` sert au panneau pour l'écart (le panneau lisait `ecartBp` de `repartition`, qui laisse nul l'écart d'une classe sans cible) : une classe détenue sans cible a désormais un écart contre 0, **mais seulement si le portefeuille a au moins une cible** (sinon tout serait « hors cible »). (2) Date de l'origine d'écart = date d'arrêté affichée par le panneau (la plus ancienne) ; origine d'arrêté = identifiant du portefeuille + sa propre date (plus ancienne de ses enveloppes, lignes et dernier point). Un portefeuille sans aucun arrêté n'est pas « périmé ». (3) Un sujet **archivé** ne compte pas comme « non clos » : en recréer un après l'avoir archivé est permis. (4) Promotion réservée au **gestionnaire** (comme la création d'un viewer) ; sujets et note ouverts à l'éditeur. (5) Le texte des sujets est un gabarit fixe, jamais généré. (6) Le bouton « Publier vers le portail » est devenu « Créer la note de marché » (il ne publie pas). (7) L'éditeur de notes normalise maintenant `CRLF` en `LF` (corps et chapeau), comme la fiche d'actu : sans cela, un texte repris d'une actu devenait différent à la publication (les navigateurs envoient les retours à la ligne en CRLF). (8) « Saisir le nouvel arrêté » est un lien vers l'onglet Arrêté du viewer (gestionnaire seulement).
 - **Hors périmètre** : `cloisonnement.ts` (ressource `actu`), `notes/[id].astro` (CRLF), `api-suivi.ts` et `etat.ts` (avoirs), `fiche.ts` côté client (identifiant et surbrillance du sujet visé). Aucune dépendance ajoutée, aucune migration, aucune couleur littérale nouvelle (jetons de `app.css`).
+
+### Lots 06 et 07 — 19 novembre
+
+Lot 06 (6179d11) : étape de contact modifiable depuis la fiche et le parcours,
+colonne des sujets clos bornée à 30 jours, cours récupérés côté serveur avec budget
+et repli sur incident, actus, bibliothèque interne. Les reprises temporisées de la
+file d'écritures sont enfin éprouvées sur un vrai 500 : 0, 2, 7,1, 17,1 puis 47,1 s.
+Les trois indices passent par des fonds cotés, ce que le libellé indique
+(« CAC 40 · fonds CAC.PAR ») ; le symbole du CAC reste à confirmer avec une vraie clé.
+
+Lot 07 (691a0db) : passerelle complète. Promotion en une transaction, avoirs dérivés
+refusés en écriture (422), sujets d'écart et d'arrêté périmé avec garde contre le
+doublon éprouvée à six clics simultanés, note de marché créée mot pour mot. Un défaut
+trouvé et corrigé au passage : sans normalisation CRLF en LF, le texte changeait à la
+publication. Cloisonnement 404 dans les deux sens.
+
+## À élucider avant le pilote — la confirmation de connexion
+
+Un 403 « Cross-site POST » est survenu une fois sur `/connexion/<jeton>` depuis le
+navigateur du volet, là où le même POST passe en curl (curl n'envoie pas d'en-tête
+`Origin`). Astro 5 active `security.checkOrigin` par défaut et rejette la requête
+**avant** que la page ne s'exécute : la page « Ce lien n'est plus valable », qui
+existe et est bien faite, n'est donc jamais rendue. L'utilisateur voit un 403 nu,
+sans explication ni moyen de continuer.
+
+C'est le chemin le plus critique du produit : s'il échoue, personne ne se connecte.
+À traiter au lot 08 avant le reste.
