@@ -10,6 +10,10 @@ export interface Env {
   SCW_PROJECT_ID?: string;
   SCW_REGION?: string;
   MAIL_FROM?: string;
+  /** Cours de marché (lot 06) : clé du fournisseur (secret), adresse de l'API et budget quotidien, si autres que ceux par défaut. */
+  COURS_API_KEY?: string;
+  COURS_API_URL?: string;
+  COURS_BUDGET?: string;
 }
 
 export interface Mailer {

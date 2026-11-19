@@ -11,7 +11,7 @@
 
 import {
   api, brancher, empiler, estTerminal, fileExistante, h, liaison, marque as marqueEcriture, reseauRetabli,
-  sansPerdreLeClic, toutesOps, toutRejouer, ecrituresEnFile,
+  sansPerdreLeClic, toutesOps, toutRejouer, ecrituresEnFile, TYPE_PROSPECT,
   type Corps, type Entite, type Enfant,
 } from './commun';
 
@@ -28,6 +28,7 @@ interface Contact {
   binome_id: string | null;
   apporteur_id: string | null;
   relance: string | null;
+  etape: string | null;
   archive: number;
   types: string[];
 }
@@ -405,6 +406,18 @@ function enteteContact(c: Contact): HTMLElement {
     enregistrer: (v) => (v !== '' && !dateValide(v) ? 'Date invalide.' : maj('relance')(v)),
   }));
 
+  // L'étape du parcours : seulement sur un prospect, avec les étapes actives de la liste (plus l'étape courante
+  // si elle en est sortie, pour qu'elle reste lisible).
+  const etape = c.types.includes(TYPE_PROSPECT)
+    ? cellule('Étape', champ({
+      cle: 'contact:etape', etiquette: 'Étape', valeur: c.etape ?? '', type: 'select',
+      options: liste('etape').map((v): [string, string] => [v.cle, v.libelle]).concat(
+        c.etape && !liste('etape').some((v) => v.cle === c.etape) ? [[c.etape, `${c.etape} (retirée de la liste)`]] : []),
+      affichage: c.etape ? libelle('etape', c.etape) : h('span', { class: 'vide' }, 'Sans étape'),
+      enregistrer: maj('etape'),
+    }))
+    : null;
+
   return h('div', {},
     h('div', { class: 'fiche-tete' },
       h('div', {},
@@ -413,7 +426,7 @@ function enteteContact(c: Contact): HTMLElement {
           texte('structure', 'Structure', '+ structure'), ' · ', email, ' · ', texte('tel', 'Téléphone', '+ téléphone', 'tel')),
         marque('contact', c.id)),
       types),
-    h('div', { class: 'fiche-bandeau' }, parMembre('responsable_id', 'En charge', true), parMembre('binome_id', 'Binôme', false), apportPar, relance));
+    h('div', { class: 'fiche-bandeau' }, parMembre('responsable_id', 'En charge', true), parMembre('binome_id', 'Binôme', false), etape, apportPar, relance));
 }
 
 function cellule(etiquette: string, contenu: Enfant): HTMLElement {
