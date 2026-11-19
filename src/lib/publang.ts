@@ -40,6 +40,7 @@ export interface Libelles {
   navAria: string;
   pied: string;
   mentions: string;
+  legal: { etiquette: string; titre: string; vide: string };
   faq: string;
   toutesNotes: string;
   notesEtiquette: string;
@@ -61,6 +62,11 @@ export const T: Record<Lg, Libelles> = {
     navAria: 'Navigation',
     pied: 'Pied de page',
     mentions: 'Mentions légales',
+    legal: {
+      etiquette: 'Informations légales',
+      titre: 'Mentions légales',
+      vide: 'Les mentions légales de ce cabinet ne sont pas encore renseignées.',
+    },
     faq: 'Questions fréquentes',
     toutesNotes: 'Toutes les notes',
     notesEtiquette: 'Notes',
@@ -95,6 +101,11 @@ export const T: Record<Lg, Libelles> = {
     navAria: 'Navigation',
     pied: 'Footer',
     mentions: 'Legal notice',
+    legal: {
+      etiquette: 'Legal information',
+      titre: 'Legal notice',
+      vide: 'This firm’s legal notice has not been filled in yet.',
+    },
     faq: 'Frequently asked questions',
     toutesNotes: 'All insights',
     notesEtiquette: 'Insights',

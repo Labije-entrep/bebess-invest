@@ -15,7 +15,7 @@ import { valeursDe } from './listes';
 import { seuilsDe } from './suivi';
 
 /** Repli du seuil d'écart d'allocation : 5 points (maquette Suivi-Fiche), soit 500 centièmes de point. */
-const REPLI_ECART_BP = 500;
+export const REPLI_ECART_BP = 500;
 
 export async function seuilEcartBp(db: Base, tenantId: string): Promise<number> {
   const r = await db

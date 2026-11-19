@@ -2,6 +2,8 @@
 // Une fonction par intention. Montants en centimes, pourcentages en centièmes de point,
 // dates en chaînes ISO 8601. Les identifiants sont des chaînes.
 
+import { themeValide } from './themes';
+
 // Forme minimale de D1Database, pour ne pas dépendre d'un paquet de types.
 export interface Requete {
   bind(...valeurs: unknown[]): Requete;
@@ -19,9 +21,12 @@ export type Role = 'editeur' | 'gestionnaire' | 'viewer';
 
 export interface Tenant {
   id: string;
+  /** Nom affiché : le réglage `nom_affiche` du cabinet s'il existe, sinon le nom du locataire. */
   nom: string;
   domaine: string | null;
   cree_le: string;
+  /** Thème du cabinet (réglage `theme`), toujours un nom connu de src/lib/themes.ts. */
+  theme: string;
 }
 
 export interface Utilisateur {
@@ -150,6 +155,8 @@ export interface Document {
   date: string;
   cle_fichier: string | null;
   envoye_le: string | null;
+  /** Portefeuille visé par le rapport. null = il vaut pour tout le dossier du viewer. */
+  portefeuille_id: string | null;
 }
 
 export interface PageContenu {
@@ -177,12 +184,20 @@ export interface NoteMarche {
 const COLONNES_UTILISATEUR = 'id, tenant_id, email, nom, role, actif, cree_le';
 
 /** Le port et la casse sont ignorés : "Localhost:4321" et "localhost" donnent le même tenant. */
-export function tenantParHote(db: Base, hote: string): Promise<Tenant | null> {
+export async function tenantParHote(db: Base, hote: string): Promise<Tenant | null> {
   const sansPort = hote.trim().toLowerCase().replace(/:\d+$/, '');
-  return db
-    .prepare('SELECT id, nom, domaine, cree_le FROM tenant WHERE domaine = ?')
+  // Une seule requête par page : le nom affiché et le thème du cabinet viennent avec le locataire (table reglage).
+  const t = await db
+    .prepare(
+      `SELECT t.id,
+              COALESCE(NULLIF(TRIM((SELECT valeur FROM reglage WHERE tenant_id = t.id AND cle = 'nom_affiche')), ''), t.nom) AS nom,
+              t.domaine, t.cree_le,
+              (SELECT valeur FROM reglage WHERE tenant_id = t.id AND cle = 'theme') AS theme
+         FROM tenant t WHERE t.domaine = ?`,
+    )
     .bind(sansPort)
-    .first<Tenant>();
+    .first<Omit<Tenant, 'theme'> & { theme: string | null }>();
+  return t ? { ...t, theme: themeValide(t.theme) } : null;
 }
 
 export function utilisateurParEmail(db: Base, email: string): Promise<Utilisateur | null> {
@@ -324,7 +339,7 @@ export async function mouvementsDuViewer(db: Base, viewerId: string): Promise<Mo
 export async function documentsDuViewer(db: Base, viewerId: string): Promise<Document[]> {
   const { results } = await db
     .prepare(
-      `SELECT id, viewer_id, titre, categorie, date, cle_fichier, envoye_le
+      `SELECT id, viewer_id, titre, categorie, date, cle_fichier, envoye_le, portefeuille_id
          FROM document
         WHERE viewer_id = ?
         ORDER BY date DESC, id DESC`,

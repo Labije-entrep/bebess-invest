@@ -14,12 +14,13 @@ const liens: [string, string][] = [
   ['/gestionnaire/import', 'Import CSV'],
   ['/gestionnaire/contenus', 'Contenus'],
   ['/gestionnaire/notes', 'Notes'],
+  ['/gestionnaire/reglages', 'Réglages'],
   ['/deconnexion', 'Déconnexion'],
 ];
 const ici = Astro.url.pathname.replace(/\/$/, '');
 ---
 <!doctype html>
-<html lang="fr">
+<html lang="fr" data-cabinet-theme={Astro.locals.tenant?.theme ?? 'maison'}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

@@ -26,7 +26,7 @@ Un lot dont le prérequis n'est pas coché ne démarre pas.
 | 06 | Actus, bibliothèque, cours | — | fait | 6179d11 |
 | 07 | La passerelle | — | fait | 691a0db |
 | 08 | Fichiers et exports | — | à faire | |
-| 09 | Paramétrage par cabinet | — | à faire | |
+| 09 | Paramétrage par cabinet | — | fait | voir `git log` (branche `claude/lot-09-dettes-parametrage-a86b17`) |
 | 10 | Espace super admin | P3 | à faire | |
 | 11 | Contrat, rôles et journal | — | à faire | |
 | 12 | Compteurs, essai et bons à facturer | P4 | à faire | |
@@ -183,3 +183,143 @@ apostrophe.
 - **Non vérifié** : R2 réel (seulement l'émulation locale) ; Safari et Firefox (seul Chromium a été mesuré : ils appliquent
   la même règle de la spec) ; `Content-Length` absent (corps chunked) : la taille est alors contrôlée après lecture.
 - **À créer côté Cloudflare** : `wrangler r2 bucket create bebess-fichiers`, sans domaine public ni `r2.dev`.
+
+## Lot 09 — 19 novembre
+
+**Trois dettes d'abord, puis le paramétrage.** Migration `0006_marqueurs_et_rapports.sql`.
+
+### 1. Plus aucune clé de liste en dur : un marqueur, pas une convention
+
+Colonne ajoutée : `liste_valeur.marqueur TEXT` (NULL = aucun rôle). **Pourquoi** : `terminal` dit « cette valeur clôt » ; il ne dit
+pas « cette valeur alimente le parcours » ou « c'est celle qu'on compte dans l'indicateur En cours ». Un marqueur nommé est
+explicite ; « la première », « la dernière » ou « celle qui s'appelle prospect » sont des règles implicites. Le vocabulaire est
+fermé et vit dans `src/lib/marqueurs.ts` (partagé serveur et navigateur) ; le cabinet pose chaque marqueur sur la valeur de son
+choix, dans Réglages › Listes. Un marqueur ne vaut que sur une valeur **active** : désactiver celle qui le porte retire le rôle,
+et l'écran le dit.
+
+| Marqueur | Liste | Ce qu'il remplace | Sans valeur qui le porte |
+| --- | --- | --- | --- |
+| `parcours` | type_contact | `TYPE_PROSPECT = 'prospect'` (liste, fiche, parcours) | le parcours affiche un message + lien vers les listes ; la fiche n'offre plus d'étape |
+| `client` | type_contact | `t === 'client'` (pastille de la liste du suivi) — **trouvé au passage** | aucune pastille mise en avant |
+| `en_cours` | statut_sujet | `'encours'` : indicateur du suivi **et** couleur de l'étiquette sur la fiche (CSS `[data-statut='encours']`) | l'indicateur affiche « — » et le message, au lieu de 0 |
+| `en_attente` | statut_sujet | `'attente'` : indicateur du suivi | idem |
+| `clos` (plusieurs valeurs possibles) | statut_mouvement | `statut === 'execute' \|\| 'archive'` dans `enregistrerMouvement` — **trouvé** | l'onglet Mouvements du viewer le dit ; le mouvement garde sa barre d'avancement |
+| `defaut` | type_portefeuille | `'personne'` en dur à la création d'un viewer (`creerViewer`) et à la promotion (`promouvoir`) — **trouvé** | création d'un viewer et promotion **refusées** avec un message (le portefeuille de départ n'aurait pas de type) ; rien n'est deviné |
+
+Les listes par défaut (`listes-defaut.ts`, seed, migration pour les cabinets existants) posent ces marqueurs sur les valeurs
+d'origine ; c'est le seul endroit où une clé et un marqueur sont écrits côte à côte. `/api/suivi/etat` sert `marqueurs`
+(valeurs actives). Défauts du schéma SQL non touchés : `portefeuille.type DEFAULT 'personne'` reste dans `0003` (SQLite ne
+modifie pas un défaut), mais aucune écriture ne s'y fie plus.
+
+À la même occasion : une valeur désactivée reste **lisible** — `libellesDe` (actives ou non) sert l'espace viewer (classe,
+statut de mouvement, catégorie de rapport, qui s'affichaient jusque-là par leur clé) et le gestionnaire (une ligne dont la
+classe est désactivée garde sa valeur dans la liste déroulante, libellée « (désactivée) », donc un réenregistrement ne la perd pas).
+
+### 2. Un rapport peut viser un portefeuille
+
+`document.portefeuille_id` nullable, référencé au portefeuille (index). Nul = tout le dossier. Dépôt : liste déroulante « Tout
+le dossier » + portefeuilles **actifs** du viewer ; la route contrôle que le portefeuille est à ce viewer, à ce cabinet et non
+archivé (sinon `erreur=portefeuille`, rien n'est déposé). Liste du gestionnaire : colonne « Concerne ». Espace viewer : rapports
+groupés par entité (« Tout le dossier », puis un groupe par portefeuille, « (archivé) » pour un portefeuille archivé, dont les
+rapports restent consultables et téléchargeables) ; un portefeuille choisi dans le sélecteur ne garde que ses rapports et ceux du
+dossier entier. La suppression d'un portefeuille est refusée s'il porte des rapports.
+
+### 3. Ce que « terminal » veut dire
+
+Modèle inchangé. Expliqué dans Réglages › Listes, liste par liste, une phrase chacune (statut_sujet : clôt le sujet ; etape :
+sortie du parcours ; les sept autres : « ne sert pas ») + avertissement sur la liste des étapes : marquer terminale une étape de
+réussite (la signature) la mettrait en retrait avec les abandons. Aucune clé n'est nommée dans le code pour cela.
+
+### 4. Thèmes
+
+Cinq blocs `:root[data-cabinet-theme="maison|nuit|foret|pierre|clair"]` dans `src/styles/app.css`. **Les 18 jetons de couleur**
+(16 existants + `--courbe-valeur` et `--courbe-versements`, nés des deux couleurs littérales de `espace.ts` ; la palette des classes
+passe sur `--serie-1…5`) sont redéfinis dans chaque bloc ; vérifié en parsant le fichier livré. Les jetons non colorés (polices,
+espacement, largeur) restent communs. `:root` garde les valeurs de `maison` en repli. Le serveur pose l'attribut sur `<html>` des
+quatre gabarits (site public, espace viewer, module, connexion) à partir de `tenant.theme`, lu avec le locataire (une seule
+requête, aucune de plus par page) ; un nom inconnu en base retombe sur `maison`. Aucun sélecteur de couleur : l'écran propose
+cinq noms et refuse tout autre (testé avec `#ff0000`). `Courbe.astro` : `stroke`/`fill` passent par `style` (pour `var()`).
+**`maison` : `--alerte` passe de `#c2614f` à `#c7665a`** — l'ancienne valeur donnait 4,34:1 sur `--marine` (sous AA) ; c'est le
+seul changement de rendu du thème d'origine.
+
+Contraste (WCAG 2.x, calculé sur les valeurs de `app.css`, seuil AA texte courant 4,5:1) — sur `--fond` :
+
+| Thème | Texte | Texte secondaire | Positif | Alerte |
+| --- | --- | --- | --- | --- |
+| maison | 15,20 | 7,69 | 7,48 | 5,17 |
+| nuit | 16,20 | 8,12 | 8,12 | 6,62 |
+| foret | 15,53 | 8,56 | 9,44 | 6,55 |
+| pierre | 15,05 | 7,89 | 7,96 | 6,52 |
+| clair | 15,80 | 7,16 | 5,23 | 5,83 |
+
+Sur `--marine` (second fond : survol, blocs alternés) : texte secondaire 6,90 / 7,32 / 7,55 / 7,04 / 6,37 ; positif 6,72 / 7,32 /
+8,32 / 7,11 / 4,66 ; alerte 4,64 / 5,96 / 5,77 / 5,82 / 5,19 (même ordre). Texte secondaire sur `--champ-fond` : 7,05 / 7,10 / 7,36 /
+6,44 / 7,65. Accent sur fond : 7,01 / 7,87 / 9,11 / 8,29 / 5,30 ; texte sur bouton plein (`--sur-accent`/`--accent`) : 6,75 / 7,62 /
+8,89 / 8,27 / 5,54 ; courbe : valorisation 11,18 / 11,64 / 13,18 / 11,79 / 7,23, versements 5,66 / 6,68 / 6,99 / 6,69 / 4,99 ;
+couleurs de série (graphiques, seuil 3:1) : minimum 5,26 / 6,34 / 6,55 / 6,34 / 3,94. Aucune paire mesurée sous 4,5 pour du texte.
+
+**Écart avec la demande à relire** : « en clair comme en sombre ». L'application n'a ni bascule clair/sombre ni
+`prefers-color-scheme` (`app.css` disait « un seul thème sombre ») : chaque thème est soit sombre (maison, nuit, foret, pierre), soit
+clair (`clair`), et redéfinit tous ses jetons une fois. Je n'ai pas inventé une variante par mode.
+
+### 5. Écrans de réglage — `/gestionnaire/reglages` (gestionnaire seul ; l'éditeur est redirigé)
+
+- **Listes** : ajouter (la clé vient du libellé, jamais saisie, unique dans la liste), renommer (le libellé ; la clé ne change jamais),
+  réordonner (↑ ↓, qui enregistre aussi les modifications de la page), désactiver, poser `terminal` (statut_sujet, etape) et les
+  marqueurs. Un marqueur « unique » refusé s'il est posé deux fois ; un marqueur d'une autre liste ou une clé d'une autre liste refusés.
+  Nombre d'usages par valeur (table fermée de requêtes bornées au locataire) ; **suppression seulement d'une valeur que rien ne
+  porte**, sinon refus et renvoi vers « désactiver ». Marqueur sans valeur active : message en tête de liste, avec la conséquence.
+- **Seuils** : sans échange, relance, arrêté périmé (jours), écart d'allocation (points, stocké en centièmes de point), valeur par
+  défaut rappelée, champ vide = retour au défaut. Le tableau de bord lisait 45 jours **en dur** (`seuilArrete()` et son texte) : il lit
+  maintenant le réglage.
+- **Membres** : nom, initiale, couleur (cinq pastilles = `serie-1…5`, jetons : elles suivent le thème), actif ; un membre ne se
+  supprime pas. Migration : les hexadécimaux de la palette deviennent des jetons ; une couleur plus ancienne hors palette est rendue
+  telle quelle et conservée tant qu'on n'en choisit pas une autre.
+- **Identité** : nom affiché (`reglage.nom_affiche`, repris par `tenantParHote` pour tous les titres), thème, logo (la route existante,
+  avec `?retour=reglages`), symboles de marché (lignes éditables, identifiant d'un symbole existant intangible, rétablissement des cinq
+  par défaut).
+- **Mentions légales** : raison sociale, ORIAS, statut réglementaire, association agréée, médiateur, hébergeur, contact RGPD (clés
+  `reglage` : `raison_sociale`, `orias`, `statut_reglementaire`, `association`, `mediateur`, `hebergeur`, `contact_rgpd`). La page
+  publique (FR et EN) se construit à partir de ces champs ; un champ vide n'est pas publié ; les intitulés sont fixes (FR/EN, dans
+  `reglages.ts`), aucun texte du cabinet n'est dans le code. `/en/legal` ne redirige plus vers le français (il n'y a plus de
+  contenu à traduire : les champs sont des données). Les sections libres de la rubrique Contenus, si le cabinet en a écrit, s'ajoutent
+  dessous.
+
+### Vérifié (build, `wrangler pages dev dist`, base locale vierge : 6 migrations + seed, navigateur du volet et `curl`)
+
+- **Clés renommées** : toutes les clés des neuf listes passées en `z_<clé>` dans `liste_valeur` **et** dans les neuf colonnes de
+  référence qui portaient des données (sujet, contact, contact_type, mouvement, portefeuille, ligne, cible, document), sur un jeu de 4 contacts et 5 sujets : indicateurs identiques avant et après (vus 1/4, ouverts 4, en cours 2, en attente 1,
+  en retard 1), parcours peuplé (Chloé « sans étape », Bruno en RDV), kanban à quatre colonnes avec les bons sujets, pastille client mise
+  en avant.
+- **Marqueur désactivé** : `en_cours` désactivé → l'indicateur affiche « — » + « Aucun statut n'est marqué… Régler dans les listes » ;
+  type `parcours` désactivé → message du parcours ; l'écran des listes le dit aussi.
+- **Classe d'actif utilisée désactivée** : l'espace viewer l'affiche encore (« Actions »), la ligne du gestionnaire la garde sélectionnée
+  (« Actions (désactivée) »), les lignes vides ne l'offrent plus.
+- **Rapport sur un portefeuille** : un rapport sur « Holding familiale » et un sur tout le dossier ; le viewer les voit sous leur entité ;
+  sur l'autre portefeuille, seul celui du dossier entier ; portefeuille d'un autre viewer, d'un autre cabinet, inconnu, archivé : refusés
+  (aucune ligne écrite). Archivé ensuite : plus proposé au dépôt, rapport listé « Holding familiale (archivé) » côté viewer et gestionnaire,
+  téléchargement 200 `application/pdf`.
+- **Thèmes** : les cinq noms posés tour à tour, attribut vu sur le site public, les mentions, l'espace viewer, le module et la connexion ;
+  autre cabinet resté sur `maison` ; `#ff0000` refusé. Captures du module et de l'espace viewer en `clair`.
+- **Réglages** : seuils (valeurs invalides refusées, saisie vide = défaut, `/api/suivi/etat` et tableau de bord suivent), membres
+  (couleur libre refusée, membre d'un autre cabinet refusé), listes (ajout, renommage, déplacement, suppression d'une valeur inutilisée,
+  refus pour une valeur utilisée, deux porteurs d'un marqueur unique refusés), symboles, mentions (page FR et EN), nom affiché.
+  Éditeur : redirigé ; gestionnaire de l'autre cabinet : ne voit ni ne modifie les listes du cabinet démo.
+- `astro check` : 0 erreur, 1 indication préexistante (`Note.astro:9`) ; `npm run build` passe.
+
+### Non vérifié
+
+Rendu des écrans de réglage au-delà d'une largeur de ≈ 800 px et sur mobile ; lecteur d'écran ; thèmes `nuit`, `foret`, `pierre` à
+l'œil (seul `clair` a été regardé ; leur contraste est mesuré) ; D1 et R2 réels ; cache du site public (60 s, `s-maxage`) : un changement
+de thème y met jusqu'à une minute ; `batch` de D1 sur plusieurs milliers de valeurs (non pertinent ici).
+
+### À relire
+
+(1) Le dépôt de rapport propose les portefeuilles actifs ; on ne peut pas encore rattacher un rapport existant à un portefeuille (il
+faut le retirer et le redéposer). (2) Un marqueur sur une valeur inactive est conservé mais ne vaut plus : l'écran des listes l'indique
+par le message du marqueur. (3) `clos` sur plusieurs valeurs est une exception au « un marqueur, une valeur » (un mouvement exécuté et un
+mouvement archivé sont tous deux terminés) ; j'ai préféré cela à un troisième usage du drapeau `terminal`, que le point 3 demandait
+de laisser à deux usages. (4) Pas de suppression de membre ni de valeur utilisée, par construction. (5) Les symboles personnalisés ne
+sont pas validés contre le fournisseur : un symbole faux produit une ligne `incident` à la première récupération. (6) Les cinq
+descriptions de thème sont des mots, pas des aperçus : volontairement aucune pastille de couleur, qui demanderait de sortir les valeurs
+des blocs `:root[data-cabinet-theme]`.

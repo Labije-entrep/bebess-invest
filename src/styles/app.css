@@ -1,4 +1,12 @@
-/* Espace client : un seul thème sombre, aucun arrondi, aucune ombre. */
+/* Espace client, module et site public : aucun arrondi, aucune ombre.
+ *
+ * Les jetons de couleur sont définis deux fois : ici, dans :root, qui vaut thème « maison » et sert de repli quand
+ * aucun thème n'est posé ; puis dans cinq blocs :root[data-cabinet-theme="<nom>"] (maison, nuit, foret, pierre, clair).
+ * Le serveur pose l'attribut sur <html> d'après le réglage « theme » du cabinet (src/lib/reglages.ts) ; aucun composant ne
+ * connaît le thème, tous ne lisent que des jetons. Chaque thème redéfinit TOUS les jetons de couleur et ses deux
+ * jetons de courbe ; seuls les jetons de police, d'échelle et de mise en page (non colorés) restent communs.
+ * Un thème est une combinaison déjà validée en contraste (voir chantier/ETAT.md, lot 09) : le cabinet choisit un
+ * nom dans une liste, jamais une valeur. Pas de sélecteur de couleur libre, nulle part. */
 
 /* Polices auto-hébergées, sous-ensemble latin, graisses utilisées seulement. */
 @import '@fontsource/newsreader/latin-200.css';
@@ -21,7 +29,7 @@
   --filet: rgba(185, 148, 85, 0.26);
   --champ-fond: rgba(19, 36, 61, 0.45);
   --positif: #4fb08d;
-  --alerte: #c2614f;
+  --alerte: #c7665a;
 
   /* Couleurs de série, dans cet ordre (graphique de répartition) */
   --serie-1: #b9862b;
@@ -29,6 +37,12 @@
   --serie-3: #c9684e;
   --serie-4: #3fa98a;
   --serie-5: #9b7bd4;
+
+  /* Courbe de l'espace client : valorisation et cumul des versements */
+  --courbe-valeur: #dcbf88;
+  --courbe-versements: #7c8aa0;
+
+  color-scheme: dark;
 
   /* Charte : familles de police */
   --serif: 'Newsreader', Georgia, 'Times New Roman', serif;
@@ -44,6 +58,118 @@
   --espace-l: 2rem;
   --espace-xl: 3rem;
   --espace-xxl: 4rem;
+}
+
+/* ---------------------------------------------------------------- thèmes du cabinet */
+
+:root[data-cabinet-theme="maison"] {
+  color-scheme: dark;
+  --fond: #070a10;
+  --marine: #0d1829;
+  --texte: #e6e1d6;
+  --texte-2: #98a2b2;
+  --accent: #b99455;
+  --accent-clair: #dcbf88;
+  --sur-accent: #140f05;
+  --filet: rgba(185, 148, 85, 0.26);
+  --champ-fond: rgba(19, 36, 61, 0.45);
+  --positif: #4fb08d;
+  --alerte: #c7665a;
+  --serie-1: #b9862b;
+  --serie-2: #4e9bd6;
+  --serie-3: #c9684e;
+  --serie-4: #3fa98a;
+  --serie-5: #9b7bd4;
+  --courbe-valeur: #dcbf88;
+  --courbe-versements: #7c8aa0;
+}
+
+:root[data-cabinet-theme="nuit"] {
+  color-scheme: dark;
+  --fond: #090b11;
+  --marine: #121826;
+  --texte: #e7e9ef;
+  --texte-2: #9ea7b8;
+  --accent: #7aa5ea;
+  --accent-clair: #adc9f3;
+  --sur-accent: #06101f;
+  --filet: rgba(122, 165, 234, 0.28);
+  --champ-fond: rgba(30, 42, 68, 0.5);
+  --positif: #52b98a;
+  --alerte: #e0786a;
+  --serie-1: #7aa5ea;
+  --serie-2: #d9a05b;
+  --serie-3: #d9738a;
+  --serie-4: #52b98a;
+  --serie-5: #a58be0;
+  --courbe-valeur: #adc9f3;
+  --courbe-versements: #8a97b0;
+}
+
+:root[data-cabinet-theme="foret"] {
+  color-scheme: dark;
+  --fond: #08110d;
+  --marine: #10201a;
+  --texte: #e4e9e0;
+  --texte-2: #9fb2a5;
+  --accent: #8fc07a;
+  --accent-clair: #bfe0a9;
+  --sur-accent: #0a1507;
+  --filet: rgba(143, 192, 122, 0.26);
+  --champ-fond: rgba(22, 52, 38, 0.5);
+  --positif: #5fc9a0;
+  --alerte: #e07b62;
+  --serie-1: #8fc07a;
+  --serie-2: #d6a24f;
+  --serie-3: #e07b62;
+  --serie-4: #5db7c9;
+  --serie-5: #b690d6;
+  --courbe-valeur: #bfe0a9;
+  --courbe-versements: #86a392;
+}
+
+:root[data-cabinet-theme="pierre"] {
+  color-scheme: dark;
+  --fond: #161412;
+  --marine: #221f1c;
+  --texte: #ece8e1;
+  --texte-2: #b0a99f;
+  --accent: #cfa77d;
+  --accent-clair: #e6cba9;
+  --sur-accent: #1c1308;
+  --filet: rgba(207, 167, 125, 0.28);
+  --champ-fond: rgba(64, 56, 48, 0.5);
+  --positif: #6fba90;
+  --alerte: #e08068;
+  --serie-1: #cfa77d;
+  --serie-2: #6aa5d1;
+  --serie-3: #d9806a;
+  --serie-4: #6fba90;
+  --serie-5: #a98fd1;
+  --courbe-valeur: #e6cba9;
+  --courbe-versements: #a39b90;
+}
+
+:root[data-cabinet-theme="clair"] {
+  color-scheme: light;
+  --fond: #f8f5ef;
+  --marine: #ede8dc;
+  --texte: #1d1b17;
+  --texte-2: #55524b;
+  --accent: #82601f;
+  --accent-clair: #6b4c12;
+  --sur-accent: #fffaf0;
+  --filet: rgba(130, 96, 31, 0.32);
+  --champ-fond: rgba(255, 255, 255, 0.75);
+  --positif: #1b7549;
+  --alerte: #ad3524;
+  --serie-1: #9a6f1c;
+  --serie-2: #1f6fb0;
+  --serie-3: #b4492f;
+  --serie-4: #1f8a6a;
+  --serie-5: #6e4fb5;
+  --courbe-valeur: #6b4c12;
+  --courbe-versements: #5b6b82;
 }
 
 *, *::before, *::after {

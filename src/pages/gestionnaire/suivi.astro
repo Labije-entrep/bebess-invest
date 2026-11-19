@@ -49,6 +49,11 @@ if (!utilisateur || !tenant) return Astro.redirect('/connexion');
   .suivi-kpi.alerte { background: color-mix(in srgb, var(--alerte) 8%, transparent); border-color: color-mix(in srgb, var(--alerte) 45%, transparent); }
   .suivi-kpi.alerte .chiffre, .suivi-kpi.alerte .etiquette { color: var(--alerte); }
   .suivi-kpi.alerte[aria-pressed='true'] { border-color: var(--alerte); background: color-mix(in srgb, var(--alerte) 16%, transparent); }
+  .suivi-kpi.manque { cursor: default; border-style: dashed; }
+  .suivi-kpi.manque:hover { background: transparent; }
+  .suivi-kpi.manque .chiffre { color: var(--texte-2); }
+  .suivi-kpi-message { display: block; margin-top: 0.45rem; font-size: 0.75rem; line-height: 1.4; color: var(--texte-2); }
+  .suivi-kpi-message a { color: var(--accent-clair); }
 
   /* Barre d'outils */
   .suivi-outils { display: flex; flex-wrap: wrap; gap: 0.875rem; align-items: center; padding-bottom: var(--espace); border-bottom: 1px solid var(--filet); }

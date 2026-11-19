@@ -2,6 +2,7 @@
 export const prerender = false;
 import Gestion from '../../layouts/Gestion.astro';
 import { contexte, viewersResumes, dernierImport, seuilArrete } from '../../lib/gestion';
+import { seuilsDe } from '../../lib/suivi';
 import { euros, dateCourte } from '../../lib/format';
 import { urlLogoCabinet, MESSAGES_REFUS } from '../../lib/fichiers';
 
@@ -10,7 +11,8 @@ if (c instanceof Response) return c;
 
 const viewers = await viewersResumes(c.db, c.tenant.id);
 const dernier = await dernierImport(c.db, c.tenant.id);
-const seuil = seuilArrete();
+const joursArrete = (await seuilsDe(c.db, c.tenant.id)).arrete; // réglage « arrêté périmé » du cabinet (45 jours par défaut)
+const seuil = seuilArrete(joursArrete);
 // Rappel calculé au chargement : viewers actifs dont l'arrêté dépasse le seuil. Ni tâche planifiée, ni e-mail.
 const enRetard = viewers.filter((v) => v.actif === 1 && (!v.arrete || v.arrete < seuil));
 const encours =viewers.reduce((s, v) => s + v.encours, 0);
@@ -28,7 +30,7 @@ const MSG_LOGO: Record<string, string> = { ok: 'Logo du cabinet enregistré.', r
   {MSG_LOGO[retourLogo] && <p class={retourLogo in MESSAGES_REFUS ? 'info alerte' : 'info'} role="status">{MSG_LOGO[retourLogo]}</p>}
   {enRetard.length > 0 && (
     <div class="info alerte" role="status">
-      <strong>{enRetard.length} viewer{enRetard.length > 1 ? 's' : ''} à mettre à jour</strong> : arrêté de plus de 45 jours ou absent.
+      <strong>{enRetard.length} viewer{enRetard.length > 1 ? 's' : ''} à mettre à jour</strong> : arrêté de plus de {joursArrete} jours ou absent.
       <ul>
         {enRetard.map((v) => (
           <li>

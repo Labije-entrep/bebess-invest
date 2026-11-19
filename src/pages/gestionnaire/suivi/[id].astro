@@ -44,6 +44,7 @@ const MESSAGES: Record<string, [string, boolean]> = {
   promu_sans_envoi: ['Contact promu : le viewer, sa fiche et son portefeuille « Patrimoine » sont créés et rattachés, mais le lien de première connexion n’a pas pu être envoyé. La personne peut demander un lien depuis la page de connexion ; le journal du serveur donne la cause.', true],
   email_absent: ['Ce contact n’a pas d’adresse e-mail, et le lien de première connexion part par e-mail : il ne peut pas être promu. Renseignez l’adresse dans la fiche, puis recommencez.', true],
   email_invalide: ['L’adresse e-mail de ce contact n’est pas valable : corrigez-la dans la fiche, puis recommencez.', true],
+  type_absent: ['Aucun type de portefeuille n’est marqué « Type par défaut » : le portefeuille de départ n’aurait pas de type, rien n’a été créé. Posez le marqueur dans Réglages, Listes.', true],
   email_pris: ['Cette adresse e-mail est déjà celle d’un compte : ce contact ne peut pas être promu avec elle.', true],
   deja: ['Ce contact est déjà rattaché à un viewer.', false],
   sans_viewer: ['Ce contact n’est rattaché à aucun viewer : il n’y a ni écart ni arrêté à signaler.', true],
@@ -273,7 +274,7 @@ const retour = MESSAGES[Astro.url.searchParams.get('pm') ?? ''] ?? null;
   .fiche-ligne.vise { outline: 1px solid var(--accent); outline-offset: 0.375rem; }
   .fiche-statut { flex: none; min-width: 5.5rem; text-align: center; font-family: var(--mono); font-size: 0.5625rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--texte-2); background: transparent; border: 1px solid var(--filet); padding: 0.3125rem 0.5625rem; cursor: pointer; }
   .fiche-statut:hover { background: var(--marine); }
-  .fiche-statut[data-statut='encours'] { color: var(--accent-clair); border-color: var(--accent); }
+  .fiche-statut[data-marqueur='en_cours'] { color: var(--accent-clair); border-color: var(--accent); }
   .fiche-statut[data-terminal] { color: var(--positif); border-color: color-mix(in srgb, var(--positif) 45%, transparent); }
   .fiche-statut.retard { color: var(--alerte); border-color: color-mix(in srgb, var(--alerte) 45%, transparent); }
   .fiche-sujet { flex: 1 1 auto; min-width: 0; font-size: 0.9375rem; }

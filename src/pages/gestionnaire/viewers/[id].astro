@@ -13,6 +13,8 @@ import {
 } from '../../../lib/db';
 import { euros, pourcent, dateCourte } from '../../../lib/format';
 import { LIMITE_PDF, MESSAGES_REFUS } from '../../../lib/fichiers';
+import { clesMarqueesDe, libellesDe } from '../../../lib/listes';
+import { MARQUEUR, marqueursDeLaListe } from '../../../lib/marqueurs';
 
 const c = contexte(Astro);
 if (c instanceof Response) return c;
@@ -23,6 +25,11 @@ if (!viewer) return new Response('Viewer introuvable', { status: 404 });
 const CLASSES = await optionsDe(db, tenant.id, 'classe_actif');
 const STATUTS = await optionsDe(db, tenant.id, 'statut_mouvement');
 const TYPES_PF = await optionsDe(db, tenant.id, 'type_portefeuille');
+const nomClasse = (await libellesDe(db, tenant.id, 'classe_actif')).lire;
+const nomStatut = (await libellesDe(db, tenant.id, 'statut_mouvement')).lire;
+// Une classe désactivée reste lisible sur les lignes existantes (et conservée à l'enregistrement) : on l'ajoute au choix de cette ligne.
+const classesAvec = (v: string): [string, string][] =>
+  v && !CLASSES.some(([k]) => k === v) ? [...CLASSES, [v, `${nomClasse(v)} (désactivée)`]] : CLASSES;
 const base = `/gestionnaire/viewers/${encodeURIComponent(viewer.id)}`;
 
 const ONGLETS: [string, string][] = [
@@ -80,8 +87,16 @@ const MSG_RAPPORTS: Record<string, string> = {
   titre: 'Le titre est obligatoire.',
   date: 'Date au format AAAA-MM-JJ.',
   categorie: 'Catégorie inconnue.',
+  portefeuille: 'Portefeuille inconnu pour ce viewer, ou archivé : choisissez un portefeuille actif, ou tout le dossier.',
 };
 const erreurRapport = MSG_RAPPORTS[p.get('erreur') ?? ''] ?? null;
+/** L'entité qu'un rapport vise : le portefeuille (avec la mention « archivé »), ou tout le dossier. */
+const entiteDe = (id: string | null): string => {
+  if (!id) return 'Tout le dossier';
+  const x = portefeuilles.find((y) => y.id === id);
+  return x ? `${x.libelle}${x.archive ? ' (archivé)' : ''}` : 'Portefeuille retiré';
+};
+const sansClos = onglet === 'mouvements' && (await clesMarqueesDe(db, tenant.id, 'statut_mouvement', MARQUEUR.CLOS)).length === 0;
 const mouvements = onglet === 'mouvements' ? await mouvementsDuViewer(db, viewer.id) : [];
 const ecarts = onglet === 'cibles' ? ecartAllocation(lignes, cibles) : [];
 
@@ -356,7 +371,7 @@ let compteur = 0;
                       return (
                         <tr>
                           <Cellule nom={`r${i}_libelle`} label="Libellé" valeur={v(`r${i}_libelle`, l?.libelle)} erreur={erreurs[`r${i}_libelle`]} />
-                          <Cellule nom={`r${i}_classe`} label="Classe" options={CLASSES} valeur={v(`r${i}_classe`, l?.classe)} erreur={erreurs[`r${i}_classe`]} />
+                          <Cellule nom={`r${i}_classe`} label="Classe" options={classesAvec(v(`r${i}_classe`, l?.classe))} valeur={v(`r${i}_classe`, l?.classe)} erreur={erreurs[`r${i}_classe`]} />
                           <Cellule nom={`r${i}_valo`} label="Valorisation" num valeur={v(`r${i}_valo`, formEuros(l?.valorisation_cents))} erreur={erreurs[`r${i}_valo`]} />
                           <Cellule nom={`r${i}_pv`} label="Plus-value" num valeur={v(`r${i}_pv`, formEuros(l?.pv_cents))} erreur={erreurs[`r${i}_pv`]} />
                           <Cellule nom={`r${i}_frais`} label="Frais" num valeur={v(`r${i}_frais`, formBp(l?.frais_bp))} erreur={erreurs[`r${i}_frais`]} />
@@ -394,7 +409,7 @@ let compteur = 0;
             <tbody>
               {rowsCibles.map((r, i) => (
                 <tr>
-                  <Cellule nom={`r${i}_classe`} label="Classe" options={CLASSES} valeur={v(`r${i}_classe`, r?.classe)} erreur={erreurs[`r${i}_classe`]} />
+                  <Cellule nom={`r${i}_classe`} label="Classe" options={classesAvec(v(`r${i}_classe`, r?.classe))} valeur={v(`r${i}_classe`, r?.classe)} erreur={erreurs[`r${i}_classe`]} />
                   <Cellule nom={`r${i}_pct`} label="Cible" num valeur={v(`r${i}_pct`, formBp(r?.cible_bp))} erreur={erreurs[`r${i}_pct`]} />
                 </tr>
               ))}
@@ -412,7 +427,7 @@ let compteur = 0;
               <thead><tr><th>Classe</th><th class="num">Cible</th><th class="num">Actuel</th><th class="num">Écart</th></tr></thead>
               <tbody>
                 {ecarts.map((x) => (
-                  <tr><td>{x.classe}</td><td class="num">{pourcent(x.cible_bp)}</td><td class="num">{pourcent(x.actuel_bp)}</td><td class="num">{signe(x.ecart_bp)}</td></tr>
+                  <tr><td>{nomClasse(x.classe)}</td><td class="num">{pourcent(x.cible_bp)}</td><td class="num">{pourcent(x.actuel_bp)}</td><td class="num">{signe(x.ecart_bp)}</td></tr>
                 ))}
               </tbody>
             </table>
@@ -495,6 +510,7 @@ let compteur = 0;
 
   {onglet === 'mouvements' && (
     <>
+      {sansClos && <p class="info alerte" role="status">{marqueursDeLaListe('statut_mouvement')[0].sans} <a href="/gestionnaire/reglages?onglet=listes&liste=statut_mouvement">Poser le marqueur dans les listes</a>.</p>}
       <form method="post">
         <input type="hidden" name="action" value="mouvement" />
         <div class="grille">
@@ -537,7 +553,7 @@ let compteur = 0;
               <tr>
                 <td>{dateCourte(m.date)}</td><td>{m.libelle}</td><td>{m.enveloppe ?? '—'}</td>
                 <td class="num">{m.montant_cents === null ? '—' : euros(m.montant_cents)}</td>
-                <td>{STATUTS.find(([k]) => k === m.statut)?.[1] ?? m.statut}{m.en_cours ? ' · en cours' : ''}</td><td class="num">{m.etape}/3</td>
+                <td>{nomStatut(m.statut)}{m.en_cours ? ' · en cours' : ''}</td><td class="num">{m.etape}/3</td>
                 <td class="num">
                   <form method="post"><input type="hidden" name="action" value="suppr_mouvement" /><input type="hidden" name="id" value={m.id} /><button class="btn" type="submit">Supprimer</button></form>
                 </td>
@@ -550,7 +566,7 @@ let compteur = 0;
   )}
   {onglet === 'rapports' && (
     <>
-      <p class="aide">Les rapports déposés ici s'affichent dans l'onglet « Stratégie et rapports » de l'espace du viewer, pour tous ses portefeuilles. PDF seulement, {LIMITE_PDF / 1024 / 1024} Mo au plus ; le type est vérifié sur le contenu du fichier.</p>
+      <p class="aide">Les rapports déposés ici s'affichent dans l'onglet « Stratégie et rapports » de l'espace du viewer, sous l'entité qu'ils visent ; sans portefeuille choisi, ils valent pour tout le dossier. Un portefeuille archivé n'est plus proposé, mais ses rapports restent consultables. PDF seulement, {LIMITE_PDF / 1024 / 1024} Mo au plus ; le type est vérifié sur le contenu du fichier.</p>
       <form method="post" action={`/gestionnaire/fichiers/document?viewer_id=${encodeURIComponent(viewer.id)}`} enctype="multipart/form-data">
         <div class="grille">
           <Champ nom="titre" label="Titre" requis />
@@ -558,6 +574,13 @@ let compteur = 0;
             <label class="etiquette" for="categorie">Catégorie *</label>
             <select class="champ" id="categorie" name="categorie" required>
               {CATEGORIES_DOC.map(([k, nom]) => <option value={k}>{nom}</option>)}
+            </select>
+          </div>
+          <div class="groupe">
+            <label class="etiquette" for="portefeuille_id">Portefeuille concerné</label>
+            <select class="champ" id="portefeuille_id" name="portefeuille_id">
+              <option value="">Tout le dossier</option>
+              {actifs.map((x) => <option value={x.id}>{x.libelle}</option>)}
             </select>
           </div>
           <Champ nom="date" label="Date du rapport" type="date" valeur={new Date().toISOString().slice(0, 10)} requis />
@@ -572,13 +595,14 @@ let compteur = 0;
       {documents.length === 0 ? <p class="aide">Aucun rapport déposé.</p> : (
         <div class="defile">
           <table class="table">
-            <thead><tr><th>Date</th><th>Titre</th><th>Catégorie</th><th></th></tr></thead>
+            <thead><tr><th>Date</th><th>Titre</th><th>Catégorie</th><th>Concerne</th><th></th></tr></thead>
             <tbody>
               {documents.map((d) => (
                 <tr>
                   <td>{dateCourte(d.date)}</td>
                   <td>{d.cle_fichier ? <a href={`/fichiers/document/${encodeURIComponent(d.id)}`}>{d.titre}</a> : d.titre}</td>
                   <td>{CATEGORIES_DOC.find(([k]) => k === d.categorie)?.[1] ?? d.categorie}</td>
+                  <td>{entiteDe(d.portefeuille_id)}</td>
                   <td class="num">
                     <form method="post" action={`/gestionnaire/fichiers/supprimer/${encodeURIComponent(d.id)}`}><button class="btn" type="submit">Retirer</button></form>
                   </td>

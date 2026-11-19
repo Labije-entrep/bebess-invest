@@ -6,7 +6,8 @@
 import { accueilDuRole } from './auth';
 import { AccesRefuse, appartient, exiger } from './cloisonnement';
 import { creerMailer, envDe } from './mail';
-import { validateurDe } from './listes';
+import { cleMarquee, clesMarqueesDe, validateurDe } from './listes';
+import { MARQUEUR } from './marqueurs';
 import {
   enveloppesDuViewer,
   portefeuillesDuViewer,
@@ -225,6 +226,11 @@ export async function creerViewer(
     const existant = await db.prepare('SELECT id FROM utilisateur WHERE email = ?').bind(email).first();
     if (existant) erreurs.email = 'Cette adresse est déjà utilisée.';
   }
+  // Le type du premier portefeuille est celui qui porte le marqueur « Type par défaut » : jamais une clé écrite en dur.
+  const typeDefaut = await cleMarquee(db, tenantId, 'type_portefeuille', MARQUEUR.DEFAUT);
+  if (!typeDefaut) {
+    erreurs.general = 'Aucun type de portefeuille n’est marqué « Type par défaut » : le portefeuille de départ n’aurait pas de type. Posez le marqueur dans Réglages, Listes, Types de portefeuille.';
+  }
   if (Object.keys(erreurs).length) return { erreurs };
   const id = nouvelId();
   const now = maintenant();
@@ -239,9 +245,9 @@ export async function creerViewer(
     db
       .prepare(
         `INSERT INTO portefeuille (id, tenant_id, viewer_id, libelle, type, ordre, cree_le)
-         VALUES (?, ?, ?, 'Patrimoine', 'personne', 0, ?)`,
+         VALUES (?, ?, ?, 'Patrimoine', ?, 0, ?)`,
       )
-      .bind(nouvelId(), tenantId, id, now),
+      .bind(nouvelId(), tenantId, id, typeDefaut, now),
   ]);
   return { id, email };
 }
@@ -406,7 +412,7 @@ async function majPortefeuilles(db: Base, tenantId: string, viewerId: string, f:
 
 /**
  * Supprime un portefeuille vide. Un viewer en garde toujours au moins un ; un portefeuille qui
- * porte des enveloppes, des points ou des cibles ne se supprime pas : rien n'est détruit en
+ * porte des enveloppes, des points, des cibles ou des rapports ne se supprime pas : rien n'est détruit en
  * silence, il faut d'abord le vider.
  */
 async function supprimerPortefeuille(db: Base, tenantId: string, viewerId: string, f: FormData): Promise<Erreurs> {
@@ -421,12 +427,13 @@ async function supprimerPortefeuille(db: Base, tenantId: string, viewerId: strin
     .prepare(
       `SELECT (SELECT COUNT(*) FROM enveloppe WHERE portefeuille_id = ?)
             + (SELECT COUNT(*) FROM point WHERE portefeuille_id = ?)
-            + (SELECT COUNT(*) FROM cible WHERE portefeuille_id = ?) AS n`,
+            + (SELECT COUNT(*) FROM cible WHERE portefeuille_id = ?)
+            + (SELECT COUNT(*) FROM document WHERE portefeuille_id = ?) AS n`,
     )
-    .bind(id, id, id)
+    .bind(id, id, id, id)
     .first<{ n: number }>();
   if ((contenu?.n ?? 0) > 0) {
-    return { general: 'Ce portefeuille contient des enveloppes, des points ou des cibles : videz-le avant de le supprimer.' };
+    return { general: 'Ce portefeuille contient des enveloppes, des points, des cibles ou des rapports : videz-le avant de le supprimer.' };
   }
   await db.prepare('DELETE FROM portefeuille WHERE id = ? AND viewer_id = ? AND tenant_id = ?').bind(id, viewerId, tenantId).run();
   return {};
@@ -953,7 +960,8 @@ async function enregistrerMouvement(db: Base, tenantId: string, viewerId: string
   if (montantS && montant === null) e.montant = MSG_EUROS;
   const statut = texte(f.get('statut'), 30);
   if (!statuts.valide(statut)) e.statut = statuts.message;
-  const termine = statut === 'execute' || statut === 'archive';
+  // « Terminé » : les statuts qui portent le marqueur `clos` dans la liste du cabinet (aucune clé écrite en dur).
+  const termine = (await clesMarqueesDe(db, tenantId, 'statut_mouvement', MARQUEUR.CLOS)).includes(statut);
   const etape = termine ? 0 : entier(f.get('etape'), 1, 3);
   const enCours = termine ? 0 : texte(f.get('en_cours'), 1) === '1' ? 1 : 0;
   if (Object.keys(e).length) return e;

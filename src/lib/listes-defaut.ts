@@ -1,5 +1,5 @@
 // Valeurs par défaut des listes de référence, posées à la création d'un cabinet.
-// Source : chantier/21-listes-defaut.md. Le cabinet peut ensuite les modifier (lot 09) ;
+// Source : chantier/21-listes-defaut.md. Le cabinet les modifie ensuite dans /gestionnaire/reglages (lot 09) ;
 // `cle` ne change jamais, c'est elle qui est stockée dans les enregistrements.
 
 import type { Base, Requete } from './db';
@@ -9,10 +9,12 @@ export type Liste =
   | 'categorie_doc' | 'classe_actif' | 'statut_mouvement' | 'type_portefeuille';
 
 /**
- * [cle, libelle] ou [cle, libelle, 'terminal'] ; l'ordre est celui du tableau, à partir de 1.
+ * [cle, libelle, terminal?, marqueur?] ; l'ordre est celui du tableau, à partir de 1.
  * « terminal » : la valeur clôt l'objet (statut_sujet) ou le fait sortir du parcours (etape).
+ * marqueur : le rôle que le code attend de la valeur (src/lib/marqueurs.ts). Les listes par défaut sont le seul endroit
+ * où une clé et un marqueur sont écrits côte à côte ; ensuite le cabinet pose les marqueurs où il veut.
  */
-type ValeurDefaut = [cle: string, libelle: string, terminal?: 'terminal'];
+type ValeurDefaut = [cle: string, libelle: string, terminal?: 'terminal' | null, marqueur?: string];
 export const LISTES_DEFAUT: Record<Liste, ValeurDefaut[]> = {
   classe_actif: [
     ['actions', 'Actions'],
@@ -25,20 +27,20 @@ export const LISTES_DEFAUT: Record<Liste, ValeurDefaut[]> = {
     ['en_preparation', 'En préparation'],
     ['transmis', 'Transmis'],
     ['chez_etablissement', "Chez l'établissement"],
-    ['execute', 'Exécuté'],
-    ['archive', 'Archivé'],
+    ['execute', 'Exécuté', null, 'clos'],
+    ['archive', 'Archivé', null, 'clos'],
   ],
   type_contact: [
-    ['client', 'Client'],
-    ['prospect', 'Prospect'],
+    ['client', 'Client', null, 'client'],
+    ['prospect', 'Prospect', null, 'parcours'],
     ['prescripteur', 'Prescripteur'],
     ['partenaire', 'Partenaire'],
     ['interne', 'Interne'],
   ],
   statut_sujet: [
     ['afaire', 'À faire'],
-    ['encours', 'En cours'],
-    ['attente', 'En attente'],
+    ['encours', 'En cours', null, 'en_cours'],
+    ['attente', 'En attente', null, 'en_attente'],
     ['fait', 'Fait', 'terminal'],
   ],
   etape: [
@@ -73,7 +75,7 @@ export const LISTES_DEFAUT: Record<Liste, ValeurDefaut[]> = {
     ['autre', 'Autre'],
   ],
   type_portefeuille: [
-    ['personne', 'Personne physique'],
+    ['personne', 'Personne physique', null, 'defaut'],
     ['holding', 'Holding'],
     ['sci', 'SCI'],
     ['assurance_vie', 'Assurance-vie'],
@@ -85,11 +87,11 @@ export const LISTES_DEFAUT: Record<Liste, ValeurDefaut[]> = {
 export function requetesListesDefaut(db: Base, tenantId: string): Requete[] {
   const out: Requete[] = [];
   for (const [liste, valeurs] of Object.entries(LISTES_DEFAUT)) {
-    valeurs.forEach(([cle, libelle, terminal], i) => {
+    valeurs.forEach(([cle, libelle, terminal, marqueur], i) => {
       out.push(
         db
-          .prepare('INSERT INTO liste_valeur (tenant_id, liste, cle, libelle, ordre, actif, terminal) VALUES (?, ?, ?, ?, ?, 1, ?)')
-          .bind(tenantId, liste, cle, libelle, i + 1, terminal ? 1 : 0),
+          .prepare('INSERT INTO liste_valeur (tenant_id, liste, cle, libelle, ordre, actif, terminal, marqueur) VALUES (?, ?, ?, ?, ?, 1, ?, ?)')
+          .bind(tenantId, liste, cle, libelle, i + 1, terminal ? 1 : 0, marqueur ?? null),
       );
     });
   }

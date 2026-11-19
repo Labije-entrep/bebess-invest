@@ -23,9 +23,9 @@ const { courbe } = Astro.props;
       ))}
       {courbe.series.map((s) => (
         <>
-          <path d={s.d} fill="none" stroke={s.couleur} stroke-width="2" stroke-dasharray={s.tirets ? '6 4' : undefined} />
-          <text x={(s.fin.x + 10).toFixed(2)} y={s.fin.yNom.toFixed(2)} class="c-nom" fill={s.couleur}>{s.nom}</text>
-          <text x={(s.fin.x + 10).toFixed(2)} y={s.fin.yValeur.toFixed(2)} class="c-val" fill={s.couleur}>{s.fin.valeur}</text>
+          <path d={s.d} fill="none" style={`stroke: ${s.couleur}`} stroke-width="2" stroke-dasharray={s.tirets ? '6 4' : undefined} />
+          <text x={(s.fin.x + 10).toFixed(2)} y={s.fin.yNom.toFixed(2)} class="c-nom" style={`fill: ${s.couleur}`}>{s.nom}</text>
+          <text x={(s.fin.x + 10).toFixed(2)} y={s.fin.yValeur.toFixed(2)} class="c-val" style={`fill: ${s.couleur}`}>{s.fin.valeur}</text>
         </>
       ))}
     </svg>

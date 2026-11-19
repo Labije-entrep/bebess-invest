@@ -10,9 +10,9 @@
 // ici elle sert trois entités (contact, sujet, échange).
 
 import {
-  api, brancher, empiler, estTerminal, fileExistante, h, liaison, marque as marqueEcriture, reseauRetabli,
-  sansPerdreLeClic, toutesOps, toutRejouer, ecrituresEnFile, TYPE_PROSPECT,
-  type Corps, type Entite, type Enfant,
+  api, brancher, clesMarquees, couleurMembre, empiler, estTerminal, fileExistante, h, liaison, marque as marqueEcriture, MARQUEUR,
+  reseauRetabli, sansPerdreLeClic, toutesOps, toutRejouer, ecrituresEnFile,
+  type Corps, type Entite, type Enfant, type Marqueurs,
 } from './commun';
 
 // ---------------------------------------------------------------- types
@@ -50,6 +50,8 @@ interface Etat {
   version: number;
   /** Clés terminales par liste (colonne `terminal` de liste_valeur), actives ou non. */
   terminaux: Record<string, string[]>;
+  /** Rôles que le code attend de certaines valeurs (colonne `marqueur`), sur les valeurs actives seulement. */
+  marqueurs: Marqueurs;
   contacts: Contact[];
   sujets: Sujet[];
   echanges: Echange[];
@@ -196,6 +198,10 @@ const echangesAffiches = (): Echange[] =>
     : [];
 
 const liste = (nom: string): ValeurListe[] => serveur?.listes[nom] ?? [];
+
+/** Le marqueur (en_cours, en_attente) que porte ce statut dans la liste du cabinet, ou rien : la couleur ne dépend jamais d'une clé. */
+const marqueurDuStatut = (cle: string): string | undefined =>
+  [MARQUEUR.EN_COURS, MARQUEUR.EN_ATTENTE].find((m) => clesMarquees(serveur?.marqueurs, 'statut_sujet', m).includes(cle));
 const libelle = (nom: string, cle: string | null): string =>
   cle === null ? '' : (liste(nom).find((v) => v.cle === cle)?.libelle ?? cle);
 const nomComplet = (c: Contact): string => `${c.nom.toLocaleUpperCase('fr')}${c.prenom ? ` ${c.prenom}` : ''}`;
@@ -267,7 +273,7 @@ const marque = (entite: Entite, id: string): HTMLElement | null => marqueEcritur
 function avatar(m: Membre | undefined, pleine: boolean): HTMLElement | null {
   if (!m) return null;
   const a = h('b', { class: `fiche-avatar${pleine ? ' pleine' : ''}`, 'aria-hidden': 'true' }, m.initiale);
-  if (pleine) a.style.backgroundColor = m.couleur;
+  if (pleine) a.style.backgroundColor = couleurMembre(m.couleur);
   return a;
 }
 
@@ -412,7 +418,8 @@ function enteteContact(c: Contact): HTMLElement {
 
   // L'étape du parcours : seulement sur un prospect, avec les étapes actives de la liste (plus l'étape courante
   // si elle en est sortie, pour qu'elle reste lisible).
-  const etape = c.types.includes(TYPE_PROSPECT)
+  const typesParcours = clesMarquees(serveur?.marqueurs, 'type_contact', MARQUEUR.PARCOURS);
+  const etape = c.types.some((t) => typesParcours.includes(t))
     ? cellule('Étape', champ({
       cle: 'contact:etape', etiquette: 'Étape', valeur: c.etape ?? '', type: 'select',
       options: liste('etape').map((v): [string, string] => [v.cle, v.libelle]).concat(
@@ -461,7 +468,7 @@ function blocSujets(): HTMLElement {
     };
     return h('div', { class: `fiche-ligne${fait ? ' fait' : ''}${s.id === sujetVise ? ' vise' : ''}`, id: `sujet-${s.id}` },
       h('button', {
-        type: 'button', class: `fiche-statut${retard ? ' retard' : ''}`, 'data-statut': s.statut, 'data-terminal': fait, 'data-f': `statut:${s.id}`,
+        type: 'button', class: `fiche-statut${retard ? ' retard' : ''}`, 'data-marqueur': marqueurDuStatut(s.statut), 'data-terminal': fait, 'data-f': `statut:${s.id}`,
         'aria-label': `Statut : ${libelle('statut_sujet', s.statut)}${suivant ? `. Passer à « ${libelle('statut_sujet', suivant)} »` : ''}`,
         disabled: suivant === null,
         onclick: () => {

@@ -22,7 +22,7 @@ const choix = Astro.url.searchParams.get('p');
 const suite = choix && /^[\w-]{1,64}$/.test(choix) ? `?p=${encodeURIComponent(choix)}` : '';
 ---
 <!doctype html>
-<html lang="fr">
+<html lang="fr" data-cabinet-theme={Astro.locals.tenant?.theme ?? 'maison'}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

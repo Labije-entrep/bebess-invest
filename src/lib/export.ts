@@ -134,7 +134,7 @@ const TABLES_LOCATAIRE: [string, string][] = [
   ['tenant', 'SELECT id, nom, domaine, cree_le FROM tenant WHERE id = ?'],
   ['domaine', 'SELECT hote, tenant_id, principal, valide_le FROM domaine WHERE tenant_id = ?'],
   ['reglage', 'SELECT tenant_id, cle, valeur FROM reglage WHERE tenant_id = ?'],
-  ['liste_valeur', 'SELECT tenant_id, liste, cle, libelle, ordre, actif, terminal FROM liste_valeur WHERE tenant_id = ?'],
+  ['liste_valeur', 'SELECT tenant_id, liste, cle, libelle, ordre, actif, terminal, marqueur FROM liste_valeur WHERE tenant_id = ?'],
   ['membre', 'SELECT id, tenant_id, nom, initiale, couleur, actif, cree_le FROM membre WHERE tenant_id = ?'],
   ['utilisateur', 'SELECT id, tenant_id, email, nom, role, actif, cree_le FROM utilisateur WHERE tenant_id = ?'],
   ['fiche', 'SELECT f.* FROM fiche f JOIN utilisateur u ON u.id = f.utilisateur_id WHERE u.tenant_id = ?'],
