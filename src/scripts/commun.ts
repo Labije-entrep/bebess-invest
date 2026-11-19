@@ -56,6 +56,13 @@ export function estTerminal(terminaux: Record<string, string[]> | undefined, lis
   return terminaux?.[liste]?.includes(cle) ?? false;
 }
 
+/**
+ * Le parcours de prospection range les contacts de ce type, et l'étape ne se pose que sur eux (liste, fiche).
+ * Seule clé de type_contact écrite en dur : la table n'a pas de colonne qui dise laquelle de ses valeurs est
+ * le prospect (voir ETAT.md, lot 05, choix 2).
+ */
+export const TYPE_PROSPECT = 'prospect';
+
 // ---------------------------------------------------------------- file d'écritures
 
 export type Corps = Record<string, unknown>;

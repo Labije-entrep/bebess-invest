@@ -1,0 +1,183 @@
+---
+export const prerender = false;
+import Gestion from '../../layouts/Gestion.astro';
+import { envDe } from '../../lib/mail';
+import { appartient } from '../../lib/cloisonnement';
+import { valeurValide, valeursDe } from '../../lib/listes';
+import {
+  creerDocument, documentsInternes, filtrer, modifierDocument, supprimerDocument, type SaisieDocument,
+} from '../../lib/bibliotheque';
+import { dateCourte } from '../../lib/format';
+
+// Bibliothèque interne du cabinet (lot 06). Sans rapport avec la table `document` des viewers.
+const { utilisateur, tenant } = Astro.locals;
+if (!utilisateur || !tenant) return Astro.redirect('/connexion');
+const db = envDe(Astro.locals).DB;
+
+const categories = await valeursDe(db, tenant.id, 'categorie_doc');
+const tous = await documentsInternes(db, tenant.id);
+const libelleCategorie = (cle: string): string => categories.find((c) => c.cle === cle)?.libelle ?? cle;
+
+const v = { id: '', titre: '', url: '', categorie: '', type: '', resume: '' };
+const erreurs: Record<string, string> = {};
+
+const modifierId = Astro.url.searchParams.get('modifier') ?? '';
+if (modifierId) {
+  // L'identifiant vient de l'URL : il doit être un document de ce cabinet.
+  const d = tous.find((x) => x.id === modifierId);
+  if (d) Object.assign(v, { id: d.id, titre: d.titre, url: d.url ?? '', categorie: d.categorie, type: d.type ?? '', resume: d.resume ?? '' });
+}
+
+if (Astro.request.method === 'POST') {
+  const origine = Astro.request.headers.get('Origin');
+  if (origine && new URL(origine).host !== Astro.url.host) return new Response('Origine refusée.', { status: 403 });
+  const f = await Astro.request.formData();
+  const lire = (k: string) => String(f.get(k) ?? '').trim();
+  const id = lire('id');
+
+  if (lire('action') === 'supprimer') {
+    if (id && id.length <= 64 && (await appartient(db, tenant.id, 'document_interne', id))) await supprimerDocument(db, tenant.id, id);
+    return Astro.redirect('/gestionnaire/bibliotheque?supprime=1', 303);
+  }
+
+  Object.assign(v, { id, titre: lire('titre'), url: lire('url'), categorie: lire('categorie'), type: lire('type'), resume: lire('resume') });
+  const existant = id ? tous.find((x) => x.id === id) : undefined;
+  if (id && !existant) return Astro.redirect('/gestionnaire/bibliotheque', 303);
+
+  if (!v.titre) erreurs.titre = 'Le titre est obligatoire.';
+  else if (v.titre.length > 200) erreurs.titre = '200 caractères au plus.';
+  if (v.url) {
+    let ok = v.url.length <= 2000;
+    try {
+      const u = new URL(v.url);
+      ok = ok && (u.protocol === 'https:' || u.protocol === 'http:');
+    } catch {
+      ok = false;
+    }
+    if (!ok) erreurs.url = 'Un lien http(s) valide est attendu.';
+  }
+  // La catégorie vient de la liste categorie_doc ; celle d'un document existant reste admise même retirée de la liste.
+  if (!v.categorie || !((await valeurValide(db, tenant.id, 'categorie_doc', v.categorie)) || existant?.categorie === v.categorie)) {
+    erreurs.categorie = 'Choisissez une catégorie de la liste.';
+  }
+  if (v.type.length > 60) erreurs.type = '60 caractères au plus.';
+  if (v.resume.length > 2000) erreurs.resume = '2 000 caractères au plus.';
+
+  if (Object.keys(erreurs).length === 0) {
+    const saisie: SaisieDocument = { titre: v.titre, url: v.url || null, categorie: v.categorie, type: v.type || null, resume: v.resume || null };
+    if (existant) await modifierDocument(db, tenant.id, existant.id, saisie);
+    else await creerDocument(db, tenant.id, saisie);
+    return Astro.redirect('/gestionnaire/bibliotheque?ok=1', 303);
+  }
+}
+
+const q = (Astro.url.searchParams.get('q') ?? '').slice(0, 200);
+const docs = filtrer(tous, q, libelleCategorie);
+const ok = Astro.url.searchParams.get('ok') === '1';
+const supprime = Astro.url.searchParams.get('supprime') === '1';
+// Catégories proposées : les actives, plus celle du document en cours de modification si elle en est sortie.
+const options = categories.some((c) => c.cle === v.categorie) || !v.categorie
+  ? categories
+  : [...categories, { cle: v.categorie, libelle: `${v.categorie} (retirée de la liste)`, ordre: 0 }];
+---
+<Gestion titre="Bibliothèque">
+  <span class="etiquette">Cabinet</span>
+  <h1>Bibliothèque</h1>
+  <p class="aide">Documents de référence du cabinet : modèles, textes réglementaires, notes de travail. Elle est interne, distincte des documents partagés avec les clients.</p>
+  {ok && <p class="info">Enregistré.</p>}
+  {supprime && <p class="info">Document supprimé.</p>}
+
+  <form method="get" class="biblio-recherche" role="search">
+    <label class="etiquette" for="q">Rechercher</label>
+    <div class="biblio-recherche-champ">
+      <input class="champ" id="q" name="q" type="search" value={q} placeholder="Titre, lien, catégorie, type, résumé…" autocomplete="off" />
+      <button class="btn" type="submit">Chercher</button>
+      {q && <a class="btn" href="/gestionnaire/bibliotheque">Effacer</a>}
+    </div>
+  </form>
+
+  {tous.length === 0 ? <p class="aide">Aucun document pour le moment.</p> : docs.length === 0 ? (
+    <p class="aide">Aucun document ne correspond à « {q} ».</p>
+  ) : (
+    <div class="defile">
+      <table class="table biblio-liste">
+        <thead><tr><th>Titre</th><th>Catégorie</th><th>Type</th><th>Ajouté le</th><th></th></tr></thead>
+        <tbody>
+          {docs.map((d) => (
+            <tr>
+              <td>
+                {d.url ? <a href={d.url} target="_blank" rel="noopener noreferrer">{d.titre}</a> : d.titre}
+                {d.resume && <span class="biblio-resume">{d.resume}</span>}
+              </td>
+              <td>{libelleCategorie(d.categorie)}</td>
+              <td>{d.type ?? '—'}</td>
+              <td>{dateCourte(d.ajoute_le)}</td>
+              <td class="num">
+                <a href={`/gestionnaire/bibliotheque?modifier=${encodeURIComponent(d.id)}${q ? `&q=${encodeURIComponent(q)}` : ''}#formulaire`}>Modifier</a>
+                <details class="biblio-suppr">
+                  <summary>Supprimer</summary>
+                  <form method="post">
+                    <input type="hidden" name="action" value="supprimer" />
+                    <input type="hidden" name="id" value={d.id} />
+                    <button class="btn" type="submit">Confirmer : supprimer définitivement</button>
+                  </form>
+                </details>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+
+  <form method="post" id="formulaire" class="biblio-form">
+    <h2>{v.id ? 'Modifier le document' : 'Ajouter un document'}</h2>
+    <input type="hidden" name="id" value={v.id} />
+    <div class="groupe">
+      <label class="etiquette" for="titre">Titre</label>
+      <input class="champ" id="titre" name="titre" type="text" value={v.titre} maxlength="200" required />
+      {erreurs.titre && <p class="erreur">{erreurs.titre}</p>}
+    </div>
+    <div class="groupe">
+      <label class="etiquette" for="url">Lien</label>
+      <input class="champ" id="url" name="url" type="url" value={v.url} placeholder="https://" />
+      {erreurs.url && <p class="erreur">{erreurs.url}</p>}
+    </div>
+    <div class="grille">
+      <div class="groupe">
+        <label class="etiquette" for="categorie">Catégorie</label>
+        <select class="champ" id="categorie" name="categorie" required>
+          <option value="">—</option>
+          {options.map((c) => <option value={c.cle} selected={v.categorie === c.cle}>{c.libelle}</option>)}
+        </select>
+        {erreurs.categorie && <p class="erreur">{erreurs.categorie}</p>}
+      </div>
+      <div class="groupe">
+        <label class="etiquette" for="type">Type</label>
+        <input class="champ" id="type" name="type" type="text" value={v.type} placeholder="PDF, modèle, lien…" />
+        {erreurs.type && <p class="erreur">{erreurs.type}</p>}
+      </div>
+    </div>
+    <div class="groupe">
+      <label class="etiquette" for="resume">Résumé</label>
+      <textarea class="champ" id="resume" name="resume" rows="4">{v.resume}</textarea>
+      {erreurs.resume && <p class="erreur">{erreurs.resume}</p>}
+    </div>
+    <div class="actions">
+      <button class="btn-plein" type="submit">Enregistrer</button>
+      {v.id && <a class="btn" href="/gestionnaire/bibliotheque">Annuler</a>}
+    </div>
+  </form>
+</Gestion>
+
+<style is:global>
+  .biblio-recherche { margin: var(--espace) 0; }
+  .biblio-recherche-champ { display: flex; gap: var(--espace-s); flex-wrap: wrap; align-items: center; }
+  .biblio-recherche-champ .champ { flex: 1 1 18rem; width: auto; }
+  .biblio-liste td { vertical-align: top; font-size: 0.875rem; }
+  .biblio-resume { display: block; margin-top: 0.25rem; font-size: 0.75rem; color: var(--texte-2); max-width: 40rem; }
+  .biblio-suppr { margin-top: var(--espace-xs); }
+  .biblio-suppr summary { cursor: pointer; font-size: 0.8125rem; color: var(--texte-2); }
+  .biblio-suppr form { margin-top: var(--espace-xs); }
+  .biblio-form { margin-top: var(--espace-xl); }
+</style>
