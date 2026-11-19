@@ -14,6 +14,9 @@ const { utilisateur, tenant } = Astro.locals;
 if (!utilisateur || !tenant) return Astro.redirect('/connexion');
 const env = envDe(Astro.locals);
 const db = env.DB;
+// Les notes de marché ne sont servies que sur le site public : sans le module Site vitrine, leur écran est fermé (middleware.ts) et le
+// bouton de la passerelle n'a rien à faire. L'actu elle-même reste éditable : elle appartient au module de suivi.
+const siteOuvert = Astro.locals.modules?.site !== false;
 
 const dateValide = (s: string): boolean => {
   const r = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
@@ -97,6 +100,7 @@ const MESSAGES: Record<string, [string, boolean]> = {
   absente: ['Enregistrez d’abord la fiche.', true],
   note: ['Brouillon de note créé à partir du titre et du champ « à dire aux clients », texte repris mot pour mot. Il n’est pas publié : la publication se fait dans l’écran des notes.', false],
   note_existante: ['Cette fiche a déjà sa note de marché : la voici, aucune seconde note n’a été créée.', false],
+  note_site_ferme: ['Le module Site vitrine n’est pas activé pour ce cabinet : aucune note de marché n’a été créée.', true],
   note_vide: ['Le champ « à dire aux clients » est vide : il n’y a rien à reprendre dans une note.', true],
 };
 const retour = MESSAGES[Astro.url.searchParams.get('ok') ?? ''] ?? null;
@@ -206,7 +210,14 @@ const sansValeur = new Set(symboles.filter(variationSeule).map((s) => s.cle));
     {!existante ? (
       <p class="aide">Enregistrez la fiche pour pouvoir en tirer une note de marché.</p>
     ) : existante.note_marche_id ? (
-      <p class="aide">Une note est née de cette fiche : <a href={`/gestionnaire/notes/${existante.note_marche_id}`}>l’ouvrir dans l’écran des notes</a>{existante.note_publiee ? ' (publiée)' : ' (brouillon)'}.</p>
+      siteOuvert
+        ? <p class="aide">Une note est née de cette fiche : <a href={`/gestionnaire/notes/${existante.note_marche_id}`}>l’ouvrir dans l’écran des notes</a>{existante.note_publiee ? ' (publiée)' : ' (brouillon)'}.</p>
+        : <p class="aide">Une note est née de cette fiche{existante.note_publiee ? ' (publiée)' : ' (brouillon)'}. Son écran est fermé : le module Site vitrine n’est pas activé pour ce cabinet. La note est conservée.</p>
+    ) : !siteOuvert ? (
+      <>
+        <p class="aide">Indisponible : le module Site vitrine n’est pas activé pour ce cabinet. Les notes de marché ne sont publiées que sur le site public, aucune n’apparaît dans l’espace client ; en créer une n’aurait donc pas de lecteur. La fiche reste éditable.</p>
+        <div class="actions"><button class="btn" type="button" disabled aria-disabled="true">Créer la note de marché</button></div>
+      </>
     ) : (
       <form method="post" action={`/gestionnaire/passerelle/note/${encodeURIComponent(existante.id)}`}>
         <p class="aide">Crée un brouillon de note de marché à partir du titre et du champ « à dire aux clients » de la fiche enregistrée, repris mot pour mot, sans reformulation. Rien n’est publié : la publication est un second geste, dans l’écran des notes. Un second clic ouvre la note déjà créée.</p>

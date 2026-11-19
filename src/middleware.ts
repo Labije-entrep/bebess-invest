@@ -6,7 +6,7 @@ import { appartient } from './lib/cloisonnement';
 import { COMPTES_EDITEUR, EXPORT_ESSAI_ECHU, GESTION_LIT, REGLAGES, aLeRole } from './lib/roles';
 import { essaiEchu } from './lib/essai';
 import { journaliserAccesEditeur } from './lib/journal';
-import { estPageSite, estRoutePilotage, modulesDuTenant, type Modules } from './lib/modules';
+import { estPageSite, estRouteContenu, estRoutePilotage, modulesDuTenant, type Modules } from './lib/modules';
 
 declare global {
   namespace App {
@@ -151,7 +151,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
     ['/gestionnaire', '/api/suivi', '/fichiers'].some((p) => sous(chemin, p)) && (await essaiEchu(DB, tenant.id));
   // Un module non acheté : 404, jamais 403. Sans session, une route gardée redirige comme avant vers /connexion (rien n'est annoncé).
   // Le site public non acheté : la racine mène à /connexion, les autres pages sont introuvables.
-  const moduleFerme = !refuse && routePilotage && modules !== null && !modules.pilotage;
+  // Les écrans de contenu (notes de marché, textes) suivent le module Site vitrine : leur seul lecteur est le site public.
+  const moduleFerme =
+    !refuse && modules !== null && ((routePilotage && !modules.pilotage) || (estRouteContenu(chemin) && !modules.site));
   const siteFerme = pageSite && modules !== null && !modules.site;
   const lectureSeule =
     !refuse && role === 'lecture' && !['GET', 'HEAD'].includes(context.request.method) && ECRITURE_PREFIXES.some((p) => sous(chemin, p));
