@@ -4,7 +4,8 @@
 
 import type { AstroCookies } from 'astro';
 import { utilisateurParId, type Base, type Role, type Utilisateur } from './db';
-import { ACCES_CABINET, enSql } from './roles';
+import { ACCES_CABINET, ESSAI_ECHU_COUPES, enSql } from './roles';
+import { STATUTS_EN_COURS } from './contrat';
 
 export const COOKIE = 'bbs';
 
@@ -24,6 +25,21 @@ const HEX_64 = /^[0-9a-f]{64}$/;
  */
 export const HORS_SUSPENSION =
   `NOT (u.role IN (${enSql(ACCES_CABINET)}) AND EXISTS (SELECT 1 FROM suspension sp WHERE sp.tenant_id = u.tenant_id AND sp.fin_le IS NULL))`;
+
+/**
+ * L'essai non converti (lot 12) : à J+45 le contrat passe en `essai_non_converti` et, TANT QU'AUCUN AUTRE contrat n'est en cours,
+ * le cabinet se ferme — ses viewers COMPRIS (ESSAI_ECHU_COUPES), contrairement à la suspension commerciale ci-dessus qui les laisse
+ * en ligne. L'associé n'est pas coupé ici : il garde l'export de ses données (le middleware le borne à cette seule route). Un
+ * contrat `suspendu` (litige de facturation) n'entre pas dans cette condition : seul `essai_non_converti` ferme.
+ * Les deux conditions ne se fusionnent pas : elles sont jointes par ACCES_OUVERT, qui est tout ce que les requêtes de session lisent.
+ */
+export const HORS_ESSAI_ECHU =
+  `NOT (u.role IN (${enSql(ESSAI_ECHU_COUPES)})
+        AND EXISTS (SELECT 1 FROM contrat ce WHERE ce.tenant_id = u.tenant_id AND ce.statut = 'essai_non_converti')
+        AND NOT EXISTS (SELECT 1 FROM contrat ec WHERE ec.tenant_id = u.tenant_id AND ec.statut IN (${STATUTS_EN_COURS.map((x) => `'${x}'`).join(',')})))`;
+
+/** Les deux mesures d'accès, chacune avec son périmètre : la suspension du cabinet, la fin d'un essai non converti. */
+export const ACCES_OUVERT = `${HORS_SUSPENSION} AND ${HORS_ESSAI_ECHU}`;
 
 /**
  * Un dossier ARCHIVÉ ferme l'accès de son viewer : c'est l'inverse exact de la suspension d'un cabinet, qui LAISSE les viewers en
@@ -64,7 +80,7 @@ export function accueilDuRole(role: Role): string {
  */
 export async function demanderLien(db: Base, tenantId: string, email: string): Promise<string | null> {
   const utilisateur = await db
-    .prepare(`SELECT u.id FROM utilisateur u WHERE u.tenant_id = ? AND u.email = ? AND u.actif = 1 AND ${HORS_SUSPENSION}`)
+    .prepare(`SELECT u.id FROM utilisateur u WHERE u.tenant_id = ? AND u.email = ? AND u.actif = 1 AND ${ACCES_OUVERT}`)
     .bind(tenantId, email.trim().toLowerCase())
     .first<{ id: string }>();
   if (!utilisateur) return null;
@@ -101,7 +117,7 @@ export async function jetonValide(db: Base, jeton: string, tenantId: string): Pr
     .prepare(
       `SELECT 1 AS ok FROM jeton_connexion
         WHERE hash = ? AND utilise_le IS NULL AND expire_le > ?
-          AND utilisateur_id IN (SELECT u.id FROM utilisateur u WHERE u.tenant_id = ? AND u.actif = 1 AND ${HORS_SUSPENSION})`,
+          AND utilisateur_id IN (SELECT u.id FROM utilisateur u WHERE u.tenant_id = ? AND u.actif = 1 AND ${ACCES_OUVERT})`,
     )
     .bind(await sha256(jeton), iso(), tenantId)
     .first<{ ok: number }>();
@@ -125,7 +141,7 @@ export async function consommerJeton(
     .prepare(
       `UPDATE jeton_connexion SET utilise_le = ?
         WHERE hash = ? AND utilise_le IS NULL AND expire_le > ?
-          AND utilisateur_id IN (SELECT u.id FROM utilisateur u WHERE u.tenant_id = ? AND u.actif = 1 AND ${HORS_SUSPENSION})
+          AND utilisateur_id IN (SELECT u.id FROM utilisateur u WHERE u.tenant_id = ? AND u.actif = 1 AND ${ACCES_OUVERT})
         RETURNING utilisateur_id`,
     )
     .bind(maintenant, await sha256(jeton), maintenant, tenantId)
@@ -163,7 +179,7 @@ export async function sessionCourante(db: Base, cookies: AstroCookies): Promise<
       `SELECT u.id, u.tenant_id, u.email, u.nom, u.role, u.actif, u.cree_le, u.statut
          FROM session s
          JOIN utilisateur u ON u.id = s.utilisateur_id
-        WHERE s.id = ? AND s.expire_le > ? AND u.actif = 1 AND ${HORS_SUSPENSION}`,
+        WHERE s.id = ? AND s.expire_le > ? AND u.actif = 1 AND ${ACCES_OUVERT}`,
     )
     .bind(await sha256(secret), iso())
     .first<Utilisateur>();
