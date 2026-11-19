@@ -23,6 +23,10 @@ export const EVENEMENT = {
   // Modules
   MODULE_ACTIVE: 'module_active',
   MODULE_DESACTIVE: 'module_desactive',
+  // Lot 15 : une désactivation est une intention datée. `module_desactive` n'est écrit que le jour où elle prend effet (acteur null : le
+  // traitement quotidien), ou tout de suite quand le contrat n'a pas encore de date anniversaire.
+  MODULE_DESACTIVATION_PROGRAMMEE: 'module_desactivation_programmee',
+  MODULE_DESACTIVATION_ANNULEE: 'module_desactivation_annulee',
   // Dossiers clients
   DOSSIER_PUBLIE: 'dossier_publie',
   DOSSIER_ARCHIVE: 'dossier_archive',
@@ -38,6 +42,7 @@ export const EVENEMENT = {
   // Lot 14 : la formule du contrat (périodicité, accès inclus, frais d'installation) et le statut fondateur, posés depuis la console.
   CONTRAT_MODIFIE: 'contrat_modifie',
   STATUT_FONDATEUR: 'statut_fondateur',
+  STATUT_FONDATEUR_RETIRE: 'statut_fondateur_retire',
   // Facturation et essai (lot 12). Acteur null : le traitement quotidien. Des identifiants, des dates et des montants du contrat.
   BON_GENERE: 'bon_genere',
   BON_EMIS: 'bon_emis',

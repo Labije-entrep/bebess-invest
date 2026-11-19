@@ -9,7 +9,7 @@
 import type { Base } from './db';
 import {
   CHAMPS_PRIX, contratEnCours, creerContrat, MESSAGES_CONTRAT, modifierFormule, modifierPrix, poserDpa, poserGelTarif, poserMiseEnProduction,
-  poserStatutFondateur, basculerModule, saisirRemise, estFondateur, type CodeContrat, type Module, type Prix,
+  poserStatutFondateur, retirerStatutFondateur, basculerModule, saisirRemise, type CodeContrat, type Module, type Prix,
 } from './contrat';
 import { apercuComplementaire, parrainagesValides } from './facturation';
 import type { Acteur } from './journal';
@@ -17,21 +17,24 @@ import { REMISE_MAX, tauxParrainage } from './tarif';
 
 export type CodeSucces =
   | 'contrat_ouvert' | 'formule_enregistree' | 'prix_enregistres' | 'module_active' | 'module_desactive' | 'remise_enregistree' | 'remise_plafonnee'
-  | 'gel_pose' | 'dpa_pose' | 'production_posee' | 'fondateur_pose';
+  | 'gel_pose' | 'dpa_pose' | 'production_posee' | 'fondateur_pose' | 'fondateur_retire' | 'desactivation_programmee' | 'desactivation_annulee';
 
 export const MESSAGES_SUCCES: Record<CodeSucces, string> = {
   contrat_ouvert: 'Contrat ouvert, en brouillon. Les quatre prix sont recopiés sur le contrat : ils n’existent nulle part ailleurs.',
   formule_enregistree: 'Contrat enregistré.',
   prix_enregistres: 'Prix enregistrés.',
   module_active: 'Module activé.',
-  module_desactive:
-    'Module désactivé. La désactivation ne prend effet qu’à la date anniversaire : la période déjà facturée va à son terme, sans remboursement, et le module ne figure plus sur le bon suivant.',
+  module_desactive: 'Module désactivé tout de suite : ce contrat n’a pas encore de date anniversaire, aucune période n’est facturée. Les données du module restent en base.',
+  desactivation_programmee:
+    'Désactivation enregistrée. Le module reste actif jusqu’à la date anniversaire indiquée dans le tableau : la période déjà facturée va à son terme, sans remboursement, et le module ne figure plus sur le bon suivant. Elle s’annule d’ici là ; les données restent en base.',
+  desactivation_annulee: 'Désactivation annulée : le module reste actif.',
   remise_enregistree: 'Remise enregistrée.',
   remise_plafonnee: 'Remise enregistrée, PLAFONNÉE : la remise totale (parrainage + commerciale) ne dépasse jamais 50 %.',
   gel_pose: 'Gel du tarif enregistré.',
   dpa_pose: 'Date de signature du DPA enregistrée. La mise en production est maintenant possible.',
   production_posee: 'Mise en production posée : le contrat passe en essai de 45 jours.',
-  fondateur_pose: 'Statut fondateur posé : frais d’installation à 0, tarif gelé 24 mois après la signature, motif enregistré. Aucun pourcentage de remise.',
+  fondateur_pose: 'Statut fondateur posé : frais d’installation à 0, tarif gelé 24 mois après la signature. Aucun pourcentage de remise.',
+  fondateur_retire: 'Statut fondateur retiré. Le gel du tarif déjà posé reste en place : un gel ne se raccourcit jamais.',
 };
 
 export type CodeRetour = CodeSucces | CodeContrat;
@@ -73,7 +76,7 @@ const entier = (texte: string): number | null => (/^\d{1,6}$/.test(texte) ? Numb
 // ---------------------------------------------------------------- appliquer
 
 /**
- * Applique l'écriture que le formulaire demande. `action` : formule, module, remise, gel, dpa, production, fondateur.
+ * Applique l'écriture que le formulaire demande. `action` : formule, module, remise, gel, dpa, production, fondateur, fondateur_retirer.
  * Une saisie illisible est refusée AVANT toute écriture : rien n'est enregistré à moitié.
  */
 export async function appliquerContrat(db: Base, tenantId: string, f: FormData, acteur: Acteur): Promise<RetourContrat> {
@@ -112,7 +115,8 @@ export async function appliquerContrat(db: Base, tenantId: string, f: FormData, 
     const actif = brut(f, 'actif') === '1';
     const r = await basculerModule(db, tenantId, module as Module, actif, acteur);
     if (!r.ok) return ko(r.code);
-    if (!actif) return ok('module_desactive');
+    if (!actif) return ok(r.effet === 'programme' ? 'desactivation_programmee' : 'module_desactive');
+    if (r.effet === 'annule') return ok('desactivation_annulee');
     const apercu = await apercuComplementaire(db, r.contrat, module as Module, jour);
     return ok('module_active', apercu ? { complementaire: apercu } : {});
   }
@@ -127,9 +131,7 @@ export async function appliquerContrat(db: Base, tenantId: string, f: FormData, 
     const parrainage = tauxParrainage(await parrainagesValides(db, tenantId));
     const motif = typeof f.get('remise_motif') === 'string' ? (f.get('remise_motif') as string) : '';
     const revue = typeof f.get('remise_revue_le') === 'string' ? (f.get('remise_revue_le') as string).trim() : '';
-    // Un cabinet fondateur porte le motif « fondateur » sur son contrat, sans pourcentage : le laisser à 0 ne touche pas à ce motif.
-    const texteIntact = estFondateur(c) && commerciale === 0;
-    const r = await saisirRemise(db, tenantId, texteIntact ? { commerciale_taux: 0 } : { commerciale_taux: commerciale, motif, revue_le: revue || null }, acteur);
+    const r = await saisirRemise(db, tenantId, { commerciale_taux: commerciale, motif, revue_le: revue || null }, acteur);
     if (!r.ok) return ko(r.code);
     return ok(saisi > REMISE_MAX || parrainage + commerciale > REMISE_MAX ? 'remise_plafonnee' : 'remise_enregistree');
   }
@@ -154,6 +156,11 @@ export async function appliquerContrat(db: Base, tenantId: string, f: FormData, 
   if (action === 'fondateur') {
     const r = await poserStatutFondateur(db, tenantId, brut(f, 'signe_le'), acteur);
     return r.ok ? ok('fondateur_pose') : ko(r.code);
+  }
+
+  if (action === 'fondateur_retirer') {
+    const r = await retirerStatutFondateur(db, tenantId, acteur);
+    return r.ok ? ok('fondateur_retire') : ko(r.code);
   }
 
   return ko('inchange');

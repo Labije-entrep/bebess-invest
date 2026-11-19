@@ -6,6 +6,7 @@ import { appartient } from './lib/cloisonnement';
 import { COMPTES_EDITEUR, EXPORT_ESSAI_ECHU, GESTION_LIT, REGLAGES, aLeRole } from './lib/roles';
 import { essaiEchu } from './lib/essai';
 import { journaliserAccesEditeur } from './lib/journal';
+import { estPageSite, estRoutePilotage, modulesDuTenant, type Modules } from './lib/modules';
 
 declare global {
   namespace App {
@@ -14,6 +15,8 @@ declare global {
       tenant: Tenant | null;
       /** Nonce CSP de la requête, à poser sur tout script en ligne. */
       nonce: string;
+      /** Ce que le contrat du cabinet ouvre (lot 15). Lu seulement pour l'espace du personnel, le module de suivi et le site public : null ailleurs. */
+      modules: Modules | null;
     }
   }
 }
@@ -102,6 +105,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const tenant = await tenantParHote(DB, context.url.host);
   context.locals.tenant = tenant;
   context.locals.utilisateur = null;
+  context.locals.modules = null;
   const nonce = nouveauNonce();
   context.locals.nonce = nonce;
 
@@ -121,6 +125,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
     if (!(await appartient(DB, tenant.id, 'viewer', u.id))) context.locals.utilisateur = null;
   }
 
+  // Les modules du contrat (lot 15). Une requête, et seulement là où elle sert : le menu du personnel, les routes du suivi, le site public.
+  const routePilotage = estRoutePilotage(chemin);
+  const pageSite = estPageSite(chemin);
+  if (tenant && (routePilotage || pageSite || sous(chemin, '/gestionnaire'))) context.locals.modules = await modulesDuTenant(DB, tenant.id);
+  const modules = context.locals.modules;
+
   const garde = GARDES.find((g) => sous(chemin, g.prefixe));
   const role = context.locals.utilisateur?.role;
   const refuse = garde !== undefined && (role === undefined || !garde.roles.includes(role));
@@ -139,15 +149,23 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const essaiFerme =
     !refuse && !!tenant && u?.role === 'associe' && chemin !== EXPORT_ESSAI_ECHU &&
     ['/gestionnaire', '/api/suivi', '/fichiers'].some((p) => sous(chemin, p)) && (await essaiEchu(DB, tenant.id));
+  // Un module non acheté : 404, jamais 403. Sans session, une route gardée redirige comme avant vers /connexion (rien n'est annoncé).
+  // Le site public non acheté : la racine mène à /connexion, les autres pages sont introuvables.
+  const moduleFerme = !refuse && routePilotage && modules !== null && !modules.pilotage;
+  const siteFerme = pageSite && modules !== null && !modules.site;
   const lectureSeule =
     !refuse && role === 'lecture' && !['GET', 'HEAD'].includes(context.request.method) && ECRITURE_PREFIXES.some((p) => sous(chemin, p));
-  if (!refuse && u && aLeRole(role, COMPTES_EDITEUR) && DONNEES_CABINET.some((p) => sous(chemin, p))) {
+  if (!refuse && !moduleFerme && u && aLeRole(role, COMPTES_EDITEUR) && DONNEES_CABINET.some((p) => sous(chemin, p))) {
     await journaliserAccesEditeur(DB, u.tenant_id, { id: u.id, role: u.role }, `${context.request.method} ${chemin}`);
   }
   const reponse = archive
     ? pageDossierFerme(tenant?.nom ?? 'votre cabinet')
     : essaiFerme
     ? pageEssaiEchu(tenant?.nom ?? 'votre cabinet')
+    : moduleFerme
+    ? new Response('Introuvable.', { status: 404 })
+    : siteFerme
+    ? chemin === '/' ? context.redirect('/connexion') : new Response('Introuvable.', { status: 404 })
     : refusAdmin || refusRubrique
     ? new Response('Accès refusé.', { status: 403 })
     : lectureSeule
