@@ -21,7 +21,7 @@ Un lot dont le prérequis n'est pas coché ne démarre pas.
 | 01c | Finitions : import, pilote mail, archivage, second locataire | — | fait | 3408e9b |
 | 02 | API JSON et synchronisation | — | fait | 42a9443 |
 | 03 | Module de suivi : la liste des contacts | — | fait | 1357619 |
-| 04 | Module de suivi : la fiche | — | fait | ce commit (`git log -1 -- src/scripts/fiche.ts`) |
+| 04 | Module de suivi : la fiche | — | fait | 78eedcf |
 | 05 | Kanban et parcours | — | à faire | |
 | 06 | Actus, bibliothèque, cours | — | à faire | |
 | 07 | La passerelle | P2 | à faire | |
