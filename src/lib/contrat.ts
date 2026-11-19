@@ -17,6 +17,7 @@
 
 import type { Base } from './db';
 import { EVENEMENT, journaliser, requeteEvenement, type Acteur } from './journal';
+import { ajouterMois } from './tarif';
 
 export interface Prix {
   prix_socle: number;
@@ -68,7 +69,7 @@ const COLONNES =
 
 export type CodeContrat =
   | 'aucun_contrat' | 'deja_un_contrat' | 'tarif_gele' | 'gel_raccourci' | 'gel_efface' | 'deja_en_production' | 'dpa_manquant' | 'date_invalide' | 'montant_invalide' | 'taux_invalide'
-  | 'motif_requis' | 'revue_requise' | 'periodicite' | 'inchange';
+  | 'motif_requis' | 'revue_requise' | 'periodicite' | 'inchange' | 'fondateur_remise';
 export type ResultatContrat = { ok: true; contrat: Contrat } | { ok: false; code: CodeContrat };
 
 export const MESSAGES_CONTRAT: Record<CodeContrat, string> = {
@@ -86,6 +87,7 @@ export const MESSAGES_CONTRAT: Record<CodeContrat, string> = {
   revue_requise: 'Une remise commerciale exige une date de revue.',
   periodicite: 'Périodicité inconnue : mensuelle ou annuelle.',
   inchange: 'Rien à modifier.',
+  fondateur_remise: 'Le statut fondateur et une remise commerciale ne se cumulent pas : le motif « fondateur » est le motif de la remise. Aucun pourcentage n’est posé.',
 };
 
 const refus = (code: CodeContrat): { ok: false; code: CodeContrat } => ({ ok: false, code });
@@ -314,6 +316,7 @@ export async function saisirRemise(db: Base, tenantId: string, s: SaisieRemise, 
   const motif = s.motif === undefined ? c.remise_motif : (s.motif ?? '').trim().slice(0, 500) || null;
   const revue = s.revue_le === undefined ? c.remise_revue_le : s.revue_le || null;
   if (revue && !dateIso(revue)) return refus('date_invalide');
+  if (commerciale > 0 && c.remise_motif === MOTIF_FONDATEUR) return refus('fondateur_remise');
   if (commerciale > 0 && !motif) return refus('motif_requis');
   if (commerciale > 0 && !revue) return refus('revue_requise');
   if (
@@ -340,5 +343,95 @@ export async function saisirRemise(db: Base, tenantId: string, s: SaisieRemise, 
       true,
     ),
   ]);
+  return relire(db, tenantId);
+}
+
+// ---------------------------------------------------------------- la formule du contrat (lot 14)
+
+export interface SaisieFormule {
+  periodicite?: Periodicite;
+  acces_inclus?: number;
+  frais_installation?: number;
+}
+
+const CHAMPS_FORMULE = ['periodicite', 'acces_inclus', 'frais_installation'] as const;
+
+/**
+ * Modifie la périodicité, le nombre d'accès inclus ou les frais d'installation. Les prix ont leur propre garde (`modifierPrix`) :
+ * ce qui est modifié ici n'est pas un prix unitaire, le gel du tarif ne le bloque donc pas. Un champ inchangé n'est pas une
+ * modification ; sans aucun champ modifié, `inchange` et pas d'événement.
+ */
+export async function modifierFormule(db: Base, tenantId: string, s: SaisieFormule, acteur: Acteur | null): Promise<ResultatContrat> {
+  const c = await contratEnCours(db, tenantId);
+  if (!c) return refus('aucun_contrat');
+  if (s.periodicite !== undefined && s.periodicite !== 'mensuelle' && s.periodicite !== 'annuelle') return refus('periodicite');
+  if (![s.acces_inclus, s.frais_installation].filter((v) => v !== undefined).every(centimes)) return refus('montant_invalide');
+  const change = CHAMPS_FORMULE.filter((k) => s[k] !== undefined && s[k] !== c[k]);
+  if (change.length === 0) return refus('inchange');
+  const avant = Object.fromEntries(change.map((k) => [k, c[k]]));
+  const apres = Object.fromEntries(change.map((k) => [k, s[k]]));
+  await db.batch([
+    db
+      .prepare(`UPDATE contrat SET ${change.map((k) => `${k} = ?`).join(', ')}, maj_le = ? WHERE id = ? AND tenant_id = ?`)
+      .bind(...change.map((k) => s[k]), maintenant(), c.id, tenantId),
+    requeteEvenement(db, { tenantId, type: EVENEMENT.CONTRAT_MODIFIE, acteur, cible: { type: 'contrat', id: c.id }, detail: { avant, apres } }, true),
+  ]);
+  return relire(db, tenantId);
+}
+
+// ---------------------------------------------------------------- le statut fondateur (lot 14)
+
+/** Le motif qui MARQUE un cabinet fondateur : c'est lui que `compterFondateurs` retrouve. Il occupe `remise_motif`, sans pourcentage. */
+export const MOTIF_FONDATEUR = 'Cabinet fondateur — co-conception et référence';
+/** Le gel du tarif d'un fondateur : sa date de signature + 24 mois. */
+export const MOIS_GEL_FONDATEUR = 24;
+
+export const estFondateur = (c: Pick<Contrat, 'remise_motif'>): boolean => c.remise_motif === MOTIF_FONDATEUR;
+
+/** Combien de contrats en cours portent le statut fondateur, sur combien : le statut doit rester exceptionnel. */
+export async function compterFondateurs(db: Base): Promise<{ fondateurs: number; contrats: number }> {
+  const en = STATUTS_EN_COURS.map((x) => `'${x}'`).join(',');
+  const r = await db
+    .prepare(`SELECT COUNT(*) AS contrats, COALESCE(SUM(remise_motif = ?), 0) AS fondateurs FROM contrat WHERE statut IN (${en})`)
+    .bind(MOTIF_FONDATEUR)
+    .first<{ contrats: number; fondateurs: number }>();
+  return { fondateurs: r?.fondateurs ?? 0, contrats: r?.contrats ?? 0 };
+}
+
+/**
+ * Pose le statut fondateur EN UNE ÉCRITURE : frais d'installation à zéro, gel du tarif jusqu'à la signature + 24 mois, motif
+ * « Cabinet fondateur — co-conception et référence ». Aucun pourcentage de remise n'est posé. Mêmes garde-fous que le gel : une date
+ * qui raccourcirait un gel existant est refusée (et le refus journalisé) ; une remise commerciale en cours est refusée aussi, son motif
+ * serait écrasé. Un seul événement `statut_fondateur` porte l'avant et l'après.
+ */
+export async function poserStatutFondateur(db: Base, tenantId: string, signeLe: string, acteur: Acteur | null): Promise<ResultatContrat> {
+  const c = await contratEnCours(db, tenantId);
+  if (!c) return refus('aucun_contrat');
+  if (!dateIso(signeLe)) return refus('date_invalide');
+  if (c.remise_commerciale_taux > 0) return refus('fondateur_remise');
+  const gel = ajouterMois(signeLe, MOIS_GEL_FONDATEUR);
+  const actuel = c.tarif_gele_jusqu_au;
+  if (actuel !== null && gel < actuel) {
+    await journaliser(db, { tenantId, type: EVENEMENT.GEL_TARIF_REFUSE, acteur, cible: { type: 'contrat', id: c.id }, detail: { actuel, tentative: gel, motif: 'gel_raccourci' } });
+    return refus('gel_raccourci');
+  }
+  if (c.frais_installation === 0 && actuel === gel && estFondateur(c)) return refus('inchange');
+  try {
+    await db.batch([
+      db
+        .prepare('UPDATE contrat SET frais_installation = 0, tarif_gele_jusqu_au = ?, remise_motif = ?, maj_le = ? WHERE id = ? AND tenant_id = ?')
+        .bind(gel, MOTIF_FONDATEUR, maintenant(), c.id, tenantId),
+      requeteEvenement(
+        db,
+        {
+          tenantId, type: EVENEMENT.STATUT_FONDATEUR, acteur, cible: { type: 'contrat', id: c.id },
+          detail: { signe_le: signeLe, avant: { frais_installation: c.frais_installation, tarif_gele_jusqu_au: actuel }, apres: { frais_installation: 0, tarif_gele_jusqu_au: gel } },
+        },
+        true,
+      ),
+    ]);
+  } catch {
+    return refus('gel_raccourci');
+  }
   return relire(db, tenantId);
 }

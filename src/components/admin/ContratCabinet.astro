@@ -1,0 +1,201 @@
+---
+// La fiche contrat d'un cabinet, dans la console de l'éditeur (lot 14). Six rubriques, un formulaire chacune, tous vers `${base}/contrat`.
+// Aucune règle n'est tenue ici : les formulaires ne masquent rien, la route refuse et dit pourquoi (contrat.ts porte les garde-fous).
+import { dateCourte, eurosPrecis } from '../../lib/format';
+import { MOIS_GEL_FONDATEUR, MOTIF_FONDATEUR, estFondateur, tarifGele, type Contrat } from '../../lib/contrat';
+import { REMISE_MAX, tauxEnTexte, tauxRemise, tauxParrainage } from '../../lib/tarif';
+
+interface Apercu { mois: number; total_ht: number; anniversaire: string }
+interface Props {
+  contrat: Contrat | null;
+  base: string;
+  jour: string;
+  /** Le retour de la dernière écriture : son message, et si elle a réussi. */
+  retour: { texte: string; bon: boolean } | null;
+  /** Le bon complémentaire attendu après l'activation d'un module (lu dans l'adresse, validé par la fiche). */
+  attendu: Apercu | null;
+  fondateurs: { fondateurs: number; contrats: number };
+  parrainagesValides: number;
+  /** Ce que coûterait l'activation de chaque module aujourd'hui (prorata du lot 12), ou null. */
+  apercus: { pilotage: Apercu | null; site: Apercu | null };
+}
+const { contrat: c, base, jour, retour, attendu, fondateurs, parrainagesValides, apercus } = Astro.props;
+
+const saisieEuros = (n: number | undefined): string => (n === undefined ? '' : (n / 100).toFixed(2).replace('.', ','));
+const saisieTaux = (n: number): string => String(n / 100).replace('.', ',');
+const STATUTS: Record<string, string> = { brouillon: 'Brouillon', essai: 'Essai', actif: 'Actif', suspendu: 'Suspendu', resilie: 'Résilié', essai_non_converti: 'Essai non converti' };
+const PRIX: [keyof Contrat, string][] = [['prix_socle', 'Socle'], ['prix_pilotage', 'Pilotage'], ['prix_site', 'Site vitrine'], ['prix_acces_sup', 'Accès supplémentaire']];
+
+const gele = c ? tarifGele(c, jour) : false;
+const fondateur = c ? estFondateur(c) : false;
+const parrainage = tauxParrainage(parrainagesValides);
+const effectif = c ? tauxRemise(parrainage, c.remise_commerciale_taux) : 0;
+const MODULES: { code: 'pilotage' | 'site'; nom: string; actif: boolean }[] = c
+  ? [{ code: 'pilotage', nom: 'Pilotage', actif: !!c.module_pilotage }, { code: 'site', nom: 'Site vitrine', actif: !!c.module_site }]
+  : [];
+---
+<h2 id="contrat">Contrat</h2>
+{retour && <p class={retour.bon ? 'info' : 'info alerte'} role="status">{retour.texte}</p>}
+{attendu && (
+  <p class="info" role="status">
+    Bon complémentaire attendu : {attendu.mois} mois entiers jusqu’à la date anniversaire du {dateCourte(attendu.anniversaire)}, soit {eurosPrecis(attendu.total_ht)} HT (remise comprise). Le traitement quotidien le pose demain.
+  </p>
+)}
+
+{!c ? (
+  <p class="info alerte" role="status">Ce cabinet n’a pas de contrat en cours. Ouvrez-le ci-dessous : il naît en brouillon, avec ses quatre prix, et ne facture rien tant qu’il n’est pas en service.</p>
+) : (
+  <div class="kpis">
+    <div class="kpi"><span class="etiquette">Statut</span><span class="chiffre">{STATUTS[c.statut] ?? c.statut}</span></div>
+    <div class="kpi"><span class="etiquette">Début du service</span><span class="chiffre">{c.debut_le ? dateCourte(c.debut_le) : '—'}</span></div>
+    <div class="kpi"><span class="etiquette">Fin d’essai</span><span class="chiffre">{c.date_fin_essai ? dateCourte(c.date_fin_essai) : '—'}</span></div>
+    <div class="kpi"><span class="etiquette">Remise totale</span><span class="chiffre">{tauxEnTexte(effectif)}</span></div>
+  </div>
+)}
+
+<h3>1. Formule et prix</h3>
+<p class="aide">L’identité du cabinet (raison sociale, SIREN, adresse, contact) se règle dans « Facturation », plus bas. Ici : la formule et les quatre prix unitaires, hors taxes, par mois et au tarif annuel.</p>
+{gele && c && (
+  <p class="info alerte" role="status">Le tarif est gelé jusqu’au {dateCourte(c.tarif_gele_jusqu_au as string)} : les quatre prix sont refusés avant cette date. Les champs restent ouverts pour que le refus soit lisible ; la formule, les accès inclus et les frais d’installation se modifient quand même.</p>
+)}
+<form method="post" action={`${base}/contrat`} style="max-width: 32rem">
+  <input type="hidden" name="action" value="formule" />
+  <div class="groupe">
+    <label class="etiquette" for="periodicite">Périodicité</label>
+    <select class="champ" id="periodicite" name="periodicite">
+      <option value="annuelle" selected={!c || c.periodicite === 'annuelle'}>Annuelle</option>
+      <option value="mensuelle" selected={c?.periodicite === 'mensuelle'}>Mensuelle (prix × 1,15, arrondi à l’euro, ligne par ligne)</option>
+    </select>
+    {c && c.statut !== 'brouillon' && <p class="aide">Changer la périodicité d’un contrat en service change le calendrier des bons à venir ; les bons déjà émis ne bougent pas.</p>}
+  </div>
+  {PRIX.map(([cle, nom]) => (
+    <div class="groupe">
+      <label class="etiquette" for={cle}>Prix — {nom} (€ HT)</label>
+      <input class="champ" id={cle} name={cle} inputmode="decimal" required maxlength="12" value={saisieEuros(c ? (c[cle] as number) : undefined)} />
+    </div>
+  ))}
+  <div class="groupe">
+    <label class="etiquette" for="acces_inclus">Accès inclus</label>
+    <input class="champ" id="acces_inclus" name="acces_inclus" inputmode="numeric" required maxlength="6" value={c ? String(c.acces_inclus) : '3'} />
+  </div>
+  <div class="groupe">
+    <label class="etiquette" for="frais_installation">Frais d’installation (€ HT)</label>
+    <input class="champ" id="frais_installation" name="frais_installation" inputmode="decimal" required maxlength="12" value={saisieEuros(c ? c.frais_installation : 0)} />
+  </div>
+  <div class="actions"><button class="btn" type="submit">{c ? 'Enregistrer le contrat' : 'Ouvrir le contrat'}</button></div>
+</form>
+
+{c && (
+  <>
+    <hr class="filet" />
+    <h3>2. Modules</h3>
+    <p class="aide">Le socle est toujours là. Pilotage et Site vitrine s’activent ou se désactivent ici.</p>
+    <div class="defile">
+      <table class="table">
+        <thead><tr><th>Module</th><th>État</th><th>Prix (€ HT / mois)</th><th></th></tr></thead>
+        <tbody>
+          {MODULES.map((m) => {
+            const apercu = apercus[m.code];
+            const prix = m.code === 'pilotage' ? c.prix_pilotage : c.prix_site;
+            return (
+              <tr>
+                <td>{m.nom}</td>
+                <td>{m.actif ? 'Actif' : 'Inactif'}</td>
+                <td class="num">{eurosPrecis(prix)}</td>
+                <td>
+                  <form method="post" action={`${base}/contrat`} style="display:inline">
+                    <input type="hidden" name="action" value="module" /><input type="hidden" name="module" value={m.code} /><input type="hidden" name="actif" value={m.actif ? '0' : '1'} />
+                    <button class="btn" type="submit">{m.actif ? 'Désactiver' : 'Activer'}</button>
+                  </form>
+                  {!m.actif && (
+                    <p class="aide">
+                      {apercu
+                        ? <>Activé aujourd’hui : bon complémentaire de {apercu.mois} mois entiers (arrondis au supérieur) jusqu’au {dateCourte(apercu.anniversaire)}, soit {eurosPrecis(apercu.total_ht)} HT, remise comprise. Le traitement quotidien le pose le lendemain.</>
+                        : c.statut === 'actif' && c.periodicite === 'annuelle'
+                          ? 'Pas de bon complémentaire aujourd’hui : la période commence ce jour même, ou n’a plus rien à courir. Le module entre dans le bon de la période.'
+                          : 'Aucun bon complémentaire : le module entre dans le premier bon, ou dans celui du mois suivant pour un contrat mensuel.'}
+                    </p>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+    <p class="aide"><strong>La désactivation ne prend effet qu’à la date anniversaire.</strong> La période déjà facturée va à son terme, sans remboursement ; le module disparaît du bon de la période suivante.</p>
+
+    <hr class="filet" />
+    <h3>3. Remises</h3>
+    <p class="aide">Remise de parrainage (calculée, lecture seule) : <strong>{tauxEnTexte(parrainage)}</strong> — {parrainagesValides} parrainage{parrainagesValides > 1 ? 's' : ''} validé{parrainagesValides > 1 ? 's' : ''}, 25 % chacun. Elle se recalcule seule ; rien ne la saisit ici.</p>
+    <form method="post" action={`${base}/contrat`} style="max-width: 32rem">
+      <input type="hidden" name="action" value="remise" />
+      <div class="groupe">
+        <label class="etiquette" for="remise_commerciale">Remise commerciale (%)</label>
+        <input class="champ" id="remise_commerciale" name="remise_commerciale" inputmode="decimal" required maxlength="6" value={saisieTaux(c.remise_commerciale_taux)} />
+      </div>
+      <div class="groupe">
+        <label class="etiquette" for="remise_motif">Motif — obligatoire dès que la remise n’est pas nulle</label>
+        <input class="champ" id="remise_motif" name="remise_motif" maxlength="500" value={fondateur ? '' : (c.remise_motif ?? '')} />
+      </div>
+      <div class="groupe">
+        <label class="etiquette" for="remise_revue_le">Date de revue — obligatoire dès que la remise n’est pas nulle</label>
+        <input class="champ" id="remise_revue_le" name="remise_revue_le" type="date" value={c.remise_revue_le ?? ''} />
+      </div>
+      <div class="actions"><button class="btn" type="submit">Enregistrer la remise</button></div>
+    </form>
+    <p class="aide">Remise totale appliquée aux bons : <strong>{tauxEnTexte(effectif)}</strong>{parrainage + c.remise_commerciale_taux > REMISE_MAX ? ` (plafonnée : ${tauxEnTexte(parrainage)} + ${tauxEnTexte(c.remise_commerciale_taux)} dépasseraient ${tauxEnTexte(REMISE_MAX)})` : ''}. Le total est plafonné à {tauxEnTexte(REMISE_MAX)}, sur le récurrent seul, jamais sur les frais d’installation.</p>
+
+    <hr class="filet" />
+    <h3>4. Gel du tarif</h3>
+    <p class="aide">
+      {c.tarif_gele_jusqu_au
+        ? <>Tarif gelé jusqu’au <strong>{dateCourte(c.tarif_gele_jusqu_au)}</strong> ({gele ? 'en cours' : 'terminé'}).</>
+        : 'Aucun gel posé.'}
+      Une date de gel se pose ou se <strong>prolonge</strong> ; elle ne se raccourcit jamais et ne s’efface jamais. C’est une promesse faite au cabinet : un raccourcissement est refusé avec son motif, et le refus est journalisé.
+    </p>
+    <form method="post" action={`${base}/contrat`} class="actions">
+      <input type="hidden" name="action" value="gel" />
+      <label class="etiquette" for="tarif_gele_jusqu_au">Gelé jusqu’au</label>
+      <input class="champ" id="tarif_gele_jusqu_au" name="tarif_gele_jusqu_au" type="date" value={c.tarif_gele_jusqu_au ?? ''} style="max-width: 14rem" />
+      <button class="btn" type="submit">Poser ou prolonger le gel</button>
+    </form>
+
+    <hr class="filet" />
+    <h3>5. Démarrage</h3>
+    <p class="aide">
+      <strong>La mise en production est refusée tant que la date de signature du DPA est vide.</strong> Ce n’est pas une contrainte technique : le DPA est le contrat de sous-traitance qui nous autorise à traiter les données patrimoniales des clients du cabinet. Sans lui signé, aucune donnée réelle n’entre. La mise en production fait passer le contrat en essai de 45 jours.
+    </p>
+    <form method="post" action={`${base}/contrat`} class="actions">
+      <input type="hidden" name="action" value="dpa" />
+      <label class="etiquette" for="dpa_signe_le">DPA signé le</label>
+      <input class="champ" id="dpa_signe_le" name="dpa_signe_le" type="date" value={c.dpa_signe_le ?? ''} style="max-width: 14rem" />
+      <button class="btn" type="submit">Enregistrer la signature du DPA</button>
+    </form>
+    <form method="post" action={`${base}/contrat`} class="actions">
+      <input type="hidden" name="action" value="production" />
+      <label class="etiquette" for="date_mise_en_production">Mise en production le</label>
+      <input class="champ" id="date_mise_en_production" name="date_mise_en_production" type="date" value={c.date_mise_en_production ?? ''} style="max-width: 14rem" />
+      <button class="btn" type="submit">Poser la mise en production</button>
+    </form>
+    <p class="aide">
+      DPA : {c.dpa_signe_le ? `signé le ${dateCourte(c.dpa_signe_le)}` : 'non signé'}. Mise en production : {c.date_mise_en_production ? `le ${dateCourte(c.date_mise_en_production)}, fin d’essai le ${dateCourte(c.date_fin_essai ?? c.date_mise_en_production)}` : 'pas encore posée'}.
+    </p>
+
+    <hr class="filet" />
+    <h3>6. Statut fondateur</h3>
+    <p class="aide">
+      <strong>{fondateurs.fondateurs}</strong> cabinet{fondateurs.fondateurs > 1 ? 's' : ''} sur {fondateurs.contrats} porte{fondateurs.fondateurs > 1 ? 'nt' : ''} le statut fondateur. Il doit rester exceptionnel.
+      {fondateur && <> Ce cabinet le porte.</>}
+    </p>
+    <form method="post" action={`${base}/contrat`} class="actions">
+      <input type="hidden" name="action" value="fondateur" />
+      <label class="etiquette" for="signe_le">Signé le</label>
+      <input class="champ" id="signe_le" name="signe_le" type="date" required value={c.dpa_signe_le ?? c.debut_le ?? jour} style="max-width: 14rem" />
+      <button class="btn" type="submit">Poser le statut fondateur</button>
+    </form>
+    <p class="aide">
+      En une seule écriture : frais d’installation à 0, tarif gelé jusqu’à la signature + {MOIS_GEL_FONDATEUR} mois, motif « {MOTIF_FONDATEUR} ». Aucun pourcentage de remise. Le gel ne se raccourcira jamais : vérifiez la date de signature avant de poser. Le statut ne se cumule pas avec une remise commerciale.
+    </p>
+  </>
+)}

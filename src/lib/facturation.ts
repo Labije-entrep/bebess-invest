@@ -258,6 +258,24 @@ async function genererComplementaires(ctx: Contexte): Promise<number> {
   return crees;
 }
 
+/**
+ * Ce que coûterait (ou coûte) l'activation d'un module AUJOURD'HUI, par le calcul du bon complémentaire (`calculerComplementaire`,
+ * tarif.ts) : rien n'est réécrit ici. Les conditions sont celles de `genererComplementaires` : contrat actif et annuel, activation
+ * strictement après le début de la période. Sinon null : le module entre dans le bon de la période suivante (ou dans le premier bon).
+ * C'est un aperçu : le bon lui-même est posé par le traitement quotidien, le lendemain de l'activation.
+ */
+export async function apercuComplementaire(db: Base, c: Contrat, module: 'pilotage' | 'site', jour: string): Promise<{ mois: number; total_ht: number; anniversaire: string } | null> {
+  if (c.statut !== 'actif' || c.periodicite !== 'annuelle' || !c.debut_le) return null;
+  const periode = periodeAu(c.debut_le, 'annuelle', jour);
+  if (!periode || jour <= periode.debut) return null;
+  const taux = tauxRemise(tauxParrainage(await parrainagesValides(db, c.tenant_id)), c.remise_commerciale_taux);
+  const bon = calculerComplementaire({
+    periodicite: c.periodicite, modules: [{ code: module, prix: module === 'pilotage' ? c.prix_pilotage : c.prix_site }],
+    activation: jour, anniversaire: periode.fin, remise_taux: taux,
+  });
+  return bon ? { mois: bon.mois, total_ht: bon.total_ht, anniversaire: periode.fin } : null;
+}
+
 // ---------------------------------------------------------------- remises à revoir
 
 export interface RemiseARevoir {

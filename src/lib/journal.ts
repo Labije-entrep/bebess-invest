@@ -35,6 +35,9 @@ export const EVENEMENT = {
   GEL_TARIF: 'gel_tarif',
   GEL_TARIF_REFUSE: 'gel_tarif_refuse',
   DPA_SIGNE: 'dpa_signe',
+  // Lot 14 : la formule du contrat (périodicité, accès inclus, frais d'installation) et le statut fondateur, posés depuis la console.
+  CONTRAT_MODIFIE: 'contrat_modifie',
+  STATUT_FONDATEUR: 'statut_fondateur',
   // Facturation et essai (lot 12). Acteur null : le traitement quotidien. Des identifiants, des dates et des montants du contrat.
   BON_GENERE: 'bon_genere',
   BON_EMIS: 'bon_emis',
