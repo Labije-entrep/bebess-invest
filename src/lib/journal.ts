@@ -42,6 +42,9 @@ export const EVENEMENT = {
   PARRAINAGE_VALIDE: 'parrainage_valide',
   ESSAI_NON_CONVERTI: 'essai_non_converti',
   CABINET_PURGE: 'cabinet_purge',
+  // Lot 13. L'identité de facturation : les NOMS des champs modifiés, jamais leurs valeurs. La facture : l'identifiant du bon.
+  IDENTITE_FACTURATION: 'identite_facturation',
+  FACTURE_DEPOSEE: 'facture_deposee',
   // L'éditeur et ses comptes
   ACCES_EDITEUR: 'acces_editeur',
   EXPORT_COMPLET: 'export_complet',

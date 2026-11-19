@@ -1,0 +1,154 @@
+---
+export const prerender = false;
+import Gestion from '../../layouts/Gestion.astro';
+import { accesCabinets, gardeAdmin } from '../../lib/admin';
+import { bonsParStatut, FILTRES_BONS, remisesARevoir, type FiltreBons } from '../../lib/facturation';
+import { contratsDeTous, parrainagesDeTous, STATUTS_PARRAINAGE } from '../../lib/console-facturation';
+import { identiteManquante, LIBELLES_IDENTITE } from '../../lib/identite';
+import { tarifGele } from '../../lib/contrat';
+import { dateCourte, eurosPrecis } from '../../lib/format';
+import { tauxEnTexte } from '../../lib/tarif';
+
+// La console de l'éditeur, côté facturation (lot 13) : les bons à émettre, les contrats, les remises à revoir, les parrainages. Lecture
+// seule ici ; l'émission et l'annulation se font sur le bon lui-même (/admin/bons/<id>).
+const g = gardeAdmin(Astro);
+if (g instanceof Response) return g;
+
+const ONGLETS: [string, string][] = [['bons', 'Bons'], ['contrats', 'Contrats'], ['remises', 'Remises à revoir'], ['parrainages', 'Parrainages']];
+const p = Astro.url.searchParams;
+const onglet = ONGLETS.some(([k]) => k === p.get('onglet')) ? (p.get('onglet') as string) : 'bons';
+const statut: FiltreBons = FILTRES_BONS.includes(p.get('statut') as FiltreBons) ? (p.get('statut') as FiltreBons) : 'brouillon';
+const NOMS_STATUT: Record<FiltreBons, string> = { brouillon: 'À émettre', emise: 'Émis', annulee: 'Annulés' };
+const jour = new Date().toISOString().slice(0, 10);
+
+const bons = onglet === 'bons' ? await bonsParStatut(g.db, statut) : [];
+const contrats = onglet === 'contrats' ? await contratsDeTous(g.db) : [];
+const remises = onglet === 'remises' ? await remisesARevoir(g.db, jour) : [];
+const parrainages = onglet === 'parrainages' ? await parrainagesDeTous(g.db) : [];
+// Lire les bons, contrats, remises et parrainages d'un cabinet est un accès de l'éditeur à ce cabinet : une ligne du journal de chacun.
+await accesCabinets(g, [...bons.map((b) => b.tenant_id), ...contrats.map((c) => c.tenant_id), ...remises.map((r) => r.tenant_id), ...parrainages.flatMap((x) => [x.parrain_id, x.filleul_id])], `GET ${Astro.url.pathname}`);
+const cab = (id: string) => `/admin/cabinets/${encodeURIComponent(id)}`;
+const oui = (n: number) => (n ? 'oui' : 'non');
+---
+<Gestion titre="Facturation" espace="admin">
+  <h1>Facturation</h1>
+  <nav class="onglets" aria-label="Rubriques de la facturation">
+    {ONGLETS.map(([k, nom]) => <a href={`/admin/facturation?onglet=${k}`} aria-current={onglet === k ? 'page' : undefined}>{nom}</a>)}
+  </nav>
+
+  {onglet === 'bons' && (
+    <>
+      <nav class="onglets" aria-label="Statut des bons">
+        {FILTRES_BONS.map((k) => <a href={`/admin/facturation?onglet=bons&statut=${k}`} aria-current={statut === k ? 'page' : undefined}>{NOMS_STATUT[k]}</a>)}
+      </nav>
+      {bons.length === 0 ? <p class="aide">Aucun bon {NOMS_STATUT[statut].toLowerCase()}.</p> : (
+        <div class="defile">
+          <table class="table">
+            <thead><tr><th>Date</th><th>Cabinet</th><th>Type</th><th>Période</th><th class="num">Montant HT</th><th>Identité</th><th>Numéro</th><th></th></tr></thead>
+            <tbody>
+              {bons.map((b) => {
+                const manque = identiteManquante(b);
+                return (
+                  <tr>
+                    <td>{dateCourte(b.periode_debut)}</td>
+                    <td><a href={cab(b.tenant_id)}>{b.cabinet}</a></td>
+                    <td>{b.type === 'complementaire' ? 'Complémentaire' : 'Périodique'}</td>
+                    <td>{dateCourte(b.periode_debut)} au {dateCourte(b.periode_fin)}</td>
+                    <td class="num">{eurosPrecis(b.total_ht)}</td>
+                    <td class={manque.length ? 'perime' : undefined}>{manque.length ? `Manque : ${manque.map((m) => LIBELLES_IDENTITE[m]).join(', ')}` : 'Complète'}</td>
+                    <td>{b.numero ?? '—'}</td>
+                    <td class="num"><a href={`/admin/bons/${encodeURIComponent(b.id)}`}>Ouvrir le bon</a></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p class="aide">Triés par date (début de période). Un bon à émettre est un brouillon : il suit le contrat tant qu’il n’est pas émis, puis ne bouge plus.</p>
+    </>
+  )}
+
+  {onglet === 'contrats' && (
+    contrats.length === 0 ? <p class="aide">Aucun contrat.</p> : (
+      <div class="defile">
+        <table class="table">
+          <thead>
+            <tr><th>Cabinet</th><th>Statut</th><th>Périodicité</th><th class="num">Socle</th><th class="num">Pilotage</th><th class="num">Site</th><th class="num">Accès sup.</th><th>Modules</th><th class="num">Accès inclus</th><th>Remises</th><th>Gel du tarif</th><th>Dates</th></tr>
+          </thead>
+          <tbody>
+            {contrats.map((c) => (
+              <tr>
+                <td><a href={cab(c.tenant_id)}>{c.cabinet}</a></td>
+                <td>{c.statut}</td>
+                <td>{c.periodicite}</td>
+                <td class="num">{eurosPrecis(c.prix_socle)}</td>
+                <td class="num">{eurosPrecis(c.prix_pilotage)}</td>
+                <td class="num">{eurosPrecis(c.prix_site)}</td>
+                <td class="num">{eurosPrecis(c.prix_acces_sup)}</td>
+                <td>Pilotage : {oui(c.module_pilotage)}<br />Site : {oui(c.module_site)}</td>
+                <td class="num">{c.acces_inclus}</td>
+                <td>
+                  Parrainage : {tauxEnTexte(c.remise_parrainage_taux)}<br />
+                  Commerciale : {tauxEnTexte(c.remise_commerciale_taux)}
+                  {c.remise_motif && <><br /><span class="aide">{c.remise_motif}</span></>}
+                  {c.remise_revue_le && <><br /><span class={c.remise_revue_le < jour && c.remise_commerciale_taux > 0 ? 'perime' : 'aide'}>revue le {dateCourte(c.remise_revue_le)}</span></>}
+                </td>
+                <td>{c.tarif_gele_jusqu_au ? <>{dateCourte(c.tarif_gele_jusqu_au)}<br /><span class="aide">{tarifGele(c, jour) ? 'en cours' : 'terminé'}</span></> : '—'}</td>
+                <td>
+                  Début : {c.debut_le ? dateCourte(c.debut_le) : '—'}<br />
+                  Fin : {c.fin_le ? dateCourte(c.fin_le) : '—'}<br />
+                  Mise en production : {c.date_mise_en_production ? dateCourte(c.date_mise_en_production) : '—'}<br />
+                  Fin d’essai : {c.date_fin_essai ? dateCourte(c.date_fin_essai) : '—'}<br />
+                  DPA : {c.dpa_signe_le ? dateCourte(c.dpa_signe_le) : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  )}
+
+  {onglet === 'remises' && (
+    <>
+      {remises.length === 0 ? <p class="aide">Aucune remise à revoir : aucune date de revue n’est dépassée.</p> : (
+        <div class="defile">
+          <table class="table">
+            <thead><tr><th>Cabinet</th><th class="num">Remise commerciale</th><th>Motif</th><th>Revue prévue le</th></tr></thead>
+            <tbody>
+              {remises.map((r) => (
+                <tr>
+                  <td><a href={cab(r.tenant_id)}>{r.cabinet}</a></td>
+                  <td class="num">{tauxEnTexte(r.remise_commerciale_taux)}</td>
+                  <td>{r.remise_motif ?? '—'}</td>
+                  <td class="perime">{dateCourte(r.remise_revue_le)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p class="aide">Les remises commerciales des contrats en cours dont la date de revue est passée.</p>
+    </>
+  )}
+
+  {onglet === 'parrainages' && (
+    parrainages.length === 0 ? <p class="aide">Aucun parrainage.</p> : (
+      <div class="defile">
+        <table class="table">
+          <thead><tr><th>Parrain</th><th>Parrainé</th><th>Statut</th><th>Créé le</th><th>Validé le</th></tr></thead>
+          <tbody>
+            {parrainages.map((x) => (
+              <tr>
+                <td><a href={cab(x.parrain_id)}>{x.parrain}</a></td><td><a href={cab(x.filleul_id)}>{x.filleul}</a></td>
+                <td>{STATUTS_PARRAINAGE[x.statut]}</td>
+                <td>{dateCourte(x.cree_le)}</td><td>{x.valide_le ? dateCourte(x.valide_le) : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  )}
+</Gestion>

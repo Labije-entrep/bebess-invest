@@ -1,0 +1,162 @@
+---
+export const prerender = false;
+import Gestion from '../../../layouts/Gestion.astro';
+import { accesCabinet, gardeAdmin } from '../../../lib/admin';
+import { annulerBon, bonComplet, deposerFacture, emettreBon, MESSAGES_BON, type CodeBon } from '../../../lib/facturation';
+import { corpsTropGros, lireDepot, MESSAGES_REFUS } from '../../../lib/fichiers';
+import { LIBELLES_IDENTITE } from '../../../lib/identite';
+import { afficherSiren } from '../../../lib/siren';
+import { dateCourte, eurosPrecis } from '../../../lib/format';
+import { tauxEnTexte } from '../../../lib/tarif';
+
+// Le bon à facturer (lot 13) : tout ce qu'il faut pour taper la facture sans aller chercher ailleurs, imprimable. Il porte la raison
+// sociale, le SIREN, l'adresse et le contact de facturation, la période, les lignes, la remise et son motif, le total HT, le taux et le
+// montant de TVA, le total TTC et le numéro. Un identifiant qui manque est signalé EN TÊTE du bon et à la place de la valeur : un bon
+// ne part jamais incomplet sans qu'on le voie. Éditeur seulement (gardeAdmin) ; chaque accès est journalisé sur le cabinet.
+const g = gardeAdmin(Astro);
+if (g instanceof Response) return g;
+
+const id = Astro.params.id ?? '';
+const bon = await bonComplet(g.db, id);
+if (!bon) return new Response('Introuvable.', { status: 404 });
+await accesCabinet(g, bon.tenant_id, `${Astro.request.method} ${Astro.url.pathname}`);
+const base = `/admin/bons/${encodeURIComponent(bon.id)}`;
+const acteur = { id: g.utilisateur.id, role: g.utilisateur.role };
+
+const RETOURS: Record<string, string> = {
+  ...MESSAGES_BON, ...MESSAGES_REFUS,
+  emis: 'Bon émis : son numéro est attribué.', annule: 'Bon annulé.', pdf: 'PDF de la facture enregistré.',
+};
+
+if (Astro.request.method === 'POST') {
+  const aller = (code: string, ok: boolean) => Astro.redirect(`${base}?r=${code}&ok=${ok ? 1 : 0}`, 303);
+  if (corpsTropGros(Astro.request, 'pdf')) return aller('trop_gros', false);
+  const f = await Astro.request.formData();
+  const action = String(f.get('action') ?? '');
+  if (action === 'emettre') {
+    const r = await emettreBon(g.db, bon.tenant_id, bon.id, acteur, { malgreIdentiteIncomplete: f.get('confirmer') === '1' });
+    return r.ok ? aller('emis', true) : aller(r.code, false);
+  }
+  if (action === 'annuler') {
+    const r = await annulerBon(g.db, bon.tenant_id, bon.id, acteur);
+    return r.ok ? aller('annule', true) : aller(r.code, false);
+  }
+  if (action === 'pdf') {
+    const depot = await lireDepot(f.get('fichier'), 'pdf');
+    if (typeof depot === 'string') return aller(depot, false);
+    const r = await deposerFacture(g.db, g.env.FICHIERS, bon.tenant_id, bon.id, depot, acteur);
+    return r.ok ? aller('pdf', true) : aller(r.code, false);
+  }
+  return new Response('Action inconnue.', { status: 400 });
+}
+
+const code = Astro.url.searchParams.get('r') as CodeBon | null;
+const retour = code && Object.hasOwn(RETOURS, code) ? { texte: RETOURS[code], bon: Astro.url.searchParams.get('ok') === '1' } : null;
+const STATUTS: Record<string, string> = { brouillon: 'Brouillon : à émettre', emise: 'Émis', annulee: 'Annulé' };
+const manque = (c: (typeof bon.manque)[number]) => bon.manque.includes(c);
+const periodicite = bon.periodicite === 'mensuelle' ? 'mensuelle' : 'annuelle';
+---
+<Gestion titre={bon.numero ?? 'Bon à facturer'} espace="admin">
+  <p class="aide ne-pas-imprimer"><a href="/admin/facturation">← Facturation</a> · <a href={`/admin/cabinets/${encodeURIComponent(bon.tenant_id)}`}>{bon.identite.raison_sociale}</a></p>
+  {retour && <p class={retour.bon ? 'info ne-pas-imprimer' : 'info alerte ne-pas-imprimer'} role="status">{retour.texte}</p>}
+  {bon.manque.length > 0 && bon.statut !== 'annulee' && (
+    <p class="info alerte" role="alert">
+      Identité de facturation incomplète : {bon.manque.map((m) => LIBELLES_IDENTITE[m]).join(', ')} {bon.manque.length > 1 ? 'manquent' : 'manque'}.
+      <span class="ne-pas-imprimer"> Complétez la fiche du cabinet avant d’émettre.</span>
+    </p>
+  )}
+
+  <article class="bon" aria-labelledby="bon-titre">
+    <header class="bon-tete">
+      <div>
+        <h1 id="bon-titre">{bon.type === 'complementaire' ? 'Bon à facturer complémentaire' : 'Bon à facturer'}</h1>
+        <p class="aide">{STATUTS[bon.statut]}{bon.emis_le && ` le ${dateCourte(bon.emis_le)}`}{bon.annule_le && ` · annulé le ${dateCourte(bon.annule_le)}`}</p>
+      </div>
+      <p class="bon-numero">{bon.numero ?? <span class="aide">Numéro attribué à l’émission</span>}</p>
+    </header>
+
+    <dl class="bon-def">
+      <dt class="etiquette">Raison sociale</dt><dd>{bon.identite.raison_sociale}</dd>
+      <dt class="etiquette">SIREN</dt><dd class={manque('siren') ? 'perime' : undefined}>{bon.identite.siren ? afficherSiren(bon.identite.siren) : 'MANQUANT'}</dd>
+      <dt class="etiquette">Adresse de facturation</dt><dd class={manque('adresse_facturation') ? 'perime' : 'bon-multi'}>{bon.identite.adresse_facturation ?? 'MANQUANTE'}</dd>
+      <dt class="etiquette">Contact de facturation</dt><dd class={manque('contact_facturation') ? 'perime' : undefined}>{bon.identite.contact_facturation ?? 'MANQUANT'}</dd>
+      <dt class="etiquette">Période</dt><dd>Du {dateCourte(bon.periode_debut)} au {dateCourte(bon.periode_fin)} ({periodicite})</dd>
+      <dt class="etiquette">Accès facturables</dt><dd>{bon.acces_facturables}</dd>
+    </dl>
+
+    <div class="defile">
+      <table class="table">
+        <thead><tr><th>Poste</th><th class="num">Quantité</th><th class="num">Prix unitaire HT</th><th class="num">Mois</th><th class="num">Montant HT</th></tr></thead>
+        <tbody>
+          {bon.lignes.map((l) => (
+            <tr><td>{l.libelle}</td><td class="num">{l.quantite}</td><td class="num">{eurosPrecis(l.prix_unitaire)}</td><td class="num">{l.mois}</td><td class="num">{eurosPrecis(l.montant)}</td></tr>
+          ))}
+          <tr><td colspan="4">Sous-total HT</td><td class="num">{eurosPrecis(bon.recurrent_ht)}</td></tr>
+          {bon.remise_taux > 0 && (
+            <tr>
+              <td colspan="4">Remise {tauxEnTexte(bon.remise_taux)}{bon.remise_motif && <><br /><span class="aide">{bon.remise_motif}</span></>}</td>
+              <td class="num">{eurosPrecis(-bon.remise_montant)}</td>
+            </tr>
+          )}
+          <tr><td colspan="4"><strong>Total HT</strong></td><td class="num"><strong>{eurosPrecis(bon.total_ht)}</strong></td></tr>
+          <tr><td colspan="4">TVA {tauxEnTexte(bon.tva_taux)}</td><td class="num">{eurosPrecis(bon.tva_montant)}</td></tr>
+          <tr><td colspan="4"><strong>Total TTC</strong></td><td class="num"><strong>{eurosPrecis(bon.total_ttc)}</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  <div class="actions ne-pas-imprimer">
+    <button class="btn" type="button" data-imprimer>Imprimer le bon</button>
+    {bon.statut === 'emise' && bon.facture_cle && <a class="btn" href={`${base}/facture`} download>Télécharger le PDF de la facture</a>}
+  </div>
+
+  {bon.statut === 'brouillon' && (
+    <form method="post" class="ne-pas-imprimer" style="max-width: 36rem">
+      <input type="hidden" name="action" value="emettre" />
+      <div class="actions">
+        {bon.manque.length > 0 && (
+          <label><input type="checkbox" name="confirmer" value="1" /> Émettre malgré l’identité incomplète ({bon.manque.map((m) => LIBELLES_IDENTITE[m]).join(', ')})</label>
+        )}
+        <button class="btn-plein" type="submit">Émettre le bon et lui attribuer son numéro</button>
+      </div>
+      <p class="aide">Le numéro FACT-AAAA-NNNN est attribué par le produit, une seule fois ; le bon ne bouge plus ensuite.</p>
+    </form>
+  )}
+  {bon.statut === 'emise' && (
+    <form method="post" action={base} enctype="multipart/form-data" class="ne-pas-imprimer actions">
+      <input type="hidden" name="action" value="pdf" />
+      <label class="etiquette" for="fichier">PDF de la facture</label>
+      <input id="fichier" name="fichier" type="file" accept="application/pdf" required />
+      <button class="btn" type="submit">{bon.facture_cle ? 'Remplacer le PDF' : 'Déposer le PDF'}</button>
+    </form>
+  )}
+  {bon.statut !== 'annulee' && (
+    <form method="post" class="ne-pas-imprimer actions">
+      <input type="hidden" name="action" value="annuler" />
+      <button class="btn" type="submit">{bon.statut === 'emise' ? 'Annuler le bon (un avoir est émis)' : 'Annuler le brouillon'}</button>
+    </form>
+  )}
+
+  <script is:inline nonce={Astro.locals.nonce}>
+    var b = document.querySelector('[data-imprimer]');
+    if (b) b.addEventListener('click', function () { window.print(); });
+  </script>
+</Gestion>
+
+<style is:global>
+  .bon { border: 1px solid var(--filet); padding: var(--espace-l); margin: var(--espace) 0; }
+  .bon-tete { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--espace); flex-wrap: wrap; }
+  .bon-tete h1 { margin: 0; }
+  .bon-numero { font-family: var(--mono); font-size: 1.25rem; margin: 0; }
+  .bon-def { display: grid; grid-template-columns: max-content 1fr; gap: var(--espace-xs) var(--espace-l); margin: var(--espace) 0; }
+  .bon-def dd { margin: 0; }
+  .bon-multi { white-space: pre-line; }
+  @media print {
+    .gest-haut, .ne-pas-imprimer { display: none !important; }
+    html, body.gest { background: Canvas; color: CanvasText; }
+    .bon { border-color: CanvasText; }
+    .bon *, .bon .aide, .bon .perime { color: CanvasText !important; border-color: CanvasText !important; }
+    .bon .perime { font-weight: 700; }
+  }
+</style>

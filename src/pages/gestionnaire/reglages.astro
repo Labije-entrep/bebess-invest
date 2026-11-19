@@ -2,9 +2,16 @@
 export const prerender = false;
 import Gestion from '../../layouts/Gestion.astro';
 import Champ from '../../components/gestion/Champ.astro';
+import OngletsReglages from '../../components/gestion/OngletsReglages.astro';
 import { contexte, texte, type Erreurs } from '../../lib/gestion';
 import { MESSAGES_REFUS, LIMITE_LOGO, urlLogoCabinet } from '../../lib/fichiers';
 import { THEMES } from '../../lib/themes';
+import { ONGLETS_REGLAGES } from '../../lib/onglets-reglages';
+import { accesDuCabinet, compterAcces, creerAcces, suspendreAcces, type CodeAcces } from '../../lib/acces';
+import { contratEnCours } from '../../lib/contrat';
+import { phraseCreationAcces } from '../../lib/depassement';
+import type { Role } from '../../lib/db';
+import { ACCES_CABINET, ACCES_FACTURABLES } from '../../lib/roles';
 import { marqueursDeLaListe } from '../../lib/marqueurs';
 import {
   LISTES, ajouterValeur, enregistrerListe, listeConnue, marqueursManquants, supprimerValeur, valeursAdmin,
@@ -20,9 +27,13 @@ const c = contexte(Astro, { reglages: true });
 if (c instanceof Response) return c;
 const { db, tenant } = c;
 
-const ONGLETS: [string, string][] = [
-  ['listes', 'Listes'], ['seuils', 'Seuils'], ['membres', 'Membres'], ['identite', 'Identité'], ['mentions', 'Mentions légales'],
-];
+const ONGLETS = ONGLETS_REGLAGES;
+const LIBELLES_ROLE: Record<string, string> = { associe: 'Associé', collaborateur: 'Collaborateur', lecture: 'Lecture' };
+const MESSAGES_ACCES: Record<CodeAcces, string> = {
+  nom: 'Le nom est requis.', email: 'Adresse e-mail invalide.', role: 'Rôle non permis.', pris: 'Cette adresse est déjà un accès de ce cabinet.',
+  inconnu: 'Accès inconnu.', interdit: 'Action non permise sur ce compte.', utilise: 'Cet accès a déjà écrit au nom du cabinet : suspendez-le plutôt.',
+  inchange: 'Rien à modifier.',
+};
 const p = Astro.url.searchParams;
 let onglet = p.get('onglet') ?? 'listes';
 if (!ONGLETS.some(([k]) => k === onglet)) onglet = 'listes';
@@ -31,6 +42,8 @@ let listeId = listeConnue(p.get('liste') ?? '')?.id ?? LISTES[0].id;
 let erreurs: Erreurs = {};
 let valeurs: Record<string, string> = {};
 let envoye = false;
+/** La confirmation d'un accès créé : rendue dans la réponse du POST, jamais ailleurs. C'est ce qui fait que la phrase du dépassement ne s'affiche qu'une fois. */
+let confirmation: { nom: string; role: string; phrase: string | null } | null = null;
 
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
@@ -77,10 +90,38 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'mentions') {
     onglet = 'mentions';
     r = await enregistrerMentions(db, tenant.id, f);
+  } else if (action === 'acces_creer') {
+    onglet = 'acces';
+    const role = texte(f.get('acces_role'), 20) as Role;
+    const acteur = { id: c.utilisateur.id, role: c.utilisateur.role };
+    const saisieAcces = { nom: texte(f.get('acces_nom'), 120), email: texte(f.get('acces_email'), 254), role };
+    if (!ACCES_CABINET.includes(role)) r = { acces: MESSAGES_ACCES.role };
+    else {
+      const cree = await creerAcces(db, tenant.id, saisieAcces, acteur);
+      if (!cree.ok) r = { acces: MESSAGES_ACCES[cree.code] };
+      else {
+        // La phrase du dépassement : seulement quand cet accès est FACTURABLE et porte les accès facturables au-delà de ceux que le
+        // contrat inclut. Un accès en lecture n'est jamais facturé : il n'en dit rien.
+        const contrat = await contratEnCours(db, tenant.id);
+        const { facturables } = await compterAcces(db, tenant.id);
+        const depasse = !!contrat && ACCES_FACTURABLES.includes(role) && facturables > contrat.acces_inclus;
+        confirmation = { nom: saisieAcces.nom, role, phrase: depasse ? phraseCreationAcces(contrat, new Date().toISOString().slice(0, 10)) : null };
+        valeurs = {};
+      }
+    }
+  } else if (action === 'acces_suspendre' || action === 'acces_reactiver') {
+    onglet = 'acces';
+    const cible = (await accesDuCabinet(db, tenant.id)).find((a) => a.id === texte(f.get('acces_id'), 64));
+    if (!cible) r = { acces: MESSAGES_ACCES.inconnu };
+    else if (cible.id === c.utilisateur.id) r = { acces: 'Vous ne pouvez pas suspendre votre propre accès.' };
+    else {
+      const res = await suspendreAcces(db, tenant.id, cible.id, action === 'acces_reactiver', { id: c.utilisateur.id, role: c.utilisateur.role });
+      if (!res.ok) r = { acces: MESSAGES_ACCES[res.code] };
+    }
   } else {
     r = { general: 'Action inconnue.' };
   }
-  if (Object.keys(r).length === 0) {
+  if (Object.keys(r).length === 0 && !confirmation) {
     const suite = onglet === 'listes' ? `&liste=${listeId}` : '';
     return Astro.redirect(`/gestionnaire/reglages?onglet=${onglet}${suite}&ok=${ok}`, 303);
   }
@@ -110,6 +151,8 @@ const identite = onglet === 'identite' ? await identiteDe(db, tenant.id) : { nom
 const logo = onglet === 'identite' ? await urlLogoCabinet(db, tenant.id) : null;
 const symboles = onglet === 'identite' ? await symbolesReglage(db, tenant.id) : { symboles: [], personnalise: false };
 const mentions = onglet === 'mentions' ? await mentionsDe(db, tenant.id) : {};
+const comptes = onglet === 'acces' ? await accesDuCabinet(db, tenant.id) : [];
+const nbAcces = onglet === 'acces' ? await compterAcces(db, tenant.id) : { actifs: 0, facturables: 0 };
 const lignesSymboles = [...symboles.symboles.map((s) => ({ cle: s.cle, libelle: s.libelle, type: s.type, source: s.source })), ...[0, 1, 2].map(() => ({ cle: '', libelle: '', type: 'cotation', source: '' }))];
 const themeActuel = THEMES.some((t) => t.id === identite.theme) ? identite.theme : 'maison';
 ---
@@ -120,9 +163,7 @@ const themeActuel = THEMES.some((t) => t.id === identite.theme) ? identite.theme
   {MSG_LOGO[retourLogo] && <p class={retourLogo in MESSAGES_REFUS ? 'info alerte' : 'info'} role="status">{MSG_LOGO[retourLogo]}</p>}
   {erreurs.general && <p class="info alerte" role="alert">{erreurs.general}</p>}
 
-  <nav class="onglets" aria-label="Rubriques des réglages">
-    {ONGLETS.map(([k, nom]) => <a href={`/gestionnaire/reglages?onglet=${k}`} aria-current={onglet === k ? 'page' : undefined}>{nom}</a>)}
-  </nav>
+  <OngletsReglages courant={onglet} role={c.utilisateur.role} />
 
   {onglet === 'listes' && (
     <>
@@ -289,6 +330,56 @@ const themeActuel = THEMES.some((t) => t.id === identite.theme) ? identite.theme
           </div>
         </div>
         <div class="actions"><button class="btn" type="submit">Ajouter</button></div>
+      </form>
+    </>
+  )}
+
+  {onglet === 'acces' && (
+    <>
+      {confirmation && (
+        <div role="status">
+          <p class="info">Accès créé : {confirmation.nom}, {LIBELLES_ROLE[confirmation.role]}. Il demande son lien de connexion depuis la page de connexion du cabinet, avec son adresse e-mail.</p>
+          {confirmation.phrase && <p class="info">{confirmation.phrase}</p>}
+        </div>
+      )}
+      {erreurs.acces && <p class="info alerte" role="alert">{erreurs.acces}</p>}
+      <p class="aide">Les accès du personnel du cabinet : {nbAcces.facturables} facturable{nbAcces.facturables > 1 ? 's' : ''} (associés et collaborateurs actifs). Un accès en lecture n’est jamais facturé. Un accès suspendu ne l’est pas non plus ; rien n’est effacé.</p>
+      {comptes.length > 0 && (
+        <div class="defile">
+          <table class="table">
+            <thead><tr><th>Nom</th><th>Adresse</th><th>Rôle</th><th>État</th><th></th></tr></thead>
+            <tbody>
+              {comptes.map((a) => (
+                <tr>
+                  <td>{a.nom}</td><td>{a.email}</td><td>{LIBELLES_ROLE[a.role] ?? a.role}</td><td>{a.actif === 1 ? 'Actif' : 'Suspendu'}</td>
+                  <td class="num">
+                    {a.id !== c.utilisateur.id && (
+                      <form method="post" style="display:inline">
+                        <input type="hidden" name="action" value={a.actif === 1 ? 'acces_suspendre' : 'acces_reactiver'} />
+                        <input type="hidden" name="acces_id" value={a.id} />
+                        <button class="btn" type="submit">{a.actif === 1 ? 'Suspendre' : 'Réactiver'}</button>
+                      </form>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <hr class="filet" />
+      <form method="post" style="max-width: 32rem">
+        <input type="hidden" name="action" value="acces_creer" />
+        <h2>Créer un accès</h2>
+        <Champ nom="acces_nom" label="Nom" valeur={v('acces_nom')} requis />
+        <Champ nom="acces_email" label="Adresse e-mail" valeur={v('acces_email')} type="email" requis />
+        <div class="groupe">
+          <label class="etiquette" for="acces_role">Rôle</label>
+          <select class="champ" id="acces_role" name="acces_role">
+            {ACCES_CABINET.map((r) => <option value={r} selected={v('acces_role', 'collaborateur') === r}>{LIBELLES_ROLE[r]}{ACCES_FACTURABLES.includes(r) ? '' : ' (non facturé)'}</option>)}
+          </select>
+        </div>
+        <div class="actions"><button class="btn" type="submit">Créer l’accès</button></div>
       </form>
     </>
   )}

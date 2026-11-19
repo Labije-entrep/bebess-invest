@@ -9,7 +9,7 @@ const g = gardeAdmin(Astro);
 if (g instanceof Response) return g;
 
 let erreurs: Erreurs = {};
-const saisie = { nom: '', hote: '', gestionnaire_nom: '', gestionnaire_email: '', theme: THEME_DEFAUT };
+const saisie = { nom: '', hote: '', gestionnaire_nom: '', gestionnaire_email: '', theme: THEME_DEFAUT, siren: '', adresse_facturation: '', contact_facturation: '' };
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
   for (const k of Object.keys(saisie) as (keyof typeof saisie)[]) saisie[k] = String(f.get(k) ?? '');
@@ -32,6 +32,11 @@ if (Astro.request.method === 'POST') {
     <p class="aide">L’adresse que le Worker sert pour ce cabinet, sans schéma ni port (ex. patrimoine.cabinet.fr). Les noms d’hôte supplémentaires se déclarent ensuite, sur la fiche du cabinet.</p>
     <Champ nom="gestionnaire_nom" label="Nom du premier gestionnaire" valeur={saisie.gestionnaire_nom} erreur={erreurs.gestionnaire_nom} requis />
     <Champ nom="gestionnaire_email" label="Adresse e-mail du gestionnaire" valeur={saisie.gestionnaire_email} erreur={erreurs.gestionnaire_email} type="email" requis />
+    <h2>Facturation</h2>
+    <p class="aide">La raison sociale est le nom du cabinet ci-dessus. Ces trois champs sont repris sur le bon à facturer : un SIREN absent n’empêche pas de créer le cabinet, mais le bon le signalera.</p>
+    <Champ nom="siren" label="SIREN" valeur={saisie.siren} erreur={erreurs.siren} inputmode="numeric" aide="Neuf chiffres, avec ou sans espaces. La clé de contrôle est vérifiée." />
+    <Champ nom="adresse_facturation" label="Adresse de facturation" valeur={saisie.adresse_facturation} erreur={erreurs.adresse_facturation} lignes={3} />
+    <Champ nom="contact_facturation" label="Contact de facturation" valeur={saisie.contact_facturation} erreur={erreurs.contact_facturation} aide="Nom et adresse e-mail de la personne à qui la facture est adressée." />
     <div class="groupe">
       <label class="etiquette" for="theme">Thème</label>
       <select class="champ" id="theme" name="theme">

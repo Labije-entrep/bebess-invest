@@ -1,0 +1,129 @@
+---
+export const prerender = false;
+import Gestion from '../../../layouts/Gestion.astro';
+import OngletsReglages from '../../../components/gestion/OngletsReglages.astro';
+import { contexte } from '../../../lib/gestion';
+import { ABONNEMENT, aLeRole } from '../../../lib/roles';
+import { LIBELLES_ROLE, vueAbonnement } from '../../../lib/abonnement';
+import { dateCourte, eurosPrecis } from '../../../lib/format';
+import { tauxEnTexte } from '../../../lib/tarif';
+
+// « Mon abonnement » (lot 13) : dans les réglages, visible de l'ASSOCIÉ SEUL. Les réglages laissent entrer le support de l'éditeur ;
+// cette page non : un 404, comme pour une page qui n'existe pas. Un collaborateur ou un lecteur n'arrive même pas jusqu'ici : la garde
+// des réglages (middleware) répond 403 avant. Lecture seule : aucun bouton de changement d'offre, de résiliation ni de moyen de
+// paiement ; aucune jauge, aucune barre, aucun graphique, aucune projection ; aucune fenêtre, aucune bannière, aucun compte à rebours.
+const c = contexte(Astro, { reglages: true });
+if (c instanceof Response) return c;
+if (!aLeRole(c.utilisateur.role, ABONNEMENT)) return new Response('Introuvable.', { status: 404 });
+if (Astro.request.method !== 'GET') return new Response('Méthode non permise.', { status: 405, headers: { Allow: 'GET' } });
+const { db, tenant } = c;
+
+const v = await vueAbonnement(db, tenant.id, new Date().toISOString().slice(0, 10));
+const mois = (n: number) => `${n} mois`;
+---
+<Gestion titre="Mon abonnement">
+  <h1>Mon abonnement</h1>
+  <OngletsReglages courant="abonnement" role={c.utilisateur.role} />
+
+  {!v.contrat ? (
+    <p>Aucun contrat n’est en cours pour ce cabinet.</p>
+  ) : (
+    <>
+      <h2>Votre formule</h2>
+      <dl class="abo-def">
+        <dt class="etiquette">Formule</dt><dd>{v.formule}</dd>
+        <dt class="etiquette">Périodicité</dt><dd>{v.periodicite}</dd>
+        <dt class="etiquette">Prochain renouvellement</dt><dd>{v.renouvellement ? dateCourte(v.renouvellement) : 'À la fin de l’essai'}</dd>
+      </dl>
+      {v.situation && <p class="aide">{v.situation}</p>}
+
+      <h2>Montant détaillé</h2>
+      <div class="defile">
+        <table class="table">
+          <thead><tr><th>Poste</th><th class="num">Quantité × prix unitaire</th><th class="num">Durée</th><th class="num">Montant HT</th></tr></thead>
+          <tbody>
+            {v.postes.map((p) => (
+              <tr>
+                <td>{p.libelle}</td>
+                <td class="num">{p.quantite} × {eurosPrecis(p.prix_unitaire)} par mois</td>
+                <td class="num">{mois(p.mois)}</td>
+                <td class="num">{eurosPrecis(p.montant)}</td>
+              </tr>
+            ))}
+            {v.remise && (
+              <tr>
+                <td>Remise {tauxEnTexte(v.remise.taux)}{v.remise.motif && <><br /><span class="aide">{v.remise.motif}</span></>}</td>
+                <td></td><td></td>
+                <td class="num">{eurosPrecis(-v.remise.montant)}</td>
+              </tr>
+            )}
+            <tr><td><strong>Total annuel HT</strong></td><td></td><td></td><td class="num"><strong>{eurosPrecis(v.total_annuel_ht)}</strong></td></tr>
+            <tr><td>Équivalent mensuel HT</td><td></td><td></td><td class="num">{eurosPrecis(v.equivalent_mensuel_ht)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="aide">Calculé sur les accès d’aujourd’hui, comme le sera le prochain bon. Montants hors taxes.</p>
+
+      <h2>Accès</h2>
+      <p><strong>{v.facturables}</strong> {v.facturables > 1 ? 'accès facturables' : 'accès facturable'}, <strong>{v.inclus}</strong> inclus.</p>
+      {v.comptes.length === 0 ? <p class="aide">Aucun accès.</p> : (
+        <div class="defile">
+          <table class="table">
+            <thead><tr><th>Nom</th><th>Adresse</th><th>Rôle</th><th>Facturation</th></tr></thead>
+            <tbody>
+              {v.comptes.map((a) => (
+                <tr>
+                  <td>{a.nom}</td>
+                  <td>{a.email}</td>
+                  <td>{LIBELLES_ROLE[a.role] ?? a.role}</td>
+                  <td class={a.facture ? undefined : 'aide'}>{a.facture ? 'Facturé' : a.raison}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p class="aide">Seuls les associés et les collaborateurs actifs sont facturés. <a href="/gestionnaire/reglages?onglet=acces">Gérer les accès</a>.</p>
+      {v.depassement && <p>{v.depassement}</p>}
+
+      <h2>Espaces clients</h2>
+      <p><strong>{v.espaces_publies}</strong> {v.espaces_publies > 1 ? 'publiés' : 'publié'}, illimités, non facturés.</p>
+
+      <h2>Parrainages</h2>
+      <p><strong>{v.parrainages_valides}</strong> {v.parrainages_valides > 1 ? 'parrainages validés' : 'parrainage validé'}. Remise obtenue : {tauxEnTexte(v.parrainage_taux)}.</p>
+      <p class="aide">{v.regle_parrainage}</p>
+
+      <h2>Factures</h2>
+      {v.factures.length === 0 ? <p class="aide">Aucune facture pour l’instant.</p> : (
+        <div class="defile">
+          <table class="table">
+            <thead><tr><th>Numéro</th><th>Période</th><th class="num">Montant HT</th><th>PDF</th></tr></thead>
+            <tbody>
+              {v.factures.map((f) => (
+                <tr>
+                  <td>{f.numero}</td>
+                  <td>{dateCourte(f.periode_debut)} au {dateCourte(f.periode_fin)}</td>
+                  <td class="num">{eurosPrecis(f.total_ht)}</td>
+                  <td><a href={`/gestionnaire/reglages/abonnement/facture/${encodeURIComponent(f.id)}`}>Télécharger</a></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  )}
+
+  <hr class="filet" />
+  <p>
+    Pour toute question sur votre abonnement, un interlocuteur vous répond :
+    {v.contact ? <> écrivez-nous à <a href={`mailto:${v.contact}`}>{v.contact}</a>.</> : <> contactez l’éditeur de la plateforme.</>}
+    Il n’y a pas de libre-service : changer d’offre, résilier ou modifier un moyen de paiement se fait avec lui.
+  </p>
+</Gestion>
+
+<style is:global>
+  .abo-def { display: grid; grid-template-columns: max-content 1fr; gap: var(--espace-xs) var(--espace-l); margin: 0 0 var(--espace); }
+  .abo-def dt { align-self: baseline; }
+  .abo-def dd { margin: 0; }
+</style>

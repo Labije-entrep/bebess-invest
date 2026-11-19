@@ -3,8 +3,10 @@
 //
 // Effacés : comptes (personnel, support, clients finaux), sessions et jetons, dossiers, portefeuilles, valorisations, mouvements,
 // documents et rapports, consultations, fiches, imports, contacts et suivi, actus, notes, contenus du site, listes, réglages,
-// incidents, domaines, suspensions. Conservés : la ligne du locataire (la raison sociale), son contrat et ses bons (donc la facture
-// d'installation et l'historique du contrat), ses parrainages, et le JOURNAL — qui ne contient aucune donnée de client final (journal.ts :
+// incidents, domaines, suspensions. Conservés : la ligne du locataire (la raison sociale, et avec elle le SIREN, l'adresse et le contact
+// de facturation, lot 13 : aucune requête ci-dessous n'y touche, hors `domaine`), son contrat et ses bons (donc la facture
+// d'installation et l'historique du contrat), les PDF de ses factures (`factures/<locataire>/`, hors du préfixe vidé par `viderR2`),
+// ses parrainages, et le JOURNAL — qui ne contient aucune donnée de client final (journal.ts :
 // rien d'autre que des identifiants, des types, des dates et des montants du contrat) ; il n'y a donc rien à y retirer, et ses
 // déclencheurs d'écriture seule ne sont ni contournés ni touchés : aucune instruction ci-dessous ne vise `evenement`, sinon pour y écrire.
 //

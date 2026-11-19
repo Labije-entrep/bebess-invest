@@ -26,6 +26,13 @@ export function euros(cents: number): string {
   return `${signe}${groupes(entier)},${frac}${NBSP}€`;
 }
 
+/** 160200 -> "1 602,00 €" : toujours les centimes. Pour un bon ou un détail de facture, où l'arrondi à l'euro de `euros` serait faux. */
+export function eurosPrecis(cents: number): string {
+  const signe = cents < 0 ? '−' : '';
+  const abs = Math.abs(Math.trunc(cents));
+  return `${signe}${groupes(Math.floor(abs / 100))},${String(abs % 100).padStart(2, '0')}${NBSP}€`;
+}
+
 /** 640 -> "6,40 %". */
 export function pourcent(bp: number): string {
   const signe = bp < 0 ? '−' : '';
