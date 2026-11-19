@@ -35,6 +35,13 @@ export const EVENEMENT = {
   GEL_TARIF: 'gel_tarif',
   GEL_TARIF_REFUSE: 'gel_tarif_refuse',
   DPA_SIGNE: 'dpa_signe',
+  // Facturation et essai (lot 12). Acteur null : le traitement quotidien. Des identifiants, des dates et des montants du contrat.
+  BON_GENERE: 'bon_genere',
+  BON_EMIS: 'bon_emis',
+  BON_ANNULE: 'bon_annule',
+  PARRAINAGE_VALIDE: 'parrainage_valide',
+  ESSAI_NON_CONVERTI: 'essai_non_converti',
+  CABINET_PURGE: 'cabinet_purge',
   // L'éditeur et ses comptes
   ACCES_EDITEUR: 'acces_editeur',
   EXPORT_COMPLET: 'export_complet',

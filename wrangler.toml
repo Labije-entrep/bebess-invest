@@ -1,3 +1,5 @@
+# Le site : un projet Cloudflare PAGES. Pages n'accepte pas de Cron Trigger (wrangler refuse `[triggers]` dans ce fichier) : le traitement
+# quotidien du lot 12 a son propre Worker, wrangler.cron.toml, qui partage la même base D1 et le même bucket R2.
 name = "bebess"
 compatibility_date = "2026-11-01"
 pages_build_output_dir = "dist"

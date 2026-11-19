@@ -92,7 +92,7 @@ const refus = (code: CodeContrat): { ok: false; code: CodeContrat } => ({ ok: fa
 const aujourdhui = (): string => new Date().toISOString().slice(0, 10);
 const maintenant = (): string => new Date().toISOString();
 /** Une date ISO (AAAA-MM-JJ) décalée de `jours` jours, en UTC. */
-const plusJours = (date: string, jours: number): string => new Date(Date.parse(`${date}T00:00:00Z`) + jours * 86_400_000).toISOString().slice(0, 10);
+export const plusJours = (date: string, jours: number): string => new Date(Date.parse(`${date}T00:00:00Z`) + jours * 86_400_000).toISOString().slice(0, 10);
 const dateIso = (v: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v);
 const centimes = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 1_000_000_000;
 const taux = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 10000;
@@ -105,6 +105,15 @@ export function contratEnCours(db: Base, tenantId: string): Promise<Contrat | nu
     .prepare(`SELECT ${COLONNES} FROM contrat WHERE tenant_id = ? AND statut IN (${STATUTS_EN_COURS.map((x) => `'${x}'`).join(',')})`)
     .bind(tenantId)
     .first<Contrat>();
+}
+
+/** Les contrats ACTIFS, de tous les cabinets, qui ont une date de début : ce que le traitement quotidien (lot 12) facture. */
+export async function contratsActifs(db: Base): Promise<Contrat[]> {
+  const { results } = await db
+    .prepare(`SELECT ${COLONNES} FROM contrat WHERE statut = 'actif' AND debut_le IS NOT NULL ORDER BY tenant_id, id`)
+    .bind()
+    .all<Contrat>();
+  return results;
 }
 
 /**

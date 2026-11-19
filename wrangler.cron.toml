@@ -1,0 +1,33 @@
+# Le traitement quotidien (lot 12) : un Worker à part, avec UN Cron Trigger. Le site, lui, est un projet Pages (wrangler.toml) et Pages
+# n'accepte pas `[triggers]` : wrangler refuse le fichier. Ce Worker lit et écrit la MÊME base D1 et le MÊME bucket R2.
+#
+#   npx wrangler deploy -c wrangler.cron.toml
+#   npx wrangler secret put SCW_SECRET_KEY -c wrangler.cron.toml      # idem SCW_PROJECT_ID, MAIL_FROM, CF_API_TOKEN
+#
+# Reporter ici le même database_id que dans wrangler.toml, et CF_ZONE_ID (la zone des « custom hostnames », celle du site).
+name = "bebess-traitement"
+main = "src/cron.ts"
+compatibility_date = "2026-11-01"
+workers_dev = false
+
+# 03:00 UTC, tous les jours. Un seul : le traitement est idempotent, un déclenchement manqué se rattrape le lendemain.
+[triggers]
+crons = ["0 3 * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bebess"
+database_id = "A_REMPLIR"
+
+[[r2_buckets]]
+binding = "FICHIERS"
+bucket_name = "bebess-fichiers"
+
+[vars]
+MAIL_DRIVER = "scaleway"
+CF_ZONE_ID = "A_REMPLIR"
+
+# Le code partagé lit `import.meta.env` (Vite, côté site) : ici il n'y a pas de Vite, on le fixe à la production.
+[define]
+"import.meta.env.DEV" = "false"
+"import.meta.env.PROD" = "true"

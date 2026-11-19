@@ -470,6 +470,17 @@ export async function retirerDomaine(db: Base, env: Env, tenantId: string, hote:
   return ok('retire');
 }
 
+/**
+ * Libère un « custom hostname » chez Cloudflare (la suppression du J+75, lot 12). Un hôte déjà absent chez Cloudflare est libéré :
+ * c'est le résultat voulu. Toute autre réponse est un échec, et la purge s'arrête avant d'effacer la ligne qui le désigne.
+ */
+export async function libererHoteCloudflare(env: Env, cfId: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  if (!configCloudflare(env).pret) return { ok: false, message: 'Jeton Cloudflare absent : le domaine ne peut pas être libéré.' };
+  const r = await appelCf(env, 'DELETE', `/${encodeURIComponent(cfId)}`);
+  if (!r.ok && !/not found|10000|1551/i.test(r.message)) return { ok: false, message: r.message };
+  return { ok: true };
+}
+
 // ---------------------------------------------------------------- suspension
 
 export interface Suspension {

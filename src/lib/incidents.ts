@@ -11,6 +11,11 @@ export const LIBELLES_INCIDENT: Record<string, string> = {
   cours_cle: 'Cours : clé d’API absente',
   cours_budget: 'Cours : budget du jour épuisé',
   domaine_echec: 'Domaine : appel Cloudflare en échec',
+  // Lot 12 : ce que le traitement quotidien dit à l'éditeur. Jamais un courriel : la console, et elle seule.
+  bon_a_emettre: 'Bon à facturer à émettre',
+  remise_a_revoir: 'Remise commerciale à revoir',
+  purge_bloquee: 'Suppression du J+75 en attente',
+  traitement_echec: 'Traitement quotidien en échec',
 };
 
 /** Le type d'un incident : le code sans son suffixe (« cours_echec:CAC » → « cours_echec »). */

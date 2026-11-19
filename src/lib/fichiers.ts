@@ -16,7 +16,10 @@ export interface ObjetR2 {
 export interface Bucket {
   put(cle: string, valeur: ArrayBuffer, options?: { httpMetadata?: { contentType?: string } }): Promise<unknown>;
   get(cle: string): Promise<ObjetR2 | null>;
-  delete(cle: string): Promise<void>;
+  /** Une clé, ou jusqu'à 1000 d'un coup. */
+  delete(cle: string | string[]): Promise<void>;
+  /** Lister par préfixe (la purge d'un cabinet, lot 12). */
+  list(options: { prefix?: string; limit?: number }): Promise<{ objects: { key: string }[] }>;
 }
 
 // ---------------------------------------------------------------- limites

@@ -33,6 +33,15 @@ export const EXPORT_COMPLET: Role[] = [...EXPORT_COMPLET_CABINET, ...EXPORT_COMP
 export const ACCES_CABINET: Role[] = ['associe', 'collaborateur', 'lecture'];
 /** Parmi eux, ceux qui entrent dans le calcul du prix (lot 12) : `lecture` n'est jamais facturé. */
 export const ACCES_FACTURABLES: Role[] = ['associe', 'collaborateur'];
+/**
+ * L'essai non converti (lot 12), à J+45 : le cabinet ET les espaces de ses clients finaux se ferment. Sont coupés ici, dès la
+ * connexion : les viewers et le personnel sauf l'associé. L'associé garde UNE route (EXPORT_ESSAI_ECHU) : l'export de ses données,
+ * qui reste ouvert jusqu'à la suppression de J+75. Ce mécanisme est l'OPPOSÉ de la suspension commerciale d'un cabinet sous contrat
+ * (admin.ts), qui coupe le personnel et laisse les viewers en ligne : ne jamais les fusionner.
+ */
+export const ESSAI_ECHU_COUPES: Role[] = [...ACCES_CABINET.filter((r) => !EXPORT_COMPLET_CABINET.includes(r)), 'viewer'];
+export const EXPORT_ESSAI_ECHU = '/gestionnaire/export/locataire';
+
 /** Les comptes de l'éditeur : chacun de leurs accès aux données d'un cabinet est journalisé. */
 export const COMPTES_EDITEUR: Role[] = ['editeur', 'support_editeur'];
 
