@@ -1,0 +1,245 @@
+---
+export const prerender = false;
+import Gestion from '../../../layouts/Gestion.astro';
+import { envDe } from '../../../lib/mail';
+import { panneauPortail } from '../../../lib/fiche';
+import { dateLongue, euros, pourcent } from '../../../lib/format';
+import { signeBp, teinte } from '../../../lib/espace';
+
+// Fiche d'un contact. Colonne principale : rendue côté client par src/scripts/fiche.ts, qui parle à
+// /api/suivi (édition optimiste). Colonne Portail : rendue ici, au serveur, en lecture seule.
+// L'accès est gardé par le middleware (gestionnaire, éditeur) ; le contact doit être du locataire.
+const { utilisateur, tenant } = Astro.locals;
+if (!utilisateur || !tenant) return Astro.redirect('/connexion');
+
+const db = envDe(Astro.locals).DB;
+const id = Astro.params.id ?? '';
+const contact =
+  id.length > 0 && id.length <= 64
+    ? await db
+        .prepare('SELECT id, nom, prenom, viewer_id FROM contact WHERE id = ? AND tenant_id = ?')
+        .bind(id, tenant.id)
+        .first<{ id: string; nom: string; prenom: string | null; viewer_id: string | null }>()
+    : null;
+if (!contact) return Astro.rewrite('/404');
+
+const portail = contact.viewer_id ? await panneauPortail(db, tenant.id, contact.viewer_id) : null;
+const plusieurs = portail ? portail.portefeuilles.length > 1 : false;
+const depasse = (ecartBp: number | null): boolean => ecartBp !== null && portail !== null && Math.abs(ecartBp) > portail.seuilEcartBp;
+const horsSeuil = portail
+  ? portail.portefeuilles.flatMap((b) => b.classes.filter((c) => depasse(c.ecartBp)).map((c) => portail.libellesClasses[c.classe] ?? c.classe))
+  : [];
+const visite = portail?.derniereVisite ? dateLongue(portail.derniereVisite.slice(0, 10)) : null;
+---
+<Gestion titre={`Fiche · ${contact.nom}`}>
+  <div class="fiche" id="fiche" data-id={contact.id}>
+    <div class="fiche-entete">
+      <a class="fiche-retour" href="/gestionnaire/suivi">← Tous les contacts</a>
+      <p id="fiche-etat" class="fiche-etat" role="status" aria-live="polite" data-etat="chargement">
+        <span class="fiche-point" aria-hidden="true"></span><span data-texte>Chargement…</span>
+      </p>
+    </div>
+    <div id="fiche-alertes" class="fiche-alertes" aria-live="polite"></div>
+
+    <div class="fiche-cadre">
+      <div class="fiche-principal" id="fiche-corps">
+        <noscript><p class="info alerte">La fiche demande JavaScript.</p></noscript>
+      </div>
+
+      <aside class="fiche-aside" aria-label="Portail">
+        {portail ? (
+          <div class="portail-carte">
+            <p class="etiquette portail-etiquette">Portail</p>
+            <p class="portail-viewer">Viewer rattaché : <span>{portail.viewer.nom}</span></p>
+
+            <p class="etiquette">Total</p>
+            <p class="portail-total">{euros(portail.totalCents)}</p>
+            <p class="portail-sous">
+              {portail.arrete ? `Somme des enveloppes, arrêtée au ${dateLongue(portail.arrete)}` : 'Aucun arrêté pour l’instant'}
+            </p>
+
+            {portail.portefeuilles.length > 0 && (
+              <ul class="portail-pf" aria-label="Portefeuilles">
+                {portail.portefeuilles.map((b) => (
+                  <li><span>{b.libelle}</span><span class="num">{euros(b.totalCents)}</span></li>
+                ))}
+              </ul>
+            )}
+
+            <div class="portail-doubles">
+              <div>
+                <p class="etiquette">Performance{portail.annee ? ` ${portail.annee}` : ''}</p>
+                <p class={`portail-valeur ${teinte(portail.perfBp)}`}>{portail.perfBp === null ? '—' : signeBp(portail.perfBp)}</p>
+                <p class="portail-sous">
+                  {portail.perfOrigineBp === null ? 'Pondérée par le temps' : `Depuis l’origine : ${signeBp(portail.perfOrigineBp)}`}
+                </p>
+              </div>
+              <div>
+                <p class="etiquette">Accès</p>
+                <p class="portail-valeur portail-texte">{visite ? `Vu le ${visite}` : 'Aucune visite'}</p>
+              </div>
+            </div>
+
+            {portail.portefeuilles.some((b) => b.classes.length > 0) && (
+              <>
+                <p class="etiquette portail-titre-repartition">Réel contre cible</p>
+                {portail.portefeuilles.map((b) => b.classes.length > 0 && (
+                  <div class="portail-repartition">
+                    {plusieurs && <p class="portail-pf-titre">{b.libelle}</p>}
+                    {b.classes.map((c, i) => {
+                      const hors = depasse(c.ecartBp);
+                      return (
+                        <div class="portail-classe">
+                          <span class="portail-nom">{portail.libellesClasses[c.classe] ?? c.classe}</span>
+                          <span class="portail-barre" role="img" aria-label={`${portail.libellesClasses[c.classe] ?? c.classe} : ${pourcent(c.partBp)}${c.cibleBp !== null ? `, cible ${pourcent(c.cibleBp)}` : ', sans cible'}`}>
+                            <span class={`portail-part${hors ? ' hors' : ''}`} style={`width:${Math.min(100, c.partBp / 100)}%;${hors ? '' : ` background: var(--serie-${(i % 5) + 1});`}`}></span>
+                            {c.cibleBp !== null && <span class="portail-cible" style={`left:${Math.min(100, c.cibleBp / 100)}%`}></span>}
+                          </span>
+                          <span class={`portail-chiffres${hors ? ' hors' : ''}`}>
+                            {pourcent(c.partBp)}
+                            {c.ecartBp !== null && <span class="portail-ecart">{signeBp(c.ecartBp)}</span>}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+                <p class="portail-sous portail-legende">
+                  Le trait clair marque la cible ; l’écart est en points.
+                  {horsSeuil.length > 0 && ` Au-delà du seuil de ${(portail.seuilEcartBp / 100).toLocaleString('fr-FR')} points : ${[...new Set(horsSeuil)].join(', ')}.`}
+                </p>
+              </>
+            )}
+
+            <button type="button" class="btn-plein portail-action" disabled>Créer un sujet depuis l’écart</button>
+            <button type="button" class="btn portail-action" disabled>Saisir le nouvel arrêté</button>
+          </div>
+        ) : (
+          <div class="portail-vide">
+            <p class="etiquette">Non rattaché</p>
+            <p>Pour un contact sans accès au portail, ce panneau proposera la promotion : le viewer et sa fiche sont créés à partir des informations déjà saisies, et le lien de première connexion part aussitôt.</p>
+            <button type="button" class="btn portail-action" disabled>Promouvoir en viewer</button>
+          </div>
+        )}
+      </aside>
+    </div>
+  </div>
+  <script>
+    import '../../../scripts/fiche';
+  </script>
+</Gestion>
+
+<style is:global>
+  .fiche-entete { display: flex; align-items: baseline; justify-content: space-between; gap: var(--espace); flex-wrap: wrap; }
+  .fiche-retour { font-family: var(--mono); font-size: 0.625rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--texte-2); }
+  .fiche-etat { display: flex; align-items: center; gap: var(--espace-xs); margin: 0; font-family: var(--mono); font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--texte-2); }
+  .fiche-point { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--texte-2); }
+  .fiche-etat[data-etat='ajour'] .fiche-point { background: var(--positif); }
+  .fiche-etat[data-etat='attente'] .fiche-point { background: var(--accent); }
+  .fiche-etat[data-etat='refus'] .fiche-point, .fiche-etat[data-etat='horsligne'] .fiche-point { background: var(--alerte); }
+  .fiche-etat[data-etat='refus'], .fiche-etat[data-etat='horsligne'] { color: var(--alerte); }
+  .fiche-alertes:empty { display: none; }
+  .fiche-alertes .info { margin-bottom: var(--espace-s); }
+
+  .fiche-cadre { display: flex; flex-wrap: wrap; gap: var(--espace-xl); margin-top: var(--espace); }
+  .fiche-principal { flex: 999 1 35rem; min-width: 0; }
+  .fiche-aside { flex: 1 1 23.75rem; min-width: 0; }
+
+  /* En-tête */
+  .fiche-tete { display: flex; flex-wrap: wrap; gap: var(--espace-m); align-items: baseline; justify-content: space-between; }
+  .fiche-principal h1 { margin: 0; font-weight: 200; font-size: 2.375rem; letter-spacing: -0.02em; }
+  .fiche-contact { margin: 0.5rem 0 0; font-size: 0.875rem; color: var(--texte-2); display: flex; flex-wrap: wrap; gap: 0 0.5rem; align-items: baseline; }
+  .fiche-types { display: flex; flex-wrap: wrap; gap: var(--espace-xs); }
+  .fiche-type { font-family: var(--mono); font-size: 0.5625rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--texte-2); background: transparent; border: 1px solid var(--filet); padding: 0.375rem 0.625rem; cursor: pointer; }
+  .fiche-type[aria-pressed='true'] { color: var(--accent-clair); border-color: var(--accent); }
+  .fiche-bandeau { display: flex; flex-wrap: wrap; margin-top: var(--espace-l); padding: 1.125rem 0; border-top: 1px solid var(--filet); border-bottom: 1px solid var(--filet); }
+  .fiche-cellule { flex: 1 1 10rem; min-width: 0; padding: 0 1.75rem; border-left: 1px solid var(--filet); }
+  .fiche-cellule:first-child { padding-left: 0; border-left: 0; }
+  .fiche-cellule:last-child { padding-right: 0; }
+  .fiche-cellule .etiquette { margin-bottom: 0.4375rem; font-family: var(--mono); font-size: 0.5625rem; }
+  .fiche-valeur { margin: 0; font-size: 0.875rem; }
+  .fiche-avatar { display: inline-grid; place-items: center; width: 1.125rem; height: 1.125rem; border-radius: 50%; background: var(--filet); color: var(--texte); font-size: 0.5625rem; font-weight: 400; margin-right: 0.4375rem; vertical-align: middle; }
+  .fiche-avatar.pleine { color: var(--sur-accent); }
+
+  /* Champ modifiable en place */
+  .fiche-champ { font: inherit; color: inherit; background: none; border: 0; border-bottom: 1px dashed transparent; padding: 0; margin: 0; cursor: text; text-align: left; }
+  .fiche-champ:hover { border-bottom-color: var(--filet); }
+  .fiche-champ .vide { color: var(--texte-2); }
+  .fiche-saisie { font: inherit; padding: 0.25rem 0.4rem; color: var(--texte); border: 1px solid var(--accent); min-width: 6rem; max-width: 100%; }
+  .fiche-saisie.large { width: 100%; }
+  .fiche-lien-modif { font-family: var(--mono); font-size: 0.5625rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--texte-2); background: none; border: 0; padding: 0 0 0 0.5rem; cursor: pointer; }
+  .fiche-lien-modif:hover { color: var(--accent-clair); }
+  .fiche-erreur { display: block; margin-top: 0.25rem; font-size: 0.75rem; color: var(--alerte); }
+  .fiche-marque { display: block; margin-top: 0.3125rem; font-family: var(--mono); font-size: 0.5625rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-clair); }
+  .fiche-marque.refus { color: var(--alerte); }
+  .fiche-marque button { font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; background: none; border: 0; padding: 0 0 0 0.5rem; cursor: pointer; text-decoration: underline; }
+
+  /* Sujets et échanges */
+  .fiche-bloc { margin-top: var(--espace-xl); }
+  .fiche-bloc-tete { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--espace); }
+  .fiche-bloc-tete h2 { margin: 0; font-weight: 300; font-size: 1.375rem; }
+  .fiche-ajout { font-family: var(--mono); font-size: 0.625rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-clair); background: none; border: 0; padding: 0; cursor: pointer; }
+  .fiche-ligne { display: flex; gap: var(--espace-m); align-items: flex-start; padding: 0.9375rem 0; border-top: 1px solid var(--filet); }
+  .fiche-ligne:last-child { border-bottom: 1px solid var(--filet); }
+  .fiche-ligne.fait { opacity: 0.55; }
+  .fiche-statut { flex: none; min-width: 5.5rem; text-align: center; font-family: var(--mono); font-size: 0.5625rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--texte-2); background: transparent; border: 1px solid var(--filet); padding: 0.3125rem 0.5625rem; cursor: pointer; }
+  .fiche-statut:hover { background: var(--marine); }
+  .fiche-statut[data-statut='encours'] { color: var(--accent-clair); border-color: var(--accent); }
+  .fiche-statut[data-statut='fait'] { color: var(--positif); border-color: color-mix(in srgb, var(--positif) 45%, transparent); }
+  .fiche-statut.retard { color: var(--alerte); border-color: color-mix(in srgb, var(--alerte) 45%, transparent); }
+  .fiche-sujet { flex: 1 1 auto; min-width: 0; font-size: 0.9375rem; }
+  .fiche-sous { display: block; margin-top: 0.3125rem; font-size: 0.75rem; color: var(--texte-2); }
+  .fiche-sous .alerte { color: var(--alerte); }
+  .fiche-vide { padding: var(--espace) 0; color: var(--texte-2); font-size: 0.875rem; border-top: 1px solid var(--filet); border-bottom: 1px solid var(--filet); }
+  .fiche-echange { display: flex; gap: 1.25rem; padding: 0.9375rem 0; border-top: 1px solid var(--filet); }
+  .fiche-echange:last-of-type { border-bottom: 1px solid var(--filet); }
+  .fiche-echange-quand { flex: none; width: 6.875rem; font-family: var(--mono); font-size: 0.625rem; letter-spacing: 0.08em; color: var(--texte-2); }
+  .fiche-echange-note { flex: 1 1 auto; min-width: 0; font-size: 0.875rem; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .fiche-formulaire { margin-bottom: var(--espace); padding: var(--espace-m); border: 1px solid var(--filet); }
+  .fiche-formulaire .grille { gap: 0 var(--espace); }
+  .fiche-formulaire .actions { margin-top: var(--espace-xs); }
+  .fiche-mention { margin: 0 0 var(--espace-xs); font-size: 0.75rem; line-height: 1.7; color: var(--texte-2); }
+  .fiche-formulaire textarea { width: 100%; min-height: 5.5rem; resize: vertical; }
+
+  /* Panneau Portail (lecture seule) */
+  .portail-carte { border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); padding: 1.625rem 1.5rem; }
+  .portail-etiquette { color: var(--accent); margin-bottom: 0.25rem; }
+  .portail-viewer { margin: 0 0 1.25rem; font-size: 0.8125rem; color: var(--texte-2); }
+  .portail-viewer span { color: var(--texte); }
+  .portail-carte .etiquette, .portail-vide .etiquette { font-family: var(--mono); font-size: 0.5625rem; }
+  .portail-total { margin: 0.375rem 0 0.25rem; font-family: var(--serif); font-weight: 300; font-size: 2.125rem; line-height: 1; font-variant-numeric: tabular-nums lining-nums; }
+  .portail-sous { margin: 0; font-size: 0.75rem; color: var(--texte-2); }
+  .portail-pf { list-style: none; margin: var(--espace-m) 0 0; padding: 0; font-size: 0.8125rem; }
+  .portail-pf li { display: flex; justify-content: space-between; gap: var(--espace-m); padding: 0.25rem 0; color: var(--texte-2); }
+  .portail-pf .num { font-variant-numeric: tabular-nums; color: var(--texte); }
+  .portail-doubles { display: flex; margin: 1.375rem 0; padding: 1rem 0; border-top: 1px solid var(--filet); border-bottom: 1px solid var(--filet); }
+  .portail-doubles > div { flex: 1 1 0; min-width: 0; }
+  .portail-doubles > div + div { padding-left: 1.25rem; border-left: 1px solid var(--filet); }
+  .portail-valeur { margin: 0.375rem 0 0.25rem; font-size: 1.0625rem; font-variant-numeric: tabular-nums; }
+  .portail-valeur.pos { color: var(--positif); }
+  .portail-valeur.neg { color: var(--alerte); }
+  .portail-valeur.portail-texte { font-size: 0.875rem; }
+  .portail-titre-repartition { margin: 0 0 0.75rem; }
+  .portail-repartition { margin-bottom: 1rem; }
+  .portail-pf-titre { margin: 0 0 0.5rem; font-size: 0.75rem; color: var(--accent-clair); }
+  .portail-classe { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.625rem; }
+  .portail-nom { flex: none; width: 6.25rem; font-size: 0.8125rem; overflow-wrap: anywhere; }
+  .portail-barre { flex: 1 1 auto; min-width: 0; height: 0.5rem; background: var(--filet); position: relative; }
+  .portail-part { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
+  .portail-part.hors { background: var(--alerte); }
+  .portail-cible { position: absolute; top: -0.25rem; bottom: -0.25rem; width: 1px; background: var(--texte); }
+  .portail-chiffres { flex: none; width: 5.5rem; text-align: right; font-size: 0.75rem; font-variant-numeric: tabular-nums; color: var(--texte-2); }
+  .portail-chiffres.hors { color: var(--alerte); }
+  .portail-ecart { display: block; font-size: 0.6875rem; }
+  .portail-legende { margin: 0.25rem 0 1.125rem; line-height: 1.7; }
+  .portail-action { display: block; width: 100%; text-align: center; margin-top: 0.625rem; }
+  .portail-action:disabled { opacity: 0.45; cursor: not-allowed; }
+  .portail-vide { border: 1px solid var(--filet); padding: 1.375rem 1.5rem; }
+  .portail-vide p { margin: 0 0 1rem; font-size: 0.8125rem; line-height: 1.8; color: var(--texte-2); }
+  .portail-vide .etiquette { margin-bottom: 0.75rem; }
+
+  @media (max-width: 48rem) {
+    .fiche-cellule { padding: 0.5rem 0; border-left: 0; }
+    .fiche-echange { flex-direction: column; gap: 0.25rem; }
+  }
+</style>
