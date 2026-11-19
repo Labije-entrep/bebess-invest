@@ -40,8 +40,10 @@ pour le texte, IBM Plex Mono pour les étiquettes en capitales. Toutes auto-héb
 Palette des graphiques, validée en contraste :
 `#B9862B`, `#4E9BD6`, `#C9684E`, `#3FA98A`, `#9B7BD4`
 
-Sémantique : `--positif` `#4FB08D`, `--alerte` `#C2614F`. Ne les utilise pour rien
-d'autre.
+Sémantique : `--positif`, `--alerte`. Ne les utilise pour rien d'autre, et prends-les
+**toujours par leur jeton** : leurs valeurs changent d'un thème de cabinet à l'autre,
+et `--alerte` est passée de `#C2614F` à `#C7665A` au lot 09, l'ancienne valeur ne
+donnant que 4,34:1 sur `--marine`, sous le seuil de lisibilité.
 
 Les maquettes font foi pour la mise en page. Elles sont dans le dossier `maquettes/`
 **à la racine du dépôt**, pas sous `chantier/` : depuis la racine, `ls maquettes/`.
