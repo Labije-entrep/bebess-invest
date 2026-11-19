@@ -17,9 +17,9 @@ const id = Astro.params.id ?? '';
 const contact =
   id.length > 0 && id.length <= 64
     ? await db
-        .prepare('SELECT id, nom, prenom, viewer_id FROM contact WHERE id = ? AND tenant_id = ?')
+        .prepare('SELECT id, nom, prenom, viewer_id, logo_cle FROM contact WHERE id = ? AND tenant_id = ?')
         .bind(id, tenant.id)
-        .first<{ id: string; nom: string; prenom: string | null; viewer_id: string | null }>()
+        .first<{ id: string; nom: string; prenom: string | null; viewer_id: string | null; logo_cle: string | null }>()
     : null;
 if (!contact) return Astro.rewrite('/404');
 
@@ -52,6 +52,12 @@ const MESSAGES: Record<string, [string, boolean]> = {
   ecart_sous_seuil: ['Cet écart ne dépasse plus le seuil : aucun sujet n’a été créé.', true],
   arrete_a_jour: ['Cet arrêté n’est plus périmé : aucun sujet n’a été créé.', true],
   statut_absent: ['Le cabinet n’a aucun statut de sujet qui ne soit pas terminal : le sujet n’a pas été créé.', true],
+  logo_ok: ['Logo enregistré.', false],
+  logo_retire: ['Logo retiré.', false],
+  logo_absent: ['Aucun fichier reçu.', true],
+  logo_vide: ['Le fichier est vide.', true],
+  logo_trop_gros: ['Le logo dépasse 512 Ko.', true],
+  logo_type_refuse: ['Le contenu du fichier n’est pas une image PNG, JPEG ou WebP, quelle que soit son extension.', true],
   demande_inconnue: ['Demande inconnue : aucun sujet n’a été créé.', true],
 };
 const retour = MESSAGES[Astro.url.searchParams.get('pm') ?? ''] ?? null;
@@ -66,6 +72,22 @@ const retour = MESSAGES[Astro.url.searchParams.get('pm') ?? ''] ?? null;
     </div>
     <div id="fiche-alertes" class="fiche-alertes" aria-live="polite"></div>
     {retour && <p class={retour[1] ? 'info alerte' : 'info'} role={retour[1] ? 'alert' : 'status'}>{retour[0]}</p>}
+
+    <div class="fiche-fichiers">
+      {contact.logo_cle && <img src={`/fichiers/contact/${encodeURIComponent(contact.id)}`} alt={`Logo de ${contact.nom}`} height="48" />}
+      <form method="post" action={`/gestionnaire/fichiers/logo-contact/${encodeURIComponent(contact.id)}`} enctype="multipart/form-data">
+        <label class="etiquette" for="logo-contact">Logo (PNG, JPEG ou WebP, 512 Ko)</label>
+        <input id="logo-contact" name="fichier" type="file" accept="image/png,image/jpeg,image/webp" required />
+        <button class="btn" type="submit">Enregistrer le logo</button>
+      </form>
+      {contact.logo_cle && (
+        <form method="post" action={`/gestionnaire/fichiers/logo-contact/${encodeURIComponent(contact.id)}`} enctype="multipart/form-data">
+          <input type="hidden" name="action" value="retirer" />
+          <button class="btn" type="submit">Retirer le logo</button>
+        </form>
+      )}
+      <a class="btn" href={`/gestionnaire/export/contact/${encodeURIComponent(contact.id)}`} download>Exporter ce contact (accès RGPD)</a>
+    </div>
 
     <div class="fiche-cadre">
       <div class="fiche-principal" id="fiche-corps">
@@ -193,6 +215,9 @@ const retour = MESSAGES[Astro.url.searchParams.get('pm') ?? ''] ?? null;
 </Gestion>
 
 <style is:global>
+  .fiche-fichiers { display: flex; align-items: center; gap: var(--espace); flex-wrap: wrap; margin: var(--espace) 0; }
+  .fiche-fichiers form { display: flex; align-items: center; gap: var(--espace-xs); flex-wrap: wrap; }
+  .fiche-fichiers img { max-width: 12rem; object-fit: contain; }
   .fiche-entete { display: flex; align-items: baseline; justify-content: space-between; gap: var(--espace); flex-wrap: wrap; }
   .fiche-retour { font-family: var(--mono); font-size: 0.625rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--texte-2); }
   .fiche-etat { display: flex; align-items: center; gap: var(--espace-xs); margin: 0; font-family: var(--mono); font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--texte-2); }

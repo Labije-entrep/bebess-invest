@@ -23,8 +23,8 @@ Un lot dont le prérequis n'est pas coché ne démarre pas.
 | 03 | Module de suivi : la liste des contacts | — | fait | 1357619 |
 | 04 | Module de suivi : la fiche | — | fait | 78eedcf |
 | 05 | Kanban et parcours | — | fait | cb8fdce |
-| 06 | Actus, bibliothèque, cours | — | fait | |
-| 07 | La passerelle | P2 | fait (P2 non coché : vérifié avec le pilote console seulement) | |
+| 06 | Actus, bibliothèque, cours | — | fait | 6179d11 |
+| 07 | La passerelle | — | fait | 691a0db |
 | 08 | Fichiers et exports | — | à faire | |
 | 09 | Paramétrage par cabinet | — | à faire | |
 | 10 | Espace super admin | P3 | à faire | |
@@ -139,3 +139,47 @@ Une entrée par session terminée : lot, date, ce qui a été vérifié, ce qui 
 - **Non vérifié** : un vrai envoi Scaleway (P2 non coché) ; D1 hors local ; rendu mobile ; lecteur d'écran ; la page de confirmation `/connexion/<jeton>` a répondu « Cross-site POST form submissions are forbidden » une fois, depuis le navigateur du volet, alors que le même POST passe en `curl` avec l'en-tête `Origin` : non élucidé, hors périmètre (page de connexion inchangée), à rejouer dans un vrai navigateur.
 - **Choix à relire** : (1) `ecartAllocation` sert au panneau pour l'écart (le panneau lisait `ecartBp` de `repartition`, qui laisse nul l'écart d'une classe sans cible) : une classe détenue sans cible a désormais un écart contre 0, **mais seulement si le portefeuille a au moins une cible** (sinon tout serait « hors cible »). (2) Date de l'origine d'écart = date d'arrêté affichée par le panneau (la plus ancienne) ; origine d'arrêté = identifiant du portefeuille + sa propre date (plus ancienne de ses enveloppes, lignes et dernier point). Un portefeuille sans aucun arrêté n'est pas « périmé ». (3) Un sujet **archivé** ne compte pas comme « non clos » : en recréer un après l'avoir archivé est permis. (4) Promotion réservée au **gestionnaire** (comme la création d'un viewer) ; sujets et note ouverts à l'éditeur. (5) Le texte des sujets est un gabarit fixe, jamais généré. (6) Le bouton « Publier vers le portail » est devenu « Créer la note de marché » (il ne publie pas). (7) L'éditeur de notes normalise maintenant `CRLF` en `LF` (corps et chapeau), comme la fiche d'actu : sans cela, un texte repris d'une actu devenait différent à la publication (les navigateurs envoient les retours à la ligne en CRLF). (8) « Saisir le nouvel arrêté » est un lien vers l'onglet Arrêté du viewer (gestionnaire seulement).
 - **Hors périmètre** : `cloisonnement.ts` (ressource `actu`), `notes/[id].astro` (CRLF), `api-suivi.ts` et `etat.ts` (avoirs), `fiche.ts` côté client (identifiant et surbrillance du sujet visé). Aucune dépendance ajoutée, aucune migration, aucune couleur littérale nouvelle (jetons de `app.css`).
+
+### Lots 06 et 07 — 19 novembre
+
+Lot 06 (6179d11) : étape de contact modifiable depuis la fiche et le parcours,
+colonne des sujets clos bornée à 30 jours, cours récupérés côté serveur avec budget
+et repli sur incident, actus, bibliothèque interne. Les reprises temporisées de la
+file d'écritures sont enfin éprouvées sur un vrai 500 : 0, 2, 7,1, 17,1 puis 47,1 s.
+Les trois indices passent par des fonds cotés, ce que le libellé indique
+(« CAC 40 · fonds CAC.PAR ») ; le symbole du CAC reste à confirmer avec une vraie clé.
+
+Lot 07 (691a0db) : passerelle complète. Promotion en une transaction, avoirs dérivés
+refusés en écriture (422), sujets d'écart et d'arrêté périmé avec garde contre le
+doublon éprouvée à six clics simultanés, note de marché créée mot pour mot. Un défaut
+trouvé et corrigé au passage : sans normalisation CRLF en LF, le texte changeait à la
+publication. Cloisonnement 404 dans les deux sens.
+
+## Lot 08 — 19 novembre
+
+**403 sur la connexion : élucidé et corrigé.** Cause mesurée dans Chromium (156) : `Connexion.astro` posait
+`<meta name="referrer" content="no-referrer">`. Sous cette politique, le navigateur envoie `Origin: null` avec tout POST
+de formulaire (spec Fetch), et `checkOrigin` d'Astro, qui exige `Origin == url.origin`, répond 403. Valeurs relevées sur
+`/connexion` comme sur `/connexion/<jeton>` : `Origin: null`, `Host: localhost:8788`, pas de `Referer` ; curl passait parce
+qu'il envoyait le bon `Origin`. Correctif : `same-origin` (aucun `Referer` vers l'extérieur, le jeton de l'URL ne fuit
+toujours pas, mais le POST porte son vrai `Origin`). Après correctif : dix parcours complets, dix 303, `Origin:
+http://localhost:8788` = `Host`. **`checkOrigin` n'est pas touché.**
+
+Astro place `checkOrigin` **avant** `src/middleware.ts` (`unshift` dans `base-pipeline.js`) : le journal du middleware ne
+voit donc jamais un rejet. `src/worker.ts` (`workerEntryPoint`) est le seul endroit qui les voit ; il journalise (jeton
+masqué) et renvoie 303 vers `?refus=1` (page d'explication + « Demander un nouveau lien ») pour tout POST en échec sur
+`/connexion` et `/connexion/<jeton>`. Le jeton n'est pas consommé par un POST rejeté. Sous `astro dev`, ce point d'entrée
+n'est pas exécuté : le filet ne se voit que sur un build (`wrangler pages dev dist`).
+
+**Fichiers (R2)** : binding `FICHIERS`, `src/lib/fichiers.ts`. Aucune URL publique de R2 ; clés `<tenant>/…` ; type lu sur
+les premiers octets (PDF, PNG, JPEG, WebP ; SVG refusé) ; 10 Mo (rapports), 512 Ko (logos). Documents : 404 hors
+locataire, hors viewer, sans session. Le logo du cabinet (`/logo-cabinet`) est la seule route sans session : c'est une
+marque affichée sur le site public ; le locataire vient de l'hôte.
+
+**Exports** : suivi (4 CSV), un contact seul (un fichier : fiche, notes, sujets, échanges), locataire entier (ZIP de 25 CSV,
+sans session ni jeton ; le contenu des PDF n'y est pas). CSV `;`, UTF-8 avec BOM, cellules en `= + - @` préfixées d'une
+apostrophe.
+
+- **Non vérifié** : R2 réel (seulement l'émulation locale) ; Safari et Firefox (seul Chromium a été mesuré : ils appliquent
+  la même règle de la spec) ; `Content-Length` absent (corps chunked) : la taille est alors contrôlée après lecture.
+- **À créer côté Cloudflare** : `wrangler r2 bucket create bebess-fichiers`, sans domaine public ni `r2.dev`.

@@ -2,6 +2,8 @@
 import '../styles/app.css';
 import '../styles/public.css';
 import { T, chemin, type Lg } from '../lib/publang';
+import { envDe } from '../lib/mail';
+import { urlLogoCabinet } from '../lib/fichiers';
 
 interface Props {
   titre: string;
@@ -11,6 +13,7 @@ interface Props {
 const { titre, description = '', langue = 'fr' } = Astro.props;
 const l = T[langue];
 const nom = Astro.locals.tenant?.nom ?? "BeBess'Invest";
+const logo = Astro.locals.tenant ? await urlLogoCabinet(envDe(Astro.locals).DB, Astro.locals.tenant.id) : null;
 const canonique = Astro.url.origin + Astro.url.pathname;
 const liens: [string, string][] = [
   [chemin('approche', langue), l.nav.approche],
@@ -33,7 +36,7 @@ const ici = Astro.url.pathname.replace(/\/$/, '');
   <body class="pub">
     <header class="pub-haut">
       <div class="wrap pub-barre">
-        <a class="pub-marque" href={chemin('accueil', langue)}>{nom}</a>
+        <a class="pub-marque" href={chemin('accueil', langue)}>{logo && <img class="logo-cabinet" src={logo} alt="" height="32" />}{nom}</a>
         <button class="btn pub-burger" type="button" aria-expanded="false" aria-controls="pub-menu" data-menu>{l.menu}</button>
         <nav id="pub-menu" class="pub-menu" aria-label={l.navAria}>
           {liens.map(([href, lib]) => <a href={href} aria-current={ici === href || ici.startsWith(`${href}/`) ? 'page' : undefined}>{lib}</a>)}
@@ -59,3 +62,7 @@ const ici = Astro.url.pathname.replace(/\/$/, '');
     </script>
   </body>
 </html>
+
+<style is:global>
+  .logo-cabinet { height: 2rem; width: auto; vertical-align: middle; margin-right: var(--espace-xs); }
+</style>

@@ -9,8 +9,10 @@ import {
 } from '../../../lib/gestion';
 import {
   ficheDuViewer, enveloppesDuViewer, lignesDesEnveloppes, ciblesDuViewer, pointsDuViewer, mouvementsDuViewer, portefeuillesDuViewer,
+  documentsDuViewer,
 } from '../../../lib/db';
 import { euros, pourcent, dateCourte } from '../../../lib/format';
+import { LIMITE_PDF, MESSAGES_REFUS } from '../../../lib/fichiers';
 
 const c = contexte(Astro);
 if (c instanceof Response) return c;
@@ -25,7 +27,7 @@ const base = `/gestionnaire/viewers/${encodeURIComponent(viewer.id)}`;
 
 const ONGLETS: [string, string][] = [
   ['arrete', 'Nouvel arrêté'], ['fiche', 'Fiche'], ['portefeuilles', 'Portefeuilles'], ['enveloppes', 'Enveloppes'], ['lignes', 'Lignes'],
-  ['cibles', 'Allocation cible'], ['historique', 'Historique'], ['mouvements', 'Mouvements'],
+  ['cibles', 'Allocation cible'], ['historique', 'Historique'], ['mouvements', 'Mouvements'], ['rapports', 'Rapports'],
 ];
 let onglet = Astro.url.searchParams.get('onglet') ?? 'fiche';
 let erreurs: Erreurs = {};
@@ -70,6 +72,16 @@ const lignes = ['lignes', 'cibles', 'arrete'].includes(onglet)
   : [];
 const cibles = onglet === 'cibles' ? await ciblesDuViewer(db, tenant.id, viewer.id, pf?.id, true) : [];
 const points = onglet === 'historique' ? (await pointsDuViewer(db, tenant.id, viewer.id, pf?.id, true)).reverse() : [];
+const documents = onglet === 'rapports' ? await documentsDuViewer(db, viewer.id) : [];
+const CATEGORIES_DOC = onglet === 'rapports' ? await optionsDe(db, tenant.id, 'categorie_doc') : [];
+// Retour des routes de dépôt : codes fixes, jamais du texte tiré de l'adresse.
+const MSG_RAPPORTS: Record<string, string> = {
+  ...MESSAGES_REFUS,
+  titre: 'Le titre est obligatoire.',
+  date: 'Date au format AAAA-MM-JJ.',
+  categorie: 'Catégorie inconnue.',
+};
+const erreurRapport = MSG_RAPPORTS[p.get('erreur') ?? ''] ?? null;
 const mouvements = onglet === 'mouvements' ? await mouvementsDuViewer(db, viewer.id) : [];
 const ecarts = onglet === 'cibles' ? ecartAllocation(lignes, cibles) : [];
 
@@ -90,6 +102,9 @@ let compteur = 0;
     <p class="info">Viewer créé. {p.get('envoye') === '1' ? 'Le lien de première connexion a été envoyé.' : "L'envoi du lien a échoué : consultez le journal du serveur."}</p>
   )}
   {p.get('ok') === '1' && <p class="info">Enregistré.</p>}
+  {p.get('ok') === 'document' && <p class="info" role="status">Rapport déposé : le viewer peut le télécharger.</p>}
+  {p.get('ok') === 'supprime' && <p class="info" role="status">Rapport retiré.</p>}
+  {erreurRapport && <p class="info alerte" role="alert">{erreurRapport}</p>}
   {erreurs.general && <p class="info alerte">{erreurs.general}</p>}
 
   <nav class="onglets" aria-label="Onglets du viewer">
@@ -531,6 +546,48 @@ let compteur = 0;
           </tbody>
         </table>
       </div>
+    </>
+  )}
+  {onglet === 'rapports' && (
+    <>
+      <p class="aide">Les rapports déposés ici s'affichent dans l'onglet « Stratégie et rapports » de l'espace du viewer, pour tous ses portefeuilles. PDF seulement, {LIMITE_PDF / 1024 / 1024} Mo au plus ; le type est vérifié sur le contenu du fichier.</p>
+      <form method="post" action={`/gestionnaire/fichiers/document?viewer_id=${encodeURIComponent(viewer.id)}`} enctype="multipart/form-data">
+        <div class="grille">
+          <Champ nom="titre" label="Titre" requis />
+          <div class="groupe">
+            <label class="etiquette" for="categorie">Catégorie *</label>
+            <select class="champ" id="categorie" name="categorie" required>
+              {CATEGORIES_DOC.map(([k, nom]) => <option value={k}>{nom}</option>)}
+            </select>
+          </div>
+          <Champ nom="date" label="Date du rapport" type="date" valeur={new Date().toISOString().slice(0, 10)} requis />
+          <div class="groupe">
+            <label class="etiquette" for="fichier">Fichier PDF *</label>
+            <input class="champ" id="fichier" name="fichier" type="file" accept="application/pdf" required />
+          </div>
+        </div>
+        <div class="actions"><button class="btn-plein" type="submit">Déposer le rapport</button></div>
+      </form>
+      <hr class="filet" />
+      {documents.length === 0 ? <p class="aide">Aucun rapport déposé.</p> : (
+        <div class="defile">
+          <table class="table">
+            <thead><tr><th>Date</th><th>Titre</th><th>Catégorie</th><th></th></tr></thead>
+            <tbody>
+              {documents.map((d) => (
+                <tr>
+                  <td>{dateCourte(d.date)}</td>
+                  <td>{d.cle_fichier ? <a href={`/fichiers/document/${encodeURIComponent(d.id)}`}>{d.titre}</a> : d.titre}</td>
+                  <td>{CATEGORIES_DOC.find(([k]) => k === d.categorie)?.[1] ?? d.categorie}</td>
+                  <td class="num">
+                    <form method="post" action={`/gestionnaire/fichiers/supprimer/${encodeURIComponent(d.id)}`}><button class="btn" type="submit">Retirer</button></form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   )}
 </Gestion>

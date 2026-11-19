@@ -50,7 +50,7 @@ const lignes: [string, string | null][] = fiche
       <ul class="liste-doc">
         {documents.map((d) => (
           <li>
-            {d.titre}<br />
+            {d.cle_fichier ? <a href={`/fichiers/document/${encodeURIComponent(d.id)}`}>{d.titre}</a> : d.titre}<br />
             <span class="sec num">{d.categorie} · {dateCourte(d.date)}</span>
           </li>
         ))}

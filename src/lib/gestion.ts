@@ -453,7 +453,7 @@ async function archiverPortefeuille(db: Base, tenantId: string, viewerId: string
 }
 
 /** Options des listes du cabinet, pour les écrans : [cle, libelle], dans l'ordre. */
-export async function optionsDe(db: Base, tenantId: string, liste: 'classe_actif' | 'statut_mouvement' | 'type_portefeuille'): Promise<[string, string][]> {
+export async function optionsDe(db: Base, tenantId: string, liste: 'classe_actif' | 'statut_mouvement' | 'type_portefeuille' | 'categorie_doc'): Promise<[string, string][]> {
   return (await validateurDe(db, tenantId, liste)).options;
 }
 const norm = (s: string) => s.trim().toLowerCase();
