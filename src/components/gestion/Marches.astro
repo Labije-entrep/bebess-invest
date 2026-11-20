@@ -1,0 +1,186 @@
+---
+// Bloc « Marchés » de l'écran Actus : une carte par symbole, sélecteur de période, comparaison en base 100. Rendu côté serveur,
+// période et comparaison sont des paramètres d'adresse (GET) : aucun JavaScript. Couleurs : jetons --serie-1…5, --positif, --alerte.
+import type { SymboleSuivi } from '../../lib/cours';
+import { formaterValeur, SYMBOLE_SENS } from '../../lib/cours';
+import { dateCourte } from '../../lib/format';
+import {
+  comparer, deviseDe, fenetre, jetonSerie, miniCourbe, motifTrait, performance, PERIODES, variationJour,
+  type Periode, type Point,
+} from '../../lib/marches';
+
+interface Props {
+  symboles: SymboleSuivi[];
+  series: Map<string, Point[]>;
+  periode: Periode;
+  comparaison: boolean;
+  /** Adresse de base à laquelle accrocher période et comparaison (conserve ?date=…). */
+  lien: (p: Periode, c: boolean) => string;
+  actus: { date: string; titre: string; lien: string }[];
+  cleAbsente: boolean;
+}
+const { symboles, series, periode, comparaison, lien, actus, cleAbsente } = Astro.props;
+
+const pct = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'exceptZero' });
+const nombre1 = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const fmtPct = (bp: number) => `${pct.format(bp / 100)} %`;
+const classe = (bp: number | null) => (bp === null || bp === 0 ? '' : bp > 0 ? 'hausse' : 'baisse');
+const sens = (bp: number) => (bp > 0 ? SYMBOLE_SENS.hausse : bp < 0 ? SYMBOLE_SENS.baisse : SYMBOLE_SENS.stable);
+const mot = (bp: number) => (bp > 0 ? 'en hausse' : bp < 0 ? 'en baisse' : 'stable');
+
+const n = PERIODES[periode].n;
+const cartes = symboles.map((s, i) => {
+  const toutes = series.get(s.cle) ?? [];
+  const pts = fenetre(toutes, n);
+  const dernier = toutes[toutes.length - 1];
+  return {
+    s, i, pts, dernier,
+    perf: performance(pts), jour: variationJour(toutes), mini: miniCourbe(pts),
+  };
+});
+const avecDonnees = cartes.filter((c) => c.dernier);
+const derniere = avecDonnees.map((c) => c.dernier.date).sort().pop();
+const cmp = comparaison ? comparer(cartes.map((c) => ({ cle: c.s.cle, libelle: c.s.libelle, pts: c.pts })), actus) : null;
+const indice = (cle: string) => symboles.findIndex((s) => s.cle === cle);
+---
+<section class="marches" aria-labelledby="actu-marches">
+  <div class="marches-tete">
+    <h2 id="actu-marches">Marchés</h2>
+    <nav class="marches-periodes" aria-label="Période">
+      {(Object.keys(PERIODES) as Periode[]).map((p) => (
+        <a class="btn" href={lien(p, comparaison)} aria-current={p === periode ? 'true' : undefined}>{PERIODES[p].court}</a>
+      ))}
+    </nav>
+    <a class="btn" href={lien(periode, !comparaison)} aria-pressed={comparaison ? 'true' : 'false'}>{comparaison ? 'Masquer la comparaison' : 'Comparer en base 100'}</a>
+  </div>
+  <p class="aide">
+    {derniere ? <>Dernière clôture connue : {dateCourte(derniere)}.</> : <>Aucune clôture connue.</>}
+    Les cours viennent d’Alpha Vantage, récupérés chaque nuit ; un indice est suivi par un fonds qui le réplique, d’où le prix du fonds et non celui de l’indice.
+  </p>
+
+  {avecDonnees.length === 0 && (
+    <p class="info">
+      {cleAbsente
+        ? 'Pas encore de données : la clé d’API des cours (COURS_API_KEY) n’est pas configurée, aucun cours n’a pu être récupéré.'
+        : 'Pas encore de données : les cours apparaîtront ici après le prochain passage de la récupération quotidienne.'}
+    </p>
+  )}
+
+  <div class="marches-cartes">
+    {cartes.map((c) => (
+      <article class="marche-carte" style={`--mc: ${jetonSerie(c.i)}`}>
+        <h3 class="marche-nom"><span class="marche-pastille" aria-hidden="true"></span>{c.s.libelle}</h3>
+        {c.pts.length < 2 ? (
+          <p class="aide">Pas encore de données{c.dernier ? ' sur cette période' : ''}.</p>
+        ) : (
+          <>
+            <p class="marche-perf">
+              {c.perf === null ? '—' : <span class={classe(c.perf)}><span aria-hidden="true">{sens(c.perf)}</span> {fmtPct(c.perf)}<span class="sr"> {mot(c.perf)}</span></span>}
+              <small>{PERIODES[periode].long}</small>
+            </p>
+            {c.jour !== null && <p class={`marche-jour ${classe(c.jour)}`}><span aria-hidden="true">{sens(c.jour)}</span> {fmtPct(c.jour)} <span>à la dernière séance</span></p>}
+            {c.mini && (
+              <svg class="marche-mini" viewBox={`0 0 ${c.mini.largeur} ${c.mini.hauteur}`} role="img" xmlns="http://www.w3.org/2000/svg"
+                aria-label={`Courbe ${c.s.libelle}, ${c.pts.length} séances du ${dateCourte(c.pts[0].date)} au ${dateCourte(c.pts[c.pts.length - 1].date)} : de ${formaterValeur(String(c.pts[0].valeur))} à ${formaterValeur(String(c.pts[c.pts.length - 1].valeur))} ${deviseDe(c.s)}`}>
+                <path d={c.mini.aire} class="marche-aire" />
+                <path d={c.mini.ligne} fill="none" class="marche-ligne" stroke-dasharray={motifTrait(c.i)} />
+                <circle cx={c.mini.fin.x.toFixed(1)} cy={c.mini.fin.y.toFixed(1)} r="3.6" class="marche-point" />
+              </svg>
+            )}
+          </>
+        )}
+        {c.dernier && <p class="marche-pied">Dernier cours : {formaterValeur(c.dernier.valeur.toFixed(c.s.type === 'change' ? 4 : 2))} {deviseDe(c.s)} · séance du {dateCourte(c.dernier.date)}</p>}
+      </article>
+    ))}
+  </div>
+
+  {comparaison && (
+    <div class="marche-comparaison">
+      <h3>Comparaison en base 100</h3>
+      {cmp === null ? <p class="aide">Pas encore de données à comparer.</p> : (
+        <>
+          <p class="aide">Chaque courbe vaut 100 à sa première séance de la période (au plus tôt le {dateCourte(cmp.base_le)}).{cmp.actus.length > 0 && ' Un losange marque la date d’une actu du cabinet.'}</p>
+          <ul class="marche-legende">
+            {cmp.series.map((s) => {
+              const k = indice(s.cle);
+              return (
+                <li style={`--mc: ${jetonSerie(k)}`}>
+                  <svg width="30" height="8" aria-hidden="true"><line x1="0" y1="4" x2="30" y2="4" class="marche-ligne" stroke-dasharray={motifTrait(k)} /></svg>
+                  {s.libelle} : {nombre1.format(s.derniere)}{s.perf !== null && <> ({fmtPct(s.perf)})</>}
+                </li>
+              );
+            })}
+          </ul>
+          <div class="defile">
+            <svg class="marche-cmp" viewBox={`0 0 ${cmp.largeur} ${cmp.hauteur}`} role="img" xmlns="http://www.w3.org/2000/svg"
+              aria-label={`Comparaison en base 100 du ${dateCourte(cmp.base_le)} à la dernière séance : ${cmp.series.map((s) => `${s.libelle} ${nombre1.format(s.derniere)}`).join(' ; ')}`}>
+              {cmp.grille.map((g) => (
+                <>
+                  <line x1={cmp.gauche} x2={cmp.droite} y1={g.y.toFixed(1)} y2={g.y.toFixed(1)} class={Math.abs(g.valeur - 100) < 1e-9 ? 'c-base' : 'c-grille'} />
+                  <text x={cmp.gauche - 8} y={(g.y + 4).toFixed(1)} text-anchor="end" class="c-axe">{nombre1.format(g.valeur)}</text>
+                </>
+              ))}
+              {cmp.reperes.map((r) => <text x={r.x.toFixed(1)} y={cmp.hauteur - 8} text-anchor={r.ancre} class="c-axe">{dateCourte(r.date)}</text>)}
+              {cmp.actus.map((a) => {
+                const lienActu = actus.find((x) => x.date === a.date)?.lien;
+                const forme = (
+                  <>
+                    <title>{`Actu du ${dateCourte(a.date)} : ${a.titre}`}</title>
+                    <line x1={a.x.toFixed(1)} x2={a.x.toFixed(1)} y1={cmp.haut} y2={cmp.bas} class="marche-repere" />
+                    <rect x={(a.x - 5).toFixed(1)} y={cmp.bas + 4} width="10" height="10" transform={`rotate(45 ${a.x.toFixed(1)} ${cmp.bas + 9})`} class="marche-losange" />
+                  </>
+                );
+                return lienActu ? <a href={lienActu} aria-label={`Ouvrir l’actu du ${dateCourte(a.date)}`}>{forme}</a> : <g>{forme}</g>;
+              })}
+              {cmp.series.map((s) => {
+                const k = indice(s.cle);
+                return (
+                  <g style={`--mc: ${jetonSerie(k)}`}>
+                    <path d={s.d} fill="none" class="marche-ligne marche-ligne-cmp" stroke-dasharray={motifTrait(k)} />
+                    <circle cx={s.fin.x.toFixed(1)} cy={s.fin.y.toFixed(1)} r="4" class="marche-point" />
+                    <text x={(s.fin.x + 8).toFixed(1)} y={(s.y_etiquette + 4).toFixed(1)} class="marche-fin">{nombre1.format(s.derniere)}</text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+        </>
+      )}
+    </div>
+  )}
+</section>
+
+<style is:global>
+  .marches { margin-top: var(--espace-l); }
+  .marches-tete { display: flex; flex-wrap: wrap; align-items: center; gap: var(--espace-s); }
+  .marches-tete h2 { margin: 0 var(--espace-s) 0 0; }
+  .marches-periodes { display: inline-flex; gap: var(--espace-xs); }
+  .marches a.btn[aria-current='true'], .marches a.btn[aria-pressed='true'] { border-color: var(--accent-clair); color: var(--accent-clair); text-decoration: underline; }
+  .marches-cartes { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: var(--espace-m); margin-top: var(--espace-s); }
+  .marche-carte { border: 1px solid var(--filet); padding: var(--espace-m); }
+  .marche-nom { margin: 0; font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--texte-2); font-weight: 400; }
+  .marche-pastille { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.5rem; background: var(--mc); }
+  .marche-perf { margin: var(--espace-xs) 0 0; font-family: var(--serif); font-size: 1.75rem; font-weight: 300; }
+  .marche-perf small { margin-left: 0.5rem; font-family: var(--sans); font-size: 0.75rem; color: var(--texte-2); white-space: nowrap; }
+  .marche-jour { margin: 0; font-size: 0.8125rem; }
+  .marche-jour span:last-child { color: var(--texte-2); }
+  .marches .hausse { color: var(--positif); }
+  .marches .baisse { color: var(--alerte); }
+  .marche-mini { display: block; width: 100%; height: auto; margin: var(--espace-s) 0; }
+  .marche-pied { margin: 0; font-size: 0.75rem; color: var(--texte-2); }
+  .marche-aire { fill: var(--mc); opacity: 0.16; }
+  .marche-ligne { stroke: var(--mc); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+  .marche-ligne-cmp { stroke-width: 2.4; }
+  .marche-point { fill: var(--mc); }
+  .marche-cmp { display: block; width: 100%; min-width: 34rem; height: auto; }
+  .marche-cmp .c-grille { stroke: var(--filet); stroke-width: 1; }
+  .marche-cmp .c-base { stroke: var(--texte-2); stroke-width: 1; }
+  .marche-cmp .c-axe { font-family: var(--mono); font-size: 11px; fill: var(--texte-2); }
+  .marche-fin { font-family: var(--sans); font-size: 14px; font-weight: 300; fill: var(--texte); font-variant-numeric: tabular-nums; }
+  .marche-repere { stroke: var(--accent-clair); stroke-dasharray: 3 4; opacity: 0.6; }
+  .marche-losange { fill: var(--accent-clair); }
+  .marche-legende { display: flex; flex-wrap: wrap; gap: var(--espace-xs) var(--espace-m); margin: 0 0 var(--espace-s); padding: 0; list-style: none; font-size: 0.8125rem; }
+  .marche-legende li { display: inline-flex; align-items: center; gap: 0.5rem; }
+  .marche-comparaison { margin-top: var(--espace-m); }
+  .marches .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>

@@ -41,10 +41,13 @@ export const reseau = {
   /** Faire échouer Scaleway (courriel) ou Cloudflare (domaines). */
   scalewayRefuse: false,
   cloudflareRefuse: false,
+  /** Alpha Vantage (cours) : la réponse que le test décide, selon les paramètres de l'appel. Sans elle, tout appel fait échouer le test. */
+  cours: null as null | ((p: URLSearchParams) => Response | Promise<Response>),
   vider(): void {
     this.sortants = [];
     this.scalewayRefuse = false;
     this.cloudflareRefuse = false;
+    this.cours = null;
     this.interne = null;
   },
   /** Les courriels envoyés par le pilote Scaleway : destinataire, sujet, texte. */
@@ -70,6 +73,10 @@ globalThis.fetch = (async (entree: string | URL | Request, init?: RequestInit): 
     return reseau.cloudflareRefuse
       ? new Response(JSON.stringify({ success: false, errors: [{ message: 'refusé' }] }), { status: 500 })
       : new Response(JSON.stringify({ success: true, result: {} }), { status: 200 });
+  }
+  if (url.startsWith('https://www.alphavantage.co/query')) {
+    if (!reseau.cours) throw new Error(`Le banc est hors ligne : appel Alpha Vantage non prévu (${url.replace(/apikey=[^&]*/, 'apikey=***')})`);
+    return reseau.cours(new URL(url).searchParams);
   }
   throw new Error(`Le banc est hors ligne : appel sortant inattendu vers ${url}`);
 }) as typeof fetch;

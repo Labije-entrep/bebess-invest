@@ -7,6 +7,8 @@ import {
   assurerCours, derniersCours, formaterValeur, formaterVariation, incidentsCours, jourUtc, symbolesDe, SYMBOLE_SENS, variationSeule,
 } from '../../lib/cours';
 import { dateCourte, dateLongue } from '../../lib/format';
+import Marches from '../../components/gestion/Marches.astro';
+import { lireSeries, periodeDe, type Periode } from '../../lib/marches';
 
 // Vue Actus (lot 06) : une fiche par jour. Le bloc Chiffres vient de la table cours, récupérée paresseusement
 // à l'ouverture de cette vue ; le reste est saisi à la main. Aucun texte n'est produit par l'outil.
@@ -103,6 +105,10 @@ const MESSAGES: Record<string, [string, boolean]> = {
   note_site_ferme: ['Le module Site vitrine n’est pas activé pour ce cabinet : aucune note de marché n’a été créée.', true],
   note_vide: ['Le champ « à dire aux clients » est vide : il n’y a rien à reprendre dans une note.', true],
 };
+const periode = periodeDe(Astro.url.searchParams.get('p'));
+const comparaison = Astro.url.searchParams.get('cmp') === '1';
+const series = await lireSeries(db, symboles, date);
+const lienMarches = (p: Periode, c: boolean): string => `/gestionnaire/actus?date=${date}&p=${p}${c ? '&cmp=1' : ''}#actu-marches`;
 const retour = MESSAGES[Astro.url.searchParams.get('ok') ?? ''] ?? null;
 const sansValeur = new Set(symboles.filter(variationSeule).map((s) => s.cle));
 ---
@@ -159,6 +165,11 @@ const sansValeur = new Set(symboles.filter(variationSeule).map((s) => s.cle));
         )
     )}
   </section>
+
+  <Marches
+    symboles={symboles} series={series} periode={periode} comparaison={comparaison} lien={lienMarches} cleAbsente={cleAbsente}
+    actus={recentes.map((a) => ({ date: a.date, titre: a.titre, lien: `/gestionnaire/actus?date=${a.date}` }))}
+  />
 
   <form method="post" class="actu-form">
     <h2>Fiche</h2>
