@@ -95,6 +95,9 @@ const DONNEES_CABINET = ['/gestionnaire', '/api/suivi', '/fichiers'];
 // /fichiers : rapports et logos de contact, servis après contrôle de session, de locataire et de rôle.
 // Le logo du cabinet (/logo-cabinet) est public par nature : il s'affiche sur le site, sans session.
 const PRIVES = [...GARDES.map((g) => g.prefixe), '/connexion', '/deconnexion', '/api/suivi', '/fichiers'];
+// Les chemins où une session d'un AUTRE cabinet reçoit un 404 (lot 20). La connexion et la déconnexion en sont exclues : elles doivent
+// rester ouvertes à qui arrive avec un cookie qui ne vaut pas ici, pour qu'il puisse se reconnecter chez ce cabinet.
+const SANS_SESSION_ETRANGERE = ['/connexion', '/deconnexion'];
 
 function sous(chemin: string, prefixe: string): boolean {
   return chemin === prefixe || chemin.startsWith(`${prefixe}/`);
@@ -112,11 +115,17 @@ export const onRequest = defineMiddleware(async (context, next) => {
   context.locals.nonce = nonce;
 
   const prive = PRIVES.some((p) => sous(chemin, p));
+  // Une session valide d'un AUTRE cabinet (ou présentée à un hôte qui n'en désigne aucun) : un cookie rejoué, jamais un navigateur, qui
+  // ne renvoie un cookie qu'à l'hôte qui l'a posé. Elle ne vaut rien ici, et la réponse est celle d'une page qui n'existe pas : 404,
+  // comme pour un identifiant d'un autre cabinet, ni redirection vers la connexion ni 401 qui dirait « ici, une session aurait un sens ».
+  let sessionEtrangere = false;
   if (prive) {
     // Un utilisateur n'a qu'un tenant : sa session ne vaut que sur l'hôte de ce tenant.
     const utilisateur = await sessionCourante(DB, context.cookies);
     if (utilisateur && tenant && utilisateur.tenant_id === tenant.id) {
       context.locals.utilisateur = utilisateur;
+    } else if (utilisateur && !SANS_SESSION_ETRANGERE.some((p) => sous(chemin, p))) {
+      sessionEtrangere = true;
     }
   }
 
@@ -164,7 +173,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
   if (!refuse && !moduleFerme && u && aLeRole(role, COMPTES_EDITEUR) && DONNEES_CABINET.some((p) => sous(chemin, p))) {
     await journaliserAccesEditeur(DB, u.tenant_id, { id: u.id, role: u.role }, `${context.request.method} ${chemin}`);
   }
-  const reponse = archive
+  const reponse = sessionEtrangere
+    ? new Response('Introuvable.', { status: 404 })
+    : archive
     ? pageDossierFerme(tenant?.nom ?? 'votre cabinet')
     : sortie !== null
     ? pageEssaiEchu(tenant?.nom ?? 'votre cabinet', sortie)

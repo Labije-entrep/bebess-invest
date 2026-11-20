@@ -116,7 +116,7 @@ Témoins (le propriétaire accède à ses objets) : 200 sur viewer B, rapport B 
 | --- | --- |
 | E1 — pas de passage de l'essai à l'actif | **Corrigé** : `signerContrat` et l'action « Signer le contrat » de la fiche (DPA exigé, refusée hors essai, journalisée). Début de service = 45ᵉ jour de l'essai si signé avant sa fin. |
 | E2 — paragraphes perdus | **Corrigé** : `\r\n` normalisé à l'enregistrement (pages, notes, formulaire) et à la lecture. |
-| E3 — cookie rejoué sur l'hôte d'un autre cabinet : 302 / 401 | **Ouvert**, non traité par ce lot : décision à prendre entre garder le comportement et un 404 strict. |
+| E3 — cookie rejoué sur l'hôte d'un autre cabinet : 302 / 401 | **Corrigé (lot 20)** : 404 strict sur les routes privées (`/espace`, `/gestionnaire`, `/admin`, `/api/suivi`, `/fichiers`), indiscernable d'une page inexistante ; `/connexion` et `/deconnexion` restent ouvertes. Un cookie volé n'apprend ainsi plus qu'il est valide ailleurs que par ce qu'il ouvre déjà chez son cabinet. |
 | E4 — note d'un autre cabinet : 302 | **Corrigé** : 404 ; le `todo` du banc est retiré. |
 | E5 — libellé du scénario (note depuis l'actu) | À corriger dans le scénario, pas dans le produit. |
 | E6 — pilote console et `*.localhost` | **Corrigé** : tout nom qui se termine par `.localhost` est accepté, le refus ailleurs est inchangé. |

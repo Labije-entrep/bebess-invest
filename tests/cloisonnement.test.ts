@@ -156,20 +156,39 @@ test('espace client : un viewer ne lit que son dossier, jamais celui d\'un autre
   assert.equal(empreinte(db, ['consultation']), avant);
 });
 
-test('session d\'un cabinet présentée à l\'hôte d\'un autre : aucune session', async () => {
-  const { cab, env, cookie } = await monde();
+// Écart E3 de la recette (lot 20) : un cookie rejoué sur l'hôte d'un autre cabinet recevait une redirection vers /connexion (pages) ou un 401
+// (API) ; il reçoit un 404, jamais un 403, indiscernable d'une page qui n'existe pas. La connexion reste ouverte.
+test('session d\'un cabinet présentée à l\'hôte d\'un autre : 404, jamais 403, jamais de donnée, rien n\'est écrit', async () => {
+  const { cab, env, cookie, db } = await monde();
+  const avant = empreinte(db);
   for (const [x, y] of PAIRES) {
     const c = cookie(cab[x]);
-    const api = await envoyer(env, { url: '/api/suivi/etat', hote: cab[y].hote, cookie: c });
-    assert.equal(api.statut, 401, `${x} → hôte de ${y} : API`);
-    const page = await envoyer(env, { url: '/gestionnaire/suivi', hote: cab[y].hote, cookie: c });
-    assert.equal(page.statut, 302);
-    assert.equal(page.location, '/connexion');
+    const chemins = ['/api/suivi/etat', '/gestionnaire', '/gestionnaire/suivi', '/gestionnaire/reglages', '/fichiers/document/' + cab[y].donnees.document, '/admin'];
+    const ref = await envoyer(env, { url: '/gestionnaire/n-existe-pas', hote: cab[y].hote, cookie: c });
+    assert.equal(ref.statut, 404, `${x} → hôte de ${y} : une page qui n'existe pas`);
+    for (const url of chemins) {
+      const r = await envoyer(env, { url, hote: cab[y].hote, cookie: c });
+      assert.equal(r.statut, 404, `${x} → hôte de ${y} : ${url}`);
+      assert.ok(!r.location, `${x} → hôte de ${y} : ${url} ne redirige pas`);
+      assert.equal(r.texte, ref.texte, `${x} → hôte de ${y} : ${url} répond comme une page qui n'existe pas`);
+      assert.ok(!r.texte.includes(cab[y].nom) && !r.texte.includes(cab[x].nom), `${url} : aucun nom de cabinet dans la réponse`);
+    }
     const espace = await envoyer(env, { url: '/espace', hote: cab[y].hote, cookie: ouvrirSession(env.DB, cab[x].viewerCompte) });
-    assert.equal(espace.location, '/connexion', `${x} → hôte de ${y} : espace client`);
+    assert.equal(espace.statut, 404, `${x} → hôte de ${y} : espace client`);
+    // Écritures : 404 aussi, rien n'est modifié.
+    const ecriture = await envoyer(env, { methode: 'PATCH', url: `/api/suivi/contact/${cab[y].donnees.contact}`, hote: cab[y].hote, cookie: c, json: { nom: 'Pirate' } });
+    assert.equal(ecriture.statut, 404, `${x} → hôte de ${y} : écriture`);
+    // La connexion reste ouverte : qui arrive avec un cookie qui ne vaut pas ici peut se connecter chez ce cabinet.
+    const connexion = await envoyer(env, { url: '/connexion', hote: cab[y].hote, cookie: c });
+    assert.equal(connexion.statut, 200, `${x} → hôte de ${y} : la page de connexion reste servie`);
   }
   const inconnu = await envoyer(env, { url: '/api/suivi/etat', hote: 'inconnu.test', cookie: cookie(cab.A) });
-  assert.equal(inconnu.statut, 401, 'un hôte qui ne désigne aucun cabinet n\'ouvre rien');
+  assert.equal(inconnu.statut, 404, 'un hôte qui ne désigne aucun cabinet n\'ouvre rien, et ne dit rien');
+  const sansCookie = await envoyer(env, { url: '/api/suivi/etat', hote: cab.B.hote });
+  assert.equal(sansCookie.statut, 401, 'sans session du tout, le comportement d\'avant est inchangé : 401 en API');
+  const sansCookiePage = await envoyer(env, { url: '/gestionnaire/suivi', hote: cab.B.hote });
+  assert.equal(sansCookiePage.location, '/connexion', 'sans session du tout : redirection vers la connexion, comme avant');
+  assert.equal(empreinte(db), avant, 'aucune ligne modifiée par toutes ces requêtes');
 });
 
 // ------------------------------------------------------------------ écritures croisées
