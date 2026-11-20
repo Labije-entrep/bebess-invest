@@ -305,7 +305,8 @@ test('Origin honnête mais un autre cookie ou un autre hôte : la session n\'est
   const p = await envoyer(env, { url: `/connexion/${j}`, hote: cab.A.hote, methode: 'POST' });
   const cookie = `bbs=${p.cookieSession}`;
   assert.equal((await envoyer(env, { url: '/gestionnaire', hote: cab.A.hote, cookie })).statut, 200);
-  assert.equal((await envoyer(env, { url: '/gestionnaire', hote: cab.B.hote, cookie })).location, '/connexion');
+  // Le cookie de A rejoué chez B : 404 (lot 20), jamais la session de A, jamais une redirection qui laisserait entendre qu'une session aurait un sens ici.
+  assert.equal((await envoyer(env, { url: '/gestionnaire', hote: cab.B.hote, cookie })).statut, 404);
 });
 
 // ------------------------------------------------------------------ la session
