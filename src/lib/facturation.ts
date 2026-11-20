@@ -293,20 +293,62 @@ export async function apercuComplementaire(db: Base, c: Contrat, module: 'pilota
 
 // ---------------------------------------------------------------- les bons que la résiliation rend caducs
 
+export interface BonsApresEffet {
+  /** Brouillons annulés (chacun avec son événement `bon_annule`, motif `preavis_resiliation`). */
+  annules: number;
+  /** Bons déjà émis : intouchés, un incident par bon, l'avoir est à faire. */
+  emis: number;
+}
+
 /**
- * Un préavis enregistré APRÈS la pose du bon de la période suivante : ce bon (début à la date d'effet ou après) ne correspond plus à rien.
- * Rien n'est annulé d'office : un bon annulé ne se rouvre pas, et un préavis peut encore s'annuler (le bon manquerait alors). Une ligne
- * dans les incidents de la console, par bon, une seule fois : l'éditeur annule le bon, ou l'avoir suit s'il est déjà émis.
+ * Un préavis enregistré alors que le bon de la période suivante (début à la date d'effet ou après) est déjà posé : le bon est généré à J-30
+ * de la date anniversaire et le préavis est recevable jusqu'à J-30, les deux tombent donc le même jour.
+ *  - BROUILLON : annulé tout de suite, avec son événement. Il n'a aucune conséquence comptable (ni numéro, ni avoir) ; l'attente d'un geste
+ *    manuel risquerait l'émission d'une facture pour une année résiliée.
+ *  - ÉMIS : rien n'est touché. Un numéro attribué ne se libère jamais. Un incident, par bon, nomme la facture et rappelle l'avoir.
+ * Appelé après l'écriture du préavis ; rejoué, il ne retrouve plus de brouillon et ne redit rien de plus (les incidents d'un bon émis
+ * ne sont notés qu'à l'enregistrement du préavis, qui n'a lieu qu'une fois).
  */
-export async function signalerBonsApresEffet(db: Base, tenantId: string, contratId: string, effet: string): Promise<number> {
+export async function traiterBonsApresEffet(db: Base, tenantId: string, contratId: string, effet: string, acteur: Acteur): Promise<BonsApresEffet> {
   const { results } = await db
-    .prepare("SELECT id, statut, periode_debut, periode_fin FROM bon_a_facturer WHERE contrat_id = ? AND tenant_id = ? AND statut <> 'annulee' AND periode_debut >= ? ORDER BY periode_debut")
+    .prepare("SELECT id FROM bon_a_facturer WHERE contrat_id = ? AND tenant_id = ? AND statut <> 'annulee' AND periode_debut >= ? ORDER BY periode_debut, id")
     .bind(contratId, tenantId, effet)
-    .all<{ id: string; statut: string; periode_debut: string; periode_fin: string }>();
-  for (const b of results) {
+    .all<{ id: string }>();
+  const rapport: BonsApresEffet = { annules: 0, emis: 0 };
+  for (const { id } of results) {
+    const avant = await bonDe(db, tenantId, id);
+    if (avant?.statut === 'brouillon') {
+      const r = await annulerBon(db, tenantId, id, acteur, 'preavis_resiliation');
+      if (r.ok) {
+        rapport.annules++;
+        continue;
+      }
+    }
+    // Émis (ou émis entre la lecture et l'annulation) : on relit, on ne touche à rien.
+    const bon = await bonDe(db, tenantId, id);
+    if (bon?.statut !== 'emise') continue;
+    rapport.emis++;
     await noterIncident(
       db, tenantId, 'bon_apres_resiliation',
-      `Bon du ${b.periode_debut} au ${b.periode_fin} (${b.statut === 'emise' ? 'émis : un avoir est à faire' : 'brouillon : à annuler'}) : la résiliation prend effet le ${effet}, cette période n'aura pas lieu.`,
+      `Facture ${bon.numero} (période du ${bon.periode_debut} au ${bon.periode_fin}, ${eur(bon.total_ht)} HT) déjà émise : la résiliation prend effet le ${effet}, cette période n'aura pas lieu. Elle reste en l'état ; un avoir est à faire (le numéro ne se libère pas).`,
+    );
+  }
+  return rapport;
+}
+
+/**
+ * La résiliation est ANNULÉE : les brouillons que son enregistrement avait annulés ne reviennent pas. Un bon annulé garde sa période (clé
+ * unique du contrat, un bon ne s'efface ni ne se rouvre) : le traitement quotidien ne le recrée pas. Un incident par bon le dit à l'éditeur.
+ */
+export async function signalerBonsAnnulesParPreavis(db: Base, tenantId: string, contratId: string, effet: string): Promise<number> {
+  const { results } = await db
+    .prepare("SELECT periode_debut, periode_fin, total_ht FROM bon_a_facturer WHERE contrat_id = ? AND tenant_id = ? AND statut = 'annulee' AND numero IS NULL AND periode_debut >= ? ORDER BY periode_debut")
+    .bind(contratId, tenantId, effet)
+    .all<{ periode_debut: string; periode_fin: string; total_ht: number }>();
+  for (const b of results) {
+    await noterIncident(
+      db, tenantId, 'bon_preavis_annule',
+      `Bon du ${b.periode_debut} au ${b.periode_fin} (${eur(b.total_ht)} HT) annulé à l'enregistrement du préavis ; le préavis est annulé, mais ce bon ne se recrée pas : la période est à facturer à la main.`,
     );
   }
   return results.length;
@@ -443,12 +485,12 @@ export async function emettreBon(
  * Annule un bon. Un brouillon s'annule sans trace comptable (il n'a jamais eu de numéro). Un bon ÉMIS garde son numéro et reçoit un
  * AVOIR, de sa propre séquence AVOIR-AAAA-NNNN, du montant du bon : les deux écritures et l'événement partent ensemble.
  */
-export async function annulerBon(db: Base, tenantId: string, bonId: string, acteur: Acteur): Promise<ResultatBon> {
+export async function annulerBon(db: Base, tenantId: string, bonId: string, acteur: Acteur, motif?: 'preavis_resiliation'): Promise<ResultatBon> {
   if (acteur.role !== 'editeur') return { ok: false, code: 'interdit' };
   const avant = await bonDe(db, tenantId, bonId);
   if (!avant) return { ok: false, code: 'introuvable' };
   if (avant.statut === 'annulee') return { ok: false, code: 'deja_annule' };
-  const detail = { bon_id: bonId, periode_debut: avant.periode_debut, periode_fin: avant.periode_fin, total_ht: avant.total_ht, avoir: avant.statut === 'emise' };
+  const detail = { bon_id: bonId, periode_debut: avant.periode_debut, periode_fin: avant.periode_fin, total_ht: avant.total_ht, avoir: avant.statut === 'emise', ...(motif ? { motif } : {}) };
   const suivant = `(SELECT COALESCE(MAX(seq), 0) + 1 FROM avoir WHERE annee = ${ANNEE})`;
   const resultats = await db.batch([
     db

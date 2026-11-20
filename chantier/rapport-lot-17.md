@@ -33,8 +33,12 @@ l'associé, qui garde l'export ; la facturation ne pose plus de bon pour une pé
 - **Préavis admis sur `actif` et `suspendu`** ; refusé en brouillon/essai (l'essai non converti se clôt seul), sans date de début de service,
   si un préavis existe déjà (annuler d'abord), pour une réception future, et si la date d'effet calculée est déjà passée ou tombe
   aujourd'hui (presque toujours une faute de saisie, et la suite supprime des données).
-- **Bon déjà posé avant le préavis** : rien n'est annulé d'office (un bon annulé ne se rouvre pas, et le préavis s'annule). Une ligne dans
-  les incidents de la console (`bon_apres_resiliation`) demande de l'annuler, ou de faire un avoir s'il est émis.
+- **Bon déjà posé avant le préavis** (le bon est posé à J-30 de l'anniversaire, le préavis est recevable jusqu'à J-30 : même jour) :
+  un bon **brouillon** pour une période qui commence à la date d'effet ou après est annulé à l'enregistrement, avec son événement
+  `bon_annule` (motif `preavis_resiliation`) ; un bon **émis** n'est pas touché, un incident nomme la facture et rappelle l'avoir (un
+  numéro ne se libère jamais). **Conséquence à connaître :** un bon annulé garde sa période (clé unique, un bon ne se rouvre ni ne
+  s'efface) ; si le préavis est ensuite annulé, le traitement quotidien ne recrée pas ce bon. La console le signale par un incident
+  (`bon_preavis_annule`) : la période est alors à facturer à la main. Lever cela demanderait de reconstruire la table des bons.
 - La garde « un avis au moins une semaine avant la suppression » de l'essai vaut aussi ici (avis tardif, puis suppression 7 jours après).
 
 ## Vérification (une fois, en local)
@@ -44,3 +48,9 @@ Préavis à 40 jours → effet à l'anniversaire ; à 20 jours → reconduction,
 l'export (HTTP : page « contrat résilié », export 200, suivi 403, site public renvoyé à la connexion). J+30 : suppression réelle (base,
 R2), le voisin dont l'identifiant commence pareil (`cab-1` / `cab-10`) intact ; raison sociale, contrat, factures et journal conservés.
 Un seul courriel par jalon, une seule suppression. L'essai non converti se comporte comme avant.
+
+### Correction : bons déjà posés (vérifiée en local)
+
+Les deux ordres le même jour : traitement puis préavis, brouillon annulé et journalisé, période en cours intacte, rejeu sans effet ;
+préavis puis traitement, aucun bon posé. Bon émis : statut, numéro, séquence, date et montant inchangés, aucun avoir créé, un incident
+nommant la facture. Annulation du préavis : le bon annulé ne revient pas, incident dédié.
