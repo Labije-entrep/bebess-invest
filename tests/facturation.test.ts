@@ -216,16 +216,24 @@ test('remise : commerciale + parrainage plafonnées à 50 %, assiette = le récu
   assert.equal(db.un<{ remise_parrainage_taux: number }>('SELECT remise_parrainage_taux FROM contrat WHERE id = ?', marraine.contrat)?.remise_parrainage_taux, 5000, 'la fiche du contrat suit les parrainages validés');
 });
 
-// Écart relevé par ce banc, NON corrigé ici. tarif.ts dit que le bon périodique « n'en porte jamais » (les frais d'installation) et que la
-// facture d'installation est à part ; or genererBons passe le contrat entier (`...c`, frais compris) à calculerBon, qui les ajoute au total.
-// Chaque bon périodique d'un cabinet qui a des frais d'installation les porte donc de nouveau.
-test('frais d\'installation : le bon périodique ne les porte pas', { todo: 'écart : genererBons transmet frais_installation à calculerBon, chaque bon périodique les refacture' }, async () => {
+// Défaut relevé par ce banc puis corrigé (lot 18) : genererBons passait le contrat entier, frais d'installation compris, à calculerBon, qui
+// les ajoutait au total ; chaque bon périodique les refacturait. tarif.ts dit que le bon périodique « n'en porte jamais ».
+test('frais d\'installation : aucun bon périodique ne les porte, ni le premier, ni ceux des périodes suivantes, ni avec une remise', async () => {
   const db = baseNeuve();
   const env = environnement(db);
-  const c = cabinet(db, { frais_installation: 150000 });
+  const c = cabinet(db, { frais_installation: 150000, remise_commerciale_taux: 2500, remise_motif: 'Réseau' });
+  db.exec("UPDATE contrat SET remise_revue_le = '2027-06-01' WHERE id = ?", c.contrat);
   await passe(env, '2026-11-19');
-  const [b] = bons(db, c.id);
-  assert.equal(b.total_ht, 7900 * 12, 'récurrent seul : les 1 500 € d\'installation ne sont pas dans ce bon');
+  await passe(env, '2027-02-12'); // le bon de la période suivante, posé 30 jours avant l'anniversaire
+  const tous = bons(db, c.id);
+  assert.equal(tous.length, 2);
+  for (const b of tous) {
+    assert.equal(b.recurrent_ht, 7900 * 12);
+    assert.equal(b.remise_montant, 7900 * 3, '25 % du récurrent seul : les frais ne sont pas dans l\'assiette');
+    assert.equal(b.total_ht, 7900 * 9, `${b.periode_debut} : le total est le récurrent moins la remise, sans les 1 500 € d'installation`);
+  }
+  // Le contrat les garde : seule leur facturation périodique est en cause.
+  assert.equal(db.un<{ frais_installation: number }>('SELECT frais_installation FROM contrat WHERE id = ?', c.contrat)?.frais_installation, 150000);
 });
 
 test('remise : un parrainage ne se valide qu\'après six mois de service payant du filleul', async () => {

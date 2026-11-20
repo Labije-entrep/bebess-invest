@@ -29,15 +29,15 @@ Le code du dépôt, tel quel. Rien n'est réécrit pour être testable.
 
 Les trois tests purs d'origine (`src/lib/*.test.ts`) sont lancés avec les autres.
 
-## Écarts relevés, non corrigés (`todo`)
+## Écarts relevés
 
 Un test marqué `todo` décrit le comportement attendu et échoue aujourd'hui ; il ne fait pas échouer `npm test`. Quand l'écart est
 corrigé, le test passe et la mention `todo` se retire.
 
-- `cloisonnement.test.ts` : `/gestionnaire/notes/<id d'un autre cabinet>` répond une redirection (302) vers la liste, comme pour un
-  identifiant inconnu, au lieu d'un 404. Rien ne fuit et rien n'est modifié.
-- `facturation.test.ts` : `genererBons` transmet le contrat entier (frais d'installation compris) à `calculerBon`, qui les ajoute au
-  total : chaque bon périodique refacture les frais d'installation, alors que `tarif.ts` dit qu'il « n'en porte jamais ».
+- Ouvert — `cloisonnement.test.ts` : `/gestionnaire/notes/<id d'un autre cabinet>` répond une redirection (302) vers la liste, comme
+  pour un identifiant inconnu, au lieu d'un 404. Rien ne fuit et rien n'est modifié.
+- Corrigé (lot 18) — `facturation.test.ts` : `genererBons` transmettait les frais d'installation à `calculerBon` : chaque bon périodique
+  les refacturait. Le test est désormais un test ordinaire.
 
 ## Ce que le banc n'exécute pas
 
