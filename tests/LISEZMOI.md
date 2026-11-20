@@ -1,7 +1,9 @@
 # Tests de non-régression
 
 `npm test` lance tout : hors ligne, sur une base neuve en mémoire, sans configuration, sans réseau ni clé d'API, sans dépendance nouvelle.
-Node 22.18 ou plus récent est requis (`node:sqlite`, retrait des types) ; le dépôt est développé sous Node 24.
+Node 22.18 ou plus récent est requis (`node:sqlite`, retrait des types) : c'est le champ `engines` de `package.json` (npm n'en fait qu'un avertissement, sauf `engine-strict`).
+Le banc est éprouvé sous **Node 22.23.5 et Node 24.18** ; le dépôt est développé sous Node 24. Un test qui dépend d'un nombre de tours de boucle ou d'une durée plutôt que d'un signal
+est un test qui passe sur une version de Node et échoue sur l'autre : `support/dom.ts` attend le dessin du script, `dom.test.ts` le garantit.
 
 ## Ce que le banc fait tourner
 

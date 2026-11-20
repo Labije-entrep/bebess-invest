@@ -90,10 +90,11 @@ interface Vues {
 
 let instance = 0;
 
-/** Ouvre la page du suivi (le vrai script), la laisse charger, et relève tout ce que l'utilisateur peut voir. */
-async function ouvrir(): Promise<Vues> {
+/** Ouvre la page du suivi (le vrai script), la laisse charger, et relève tout ce que l'utilisateur peut voir. `retardMs` : un serveur lent. */
+async function ouvrir(retardMs = 0): Promise<Vues> {
   const page: Page = installerPage('liste');
   reseau.interne = async (url, init) => {
+    if (retardMs) await new Promise((r) => setTimeout(r, retardMs));
     const r = await envoyer(env, { url, hote: a.hote, cookie, methode: init?.method ?? 'GET' });
     return new Response(r.texte, { status: r.statut, headers: { 'content-type': 'application/json' } });
   };
@@ -272,4 +273,12 @@ test('la valeur terminale vient de la table, pas du nom : un statut marqué term
   assert.notEqual(apres.kpis[1], avant.kpis[1]);
   assert.match(apres.kpis[1], /^8 Sujets ouverts$/, 's2 est clos ; s4, s5 et s8 sont rouverts : 6 − 1 + 3 = 8');
   assert.notEqual(apres.kanban, avant.kanban);
+});
+
+test('un serveur lent ne change rien : la page est attendue sur le signal du dessin, pas sur un nombre de tours', async () => {
+  // Sous Node 22.23, le premier chargement (modules, chiffrement) dépassait les 200 tours de boucle qu'attendait l'ancien `pret()` : le test échouait
+  // « le script n'a rien dessiné », puis le script en retard dessinait dans la page du test suivant. Un serveur lent le reproduit à coup sûr.
+  const lent = await ouvrir(120);
+  assert.deepEqual(lent.kpis, (await ouvrir()).kpis);
+  assert.match(lent.kpis[2], /^2 En cours$/);
 });

@@ -50,10 +50,13 @@ export class Element extends Noeud {
     const avant = [...this.children];
     this.replaceChildren(...noeuds, ...(avant as Noeud[]));
   }
+  /** Appelé après chaque `replaceChildren` : c'est le signal « le script a dessiné » que `Page.pret` attend. */
+  surRemplacement: (() => void) | null = null;
   replaceChildren(...noeuds: (Noeud | string)[]): void {
     for (const c of this.children) c.parent = null;
     this.children = [];
     this.append(...noeuds);
+    this.surRemplacement?.();
   }
   retirer(n: Noeud): void {
     this.children = this.children.filter((c) => c !== n);
@@ -98,8 +101,14 @@ export function texte(n: Noeud): string {
 export interface Page {
   racine: Element;
   corps: Element;
-  /** Attend que le script ait fini de charger l'état et de dessiner. */
-  pret(): Promise<void>;
+  /**
+   * Attend que le script ait dessiné la page du suivi : le SIGNAL est le premier `replaceChildren` sur `#suivi-corps`, que le script appelle
+   * pour dessiner (rendreMaintenant) comme pour afficher son écran d'erreur (ecran). Aucune attente d'un nombre de tours : le chargement du
+   * premier module, les appels au chiffrement et le fil des chargeurs prennent un temps qui varie d'une version de Node et d'une machine à
+   * l'autre, et un script en retard continuerait de dessiner dans la page du test SUIVANT (les `document` et `window` sont des globales).
+   * `delaiMax` n'est qu'un garde-fou contre un script bloqué : il échoue bruyamment, il ne sert pas à attendre.
+   */
+  pret(delaiMax?: number): Promise<void>;
 }
 
 /** Installe `document` et `window` sur globalThis, avec la structure de la page du suivi, et renvoie la page. */
@@ -133,12 +142,25 @@ export function installerPage(vue: 'liste' | 'kanban' | 'parcours' = 'liste'): P
     addEventListener: () => {},
   };
   g.CSS = { escape: (s: string) => s };
+  let dessine!: () => void;
+  const signal = new Promise<void>((resolve) => (dessine = resolve));
+  corps.surRemplacement = () => dessine();
   return {
     racine,
     corps,
-    async pret() {
-      for (let i = 0; i < 200 && corps.children.length === 0; i++) await new Promise((r) => setImmediate(r));
-      if (corps.children.length === 0) throw new Error('le script de suivi n\'a rien dessiné');
+    async pret(delaiMax = 30_000) {
+      let minuteur: NodeJS.Timeout | undefined;
+      const bloque = new Promise<never>((_, rejeter) => {
+        minuteur = setTimeout(() => rejeter(new Error(`le script de suivi n'a rien dessiné en ${delaiMax} ms (bloqué : aucun appel à replaceChildren sur #suivi-corps)`)), delaiMax);
+      });
+      try {
+        await Promise.race([signal, bloque]);
+      } finally {
+        clearTimeout(minuteur);
+      }
+      // Le script dessine aussi son écran d'erreur (état introuvable, session perdue) : ce n'est pas « la page ». On le dit tout de suite,
+      // avec son texte, au lieu de laisser le test échouer plus loin sur un élément absent.
+      if (!corps.querySelector('.suivi-kpis')) throw new Error(`le script de suivi a affiché un écran d'erreur au lieu de la page : « ${texte(corps)} »`);
     },
   };
 }
