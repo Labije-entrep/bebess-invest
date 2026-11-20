@@ -218,8 +218,23 @@ export function liste(v: unknown): Contenu[] {
 export function chaines(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string' && s.trim() !== '') : [];
 }
+/**
+ * Un `<textarea>` envoie ses sauts de ligne en `\r\n` : sans ce retour à la ligne unique, « \r\n\r\n » n'est pas « \n\n » et un texte de trois
+ * paragraphes sort en un bloc. Les contenus sont normalisés À L'ENREGISTREMENT (enregistrerPage, lireFormulaire) : la base ne garde que `\n`.
+ */
+export const sansRetourChariot = (texte: string): string => texte.replace(/\r\n?/g, '\n');
+
+/** Même normalisation sur tout ce qu'un contenu porte : ses chaînes, ses listes, ses groupes. */
+function normaliserContenu<T>(v: T): T {
+  if (typeof v === 'string') return sansRetourChariot(v) as T;
+  if (Array.isArray(v)) return v.map(normaliserContenu) as T;
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, normaliserContenu(x)])) as T;
+  return v;
+}
+
+/** À l'affichage aussi : ce qui est déjà en base avec des `\r\n` (avant la normalisation à l'enregistrement) se découpe correctement. */
 export function paragraphes(texte: string): string[] {
-  return texte.split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
+  return sansRetourChariot(texte).split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
 }
 
 export interface PageLue {
@@ -258,7 +273,9 @@ export async function enregistrerPage(
   titre: string | null,
   contenu: Contenu,
 ): Promise<void> {
-  const json = JSON.stringify(contenu);
+  // Quel que soit l'appelant : la base ne reçoit jamais de `\r`.
+  const json = JSON.stringify(normaliserContenu(contenu));
+  titre = titre === null ? null : sansRetourChariot(titre);
   const maintenant = new Date().toISOString();
   const existante = await pageContenu(db, tenantId, cle);
   if (existante) {
@@ -326,7 +343,7 @@ export function aplatir(m: Modele, titre: string | null, c: Contenu): Rang[] {
 
 /** Reconstruit l'objet du modèle depuis le formulaire. Les lignes vides des listes libres sont écartées. */
 export function lireFormulaire(m: Modele, f: FormData): { titre: string | null; contenu: Contenu } {
-  const g = (nom: string) => String(f.get(nom) ?? '').trim();
+  const g = (nom: string) => sansRetourChariot(String(f.get(nom) ?? '')).trim();
   const contenu: Contenu = {};
   const description = g('meta_description');
   if (description) contenu.description = description;

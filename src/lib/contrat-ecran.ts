@@ -9,7 +9,7 @@
 import type { Base } from './db';
 import {
   annulerPreavis, CHAMPS_PRIX, contratEnCours, creerContrat, enregistrerPreavis, MESSAGES_CONTRAT, modifierFormule, modifierPrix, poserDpa, poserGelTarif,
-  poserMiseEnProduction, poserStatutFondateur, retirerStatutFondateur, basculerModule, saisirRemise, type CodeContrat, type Module, type Prix,
+  poserMiseEnProduction, poserStatutFondateur, retirerStatutFondateur, signerContrat, basculerModule, saisirRemise, type CodeContrat, type Module, type Prix,
 } from './contrat';
 import { apercuComplementaire, parrainagesValides, signalerBonsAnnulesParPreavis, traiterBonsApresEffet } from './facturation';
 import type { Acteur } from './journal';
@@ -18,7 +18,7 @@ import { REMISE_MAX, tauxParrainage } from './tarif';
 export type CodeSucces =
   | 'contrat_ouvert' | 'formule_enregistree' | 'prix_enregistres' | 'module_active' | 'module_desactive' | 'remise_enregistree' | 'remise_plafonnee'
   | 'gel_pose' | 'dpa_pose' | 'production_posee' | 'fondateur_pose' | 'fondateur_retire' | 'desactivation_programmee' | 'desactivation_annulee'
-  | 'preavis_enregistre' | 'preavis_reconduit' | 'preavis_annule';
+  | 'preavis_enregistre' | 'preavis_reconduit' | 'preavis_annule' | 'contrat_signe';
 
 export const MESSAGES_SUCCES: Record<CodeSucces, string> = {
   contrat_ouvert: 'Contrat ouvert, en brouillon. Les quatre prix sont recopiés sur le contrat : ils n’existent nulle part ailleurs.',
@@ -39,6 +39,7 @@ export const MESSAGES_SUCCES: Record<CodeSucces, string> = {
   preavis_enregistre: 'Préavis enregistré : il a été reçu au moins 30 jours avant la date anniversaire, la résiliation prend effet à cette date. Le contrat reste actif jusque-là ; elle s’annule d’ici là.',
   preavis_reconduit:
     'Préavis enregistré, mais reçu MOINS de 30 jours avant la date anniversaire : le contrat est reconduit pour douze mois, la résiliation ne prendra effet qu’à l’anniversaire suivant. Aucun remboursement au prorata. Elle s’annule d’ici là.',
+  contrat_signe: 'Contrat signé : il est actif, son début de service (la date anniversaire) est posé. Le traitement quotidien pose le bon de la période dans les 30 jours avant son début ; les drapeaux des modules reprennent la main.',
   preavis_annule: 'Résiliation annulée : le contrat se poursuit, sans préavis enregistré.',
 };
 
@@ -81,7 +82,7 @@ const entier = (texte: string): number | null => (/^\d{1,6}$/.test(texte) ? Numb
 // ---------------------------------------------------------------- appliquer
 
 /**
- * Applique l'écriture que le formulaire demande. `action` : formule, module, remise, gel, dpa, production, fondateur, fondateur_retirer, preavis, preavis_annuler.
+ * Applique l'écriture que le formulaire demande. `action` : formule, module, remise, gel, dpa, production, signature, fondateur, fondateur_retirer, preavis, preavis_annuler.
  * Une saisie illisible est refusée AVANT toute écriture : rien n'est enregistré à moitié.
  */
 export async function appliquerContrat(db: Base, tenantId: string, f: FormData, acteur: Acteur, jour = new Date().toISOString().slice(0, 10)): Promise<RetourContrat> {
@@ -155,6 +156,11 @@ export async function appliquerContrat(db: Base, tenantId: string, f: FormData, 
   if (action === 'production') {
     const r = await poserMiseEnProduction(db, tenantId, brut(f, 'date_mise_en_production'), acteur);
     return r.ok ? ok('production_posee') : ko(r.code);
+  }
+
+  if (action === 'signature') {
+    const r = await signerContrat(db, tenantId, brut(f, 'date_signature'), acteur, jour);
+    return r.ok ? ok('contrat_signe') : ko(r.code);
   }
 
   if (action === 'fondateur') {

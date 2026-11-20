@@ -38,8 +38,13 @@ export function envDe(locals: unknown): Env {
   return (locals as { runtime: { env: Env } }).runtime.env;
 }
 
-/** Hôtes de développement, sans le port. Hors d'eux, le pilote console refuse d'écrire. */
-const HOTES_LOCAUX = ['localhost', '127.0.0.1'];
+/**
+ * Un hôte de développement, sans le port : `localhost`, `127.0.0.1`, et tout nom qui se termine par `.localhost` (`cabinet3.localhost`).
+ * Les navigateurs résolvent ces noms sur la boucle locale par convention (RFC 6761) : un cabinet de recette peut avoir son propre nom
+ * sans toucher au fichier hosts. Rien ne s'ouvre en production : un domaine public ne se termine pas par `.localhost`, et le pilote
+ * console reste réservé à `MAIL_DRIVER=console`.
+ */
+export const estHoteLocal = (hote: string): boolean => /^(localhost|127\.0\.0\.1|([a-z0-9-]+\.)+localhost)$/.test(hote.trim().toLowerCase());
 
 function pilotConsole(hote: string): Mailer {
   return {
@@ -48,9 +53,9 @@ function pilotConsole(hote: string): Mailer {
       // exprès pour essayer un build en local. Hors localhost, il lève : une production mal
       // configurée n'envoie plus aucun courriel (panne visible) au lieu d'écrire dans les journaux
       // de Cloudflare des liens de connexion encore valables (fuite silencieuse).
-      if (!HOTES_LOCAUX.includes(hote.toLowerCase())) {
+      if (!estHoteLocal(hote)) {
         throw new Error(
-          `MAIL_DRIVER=console refusé sur l'hôte « ${hote} » : ce pilote ne sert qu'en local (localhost, 127.0.0.1). Aucun e-mail envoyé, rien écrit.`,
+          `MAIL_DRIVER=console refusé sur l'hôte « ${hote} » : ce pilote ne sert qu'en local (localhost, 127.0.0.1, *.localhost). Aucun e-mail envoyé, rien écrit.`,
         );
       }
       console.log(`\n[mail:console] À : ${destinataire}\n[mail:console] Sujet : ${sujet}\n${texte}\n`);

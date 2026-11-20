@@ -82,7 +82,7 @@ export async function sortieDuCabinet(db: Base, tenantId: string): Promise<Genre
 const dateFr = (iso: string): string =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' });
 
-const HOTE_LOCAL = /^(localhost|127\.0\.0\.1)(:\d+)?$/;
+const HOTE_LOCAL = /^(localhost|127\.0\.0\.1|([a-z0-9-]+\.)+localhost)(:\d+)?$/;
 
 /** L'export complet, sur l'hôte du cabinet : l'associé s'y connecte, puis le télécharge (la seule route que la sortie lui laisse). */
 export const lienExport = (domaine: string | null): string | null =>

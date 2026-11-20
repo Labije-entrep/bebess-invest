@@ -30,6 +30,7 @@ vérifié ». Ce que le banc n'exécute pas, et qu'aucun test vert ne couvre :
 | **Un navigateur réel** | `src/scripts/suivi.ts` tourne dans un navigateur de poche (`support/dom.ts`) : pas de mise en page, pas d'événement réel, pas de focus, pas de glisser, pas de `<dialog>`, pas de réseau instable, pas de Safari ni de mobile. |
 | **La concurrence réelle de deux transactions** | Les appels « simultanés » s'entrelacent entre leurs `await`, dans un seul processus ; un `batch` ne s'entrelace jamais. Deux Workers sur deux machines ne sont pas simulés : le « sans trou » repose sur l'instruction unique et l'index unique de la base, que le banc fait jouer mais ne met pas sous contention réelle. |
 | **L'horloge** | Les dates du traitement sont passées en paramètre, et l'horloge est figée par endroits (`mock.timers`). Mais SQLite lit lui-même `date('now')` et `strftime('now')` (année et instant du numéro de facture, gel du tarif) : ceux-là sont l'heure de la machine. Aucun test ne vérifie un changement d'année, de fuseau ou de changement d'heure en conditions réelles. |
+| **Les formulaires des pages `.astro`** | Le gabarit n'étant pas rendu, deux câblages de la fiche de contrat (le formulaire « Signer le contrat », les quatre prix préremplis de la grille standard) ne sont éprouvés que par **lecture du source** du gabarit (`signature.test.ts`) : on vérifie que le code y est, pas que le navigateur l'affiche. |
 | **Le chargeur `.astro`** | Il lit les en-têtes par expression régulière (imports retirés, `export` retiré, variables de premier niveau relevées). Un en-tête écrit autrement serait exécuté, mais ses variables n'apparaîtraient pas dans `rendu`. |
 
 Les migrations, elles, sont éprouvées : appliquées dans l'ordre sur une base neuve, et la dernière (reconstruction d'une table) sur une
@@ -44,6 +45,9 @@ base qui a déjà ses lignes (`migration.test.ts`). Mais sur SQLite en mémoire,
 | `facturation.test.ts` | 3. Accès facturables, lignes, mensuel arrondi par ligne (147 €), prorata (196 € et 49 €), remise à 50 %, numérotation concurrente. |
 | `essai.test.ts` | 4. J+38, J+45, J+68, J+75 ; rejeu sans doublon. |
 | `modules.test.ts` | 5. Table de vérité statut × drapeaux, et ce que les drapeaux ferment. |
+| `signature.test.ts` | Le passage de l'essai au contrat : « Signer le contrat » (règle, console, chaîne entière d'un cabinet créé, mis en production, signé, facturé). |
+| `site.test.ts` | Les paragraphes des contenus du site : `\r\n` normalisé à l'enregistrement et à l'affichage. |
+| `recette.test.ts` | L'environnement de recette : courriel sur `*.localhost`, seed (second cabinet complet, cours fictifs). |
 | `migration.test.ts` | La migration 0014 (reconstruction de `bon_a_facturer`) sur une base qui a déjà ses bons, ses numéros et un avoir. |
 | `performance.test.ts` | 6. Chaînage, consolidation décalée, versements vides. |
 | `marqueurs.test.ts` | 7. Renommage des clés des neuf listes : indicateurs, kanban, parcours identiques. |

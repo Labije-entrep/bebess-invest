@@ -29,6 +29,13 @@ export interface Prix {
 }
 export const CHAMPS_PRIX: (keyof Prix)[] = ['prix_socle', 'prix_pilotage', 'prix_site', 'prix_acces_sup'];
 
+/**
+ * La grille standard (79, 49, 39, 25 € par mois, au tarif annuel), en centimes. Ce N'EST PAS un tarif : aucun prix ne se lit ici, ils
+ * se lisent tous sur le contrat (`prixDuContrat`). C'est la valeur que le formulaire d'ouverture d'un contrat PROPOSE, que l'éditeur
+ * garde ou change : le contrat recopie ensuite les quatre prix.
+ */
+export const GRILLE_STANDARD: Prix = { prix_socle: 7900, prix_pilotage: 4900, prix_site: 3900, prix_acces_sup: 2500 };
+
 export const STATUTS_CONTRAT = ['brouillon', 'essai', 'actif', 'suspendu', 'resilie', 'essai_non_converti'] as const;
 export type StatutContrat = (typeof STATUTS_CONTRAT)[number];
 /** Ceux d'un contrat « en cours » : le locataire n'en a qu'un. */
@@ -87,6 +94,7 @@ const COLONNES =
 export type CodeContrat =
   | 'aucun_contrat' | 'deja_un_contrat' | 'tarif_gele' | 'gel_raccourci' | 'gel_efface' | 'deja_en_production' | 'dpa_manquant' | 'date_invalide' | 'montant_invalide' | 'taux_invalide'
   | 'motif_requis' | 'revue_requise' | 'periodicite' | 'inchange' | 'signature_manquante' | 'pas_fondateur' | 'effet_atteint'
+  | 'pas_en_essai' | 'signature_future' | 'signature_anterieure' | 'signature_differente'
   | 'preavis_hors_service' | 'debut_manquant' | 'preavis_existant' | 'preavis_futur' | 'effet_passe' | 'aucun_preavis' | 'preavis_effet_atteint';
 /**
  * `effet` : pour un module, ce que l'écriture a fait (immédiat, désactivation programmée, programmation annulée).
@@ -101,7 +109,7 @@ export const MESSAGES_CONTRAT: Record<CodeContrat, string> = {
   gel_raccourci: 'Le gel du tarif ne se raccourcit pas : une date de gel se prolonge seulement.',
   gel_efface: 'Le gel du tarif ne s’efface pas : une date de gel se prolonge seulement.',
   deja_en_production: 'Ce contrat est déjà au-delà de l’essai : la date de mise en production ne se change plus.',
-  dpa_manquant: 'La mise en production exige un DPA signé : renseignez sa date d’abord.',
+  dpa_manquant: 'La mise en production et la signature du contrat exigent un DPA signé : renseignez sa date d’abord.',
   date_invalide: 'Date invalide : AAAA-MM-JJ.',
   montant_invalide: 'Montant invalide : des centimes entiers, positifs ou nuls.',
   taux_invalide: 'Taux invalide : entre 0 et 10 000 centièmes de point.',
@@ -109,7 +117,11 @@ export const MESSAGES_CONTRAT: Record<CodeContrat, string> = {
   revue_requise: 'Une remise commerciale exige une date de revue.',
   periodicite: 'Périodicité inconnue : mensuelle ou annuelle.',
   inchange: 'Rien à modifier.',
-  signature_manquante: 'Le statut fondateur exige la date de signature du contrat : le gel du tarif se calcule dessus (signature + 24 mois). Renseignez-la.',
+  signature_manquante: 'La date de signature du contrat est requise (le gel d’un fondateur se calcule dessus : signature + 24 mois). Renseignez-la.',
+  pas_en_essai: 'Seul un contrat en essai se signe : un brouillon n’est pas en production, un contrat actif est déjà signé, un essai non converti est clos.',
+  signature_future: 'La date de signature ne peut pas être dans le futur.',
+  signature_anterieure: 'La date de signature ne peut pas précéder la mise en production.',
+  signature_differente: 'Ce contrat porte déjà une date de signature (posée avec le statut fondateur, dont le gel se calcule dessus) : la signature la reprend, ne la changez pas ici.',
   pas_fondateur: 'Ce cabinet ne porte pas le statut fondateur.',
   effet_atteint: 'La date d’effet est atteinte : la désactivation n’est plus annulable. Le traitement quotidien bascule le module.',
   preavis_hors_service: 'Un préavis ne vaut que pour un contrat actif ou suspendu. Un essai non converti se clôt de lui-même au 45e jour.',
@@ -307,6 +319,52 @@ export async function poserMiseEnProduction(db: Base, tenantId: string, date: st
   } catch {
     return refus('dpa_manquant');
   }
+  return relire(db, tenantId);
+}
+
+/**
+ * LA SIGNATURE : l'essai devient contrat. Elle pose `date_signature`, `debut_le` et `statut = 'actif'` en UNE écriture, avec son événement.
+ * `debut_le` est le début du SERVICE, donc la date anniversaire : tous les bons en partent (periodesDebutant), et le contrat devient
+ * visible du traitement quotidien (contratsActifs), du calendrier de bons, de la validation des parrainages.
+ *
+ * Refusée sans DPA signé (comme la mise en production), refusée hors du statut `essai`. La date de signature ne peut ni précéder la
+ * mise en production ni être dans le futur ; elle reprend celle que le contrat porte déjà (statut fondateur) et ne la change pas.
+ *
+ * LE DÉBUT DU SERVICE (choix à relire, voir le rapport du lot 20) : la spécification dit « Signature : la facture annuelle est émise,
+ * date_anniversaire = le 45e jour ». On retient donc la FIN D'ESSAI (`date_fin_essai`, +45 jours) — jamais la date de signature quand
+ * elle est antérieure : l'essai est gratuit et entier jusqu'au 45e jour, signer le 10e jour ne l'abrège pas. Si la signature tombe APRÈS la
+ * fin d'essai (le jour même, avant le passage du traitement), le service commence à la signature : on ne facture pas une période
+ * écoulée avant que le contrat existe.
+ */
+export async function signerContrat(db: Base, tenantId: string, signeLe: string | null, acteur: Acteur | null, jour = aujourdhui()): Promise<ResultatContrat> {
+  const c = await contratEnCours(db, tenantId);
+  if (!c) return refus('aucun_contrat');
+  // Le DPA d'abord : c'est ce que l'éditeur doit régler en premier, quel que soit le statut (un brouillon sans DPA n'est pas « hors essai », il
+  // attend son DPA). La base garantit déjà qu'un contrat en essai en a un (contrôle de la table) : la règle est tenue deux fois.
+  if (!c.dpa_signe_le || c.dpa_signe_le.trim() === '') return refus('dpa_manquant');
+  if (c.statut !== 'essai') return refus('pas_en_essai');
+  const saisie = signeLe && signeLe.trim() !== '' ? signeLe.trim() : null;
+  const signature = saisie ?? c.date_signature;
+  if (!signature) return refus('signature_manquante');
+  if (!dateIso(signature)) return refus('date_invalide');
+  if (c.date_signature && saisie && saisie !== c.date_signature) return refus('signature_differente');
+  if (signature > jour) return refus('signature_future');
+  if (!c.date_mise_en_production || signature < c.date_mise_en_production) return refus('signature_anterieure');
+  const finEssai = c.date_fin_essai ?? plusJours(c.date_mise_en_production, JOURS_ESSAI);
+  const debut = signature > finEssai ? signature : finEssai;
+  await db.batch([
+    db
+      .prepare("UPDATE contrat SET statut = 'actif', date_signature = ?, debut_le = ?, maj_le = ? WHERE id = ? AND tenant_id = ? AND statut = 'essai'")
+      .bind(signature, debut, maintenant(), c.id, tenantId),
+    requeteEvenement(
+      db,
+      {
+        tenantId, type: EVENEMENT.CONTRAT_SIGNE, acteur, cible: { type: 'contrat', id: c.id },
+        detail: { signe_le: signature, debut_le: debut, date_fin_essai: finEssai, statut_avant: 'essai', statut_apres: 'actif', avant: { date_signature: c.date_signature, debut_le: c.debut_le } },
+      },
+      true,
+    ),
+  ]);
   return relire(db, tenantId);
 }
 

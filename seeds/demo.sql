@@ -225,17 +225,65 @@ INSERT INTO utilisateur (id, tenant_id, email, nom, role, actif, cree_le) VALUES
   ('usr_autre_viewer',  'tnt_autre', 'viewer@delmas.local',       'Irène Fabre',     'viewer',          1, '2025-01-10T09:00:00Z');
 UPDATE utilisateur SET statut = 'publie', publie_le = cree_le WHERE id = 'usr_autre_viewer';
 
+-- Listes de référence COMPLÈTES, les neuf, avec valeurs terminales et marqueurs : les mêmes que celles du premier cabinet. Un cabinet qui n'en a
+-- que quelques-unes ne permet pas d'éprouver le suivi (kanban, parcours, indicateurs) ni la création d'un viewer.
 INSERT INTO liste_valeur (tenant_id, liste, cle, libelle, ordre, actif) VALUES
   ('tnt_autre', 'classe_actif', 'actions', 'Actions', 1, 1),
   ('tnt_autre', 'classe_actif', 'obligations', 'Obligations', 2, 1),
-  ('tnt_autre', 'classe_actif', 'liquidites', 'Liquidités', 3, 1),
+  ('tnt_autre', 'classe_actif', 'immobilier', 'Immobilier', 3, 1),
+  ('tnt_autre', 'classe_actif', 'private_equity', 'Private equity', 4, 1),
+  ('tnt_autre', 'classe_actif', 'liquidites', 'Liquidités', 5, 1),
   ('tnt_autre', 'statut_mouvement', 'en_preparation', 'En préparation', 1, 1),
-  ('tnt_autre', 'statut_mouvement', 'execute', 'Exécuté', 2, 1),
+  ('tnt_autre', 'statut_mouvement', 'transmis', 'Transmis', 2, 1),
+  ('tnt_autre', 'statut_mouvement', 'chez_etablissement', 'Chez l''établissement', 3, 1),
+  ('tnt_autre', 'statut_mouvement', 'execute', 'Exécuté', 4, 1),
+  ('tnt_autre', 'statut_mouvement', 'archive', 'Archivé', 5, 1),
+  ('tnt_autre', 'type_contact', 'client', 'Client', 1, 1),
+  ('tnt_autre', 'type_contact', 'prospect', 'Prospect', 2, 1),
+  ('tnt_autre', 'type_contact', 'prescripteur', 'Prescripteur', 3, 1),
+  ('tnt_autre', 'type_contact', 'partenaire', 'Partenaire', 4, 1),
+  ('tnt_autre', 'type_contact', 'interne', 'Interne', 5, 1),
+  ('tnt_autre', 'statut_sujet', 'afaire', 'À faire', 1, 1),
+  ('tnt_autre', 'statut_sujet', 'encours', 'En cours', 2, 1),
+  ('tnt_autre', 'statut_sujet', 'attente', 'En attente', 3, 1),
+  ('tnt_autre', 'statut_sujet', 'fait', 'Fait', 4, 1),
+  ('tnt_autre', 'etape', 'contact', 'Premier contact', 1, 1),
+  ('tnt_autre', 'etape', 'rdv', 'RDV', 2, 1),
+  ('tnt_autre', 'etape', 'proposition', 'Proposition', 3, 1),
+  ('tnt_autre', 'etape', 'signe', 'Signé', 4, 1),
+  ('tnt_autre', 'etape', 'perdu', 'Perdu', 5, 1),
+  ('tnt_autre', 'type_echange', 'rdv', 'RDV', 1, 1),
+  ('tnt_autre', 'type_echange', 'tel', 'Appel', 2, 1),
+  ('tnt_autre', 'type_echange', 'visio', 'Visio', 3, 1),
+  ('tnt_autre', 'type_echange', 'mail', 'E-mail', 4, 1),
+  ('tnt_autre', 'metier', 'notaire', 'Notaire', 1, 1),
+  ('tnt_autre', 'metier', 'avocat', 'Avocat', 2, 1),
+  ('tnt_autre', 'metier', 'expert_comptable', 'Expert-comptable', 3, 1),
+  ('tnt_autre', 'metier', 'banquier', 'Banquier', 4, 1),
+  ('tnt_autre', 'metier', 'assureur', 'Assureur', 5, 1),
+  ('tnt_autre', 'metier', 'agent_immobilier', 'Agent immobilier', 6, 1),
+  ('tnt_autre', 'metier', 'cgp', 'Conseiller en gestion de patrimoine', 7, 1),
+  ('tnt_autre', 'metier', 'commissaire_comptes', 'Commissaire aux comptes', 8, 1),
+  ('tnt_autre', 'metier', 'autre', 'Autre', 9, 1),
+  ('tnt_autre', 'categorie_doc', 'reglementaire', 'Réglementaire', 1, 1),
+  ('tnt_autre', 'categorie_doc', 'modeles', 'Modèles et contrats', 2, 1),
+  ('tnt_autre', 'categorie_doc', 'juridique', 'Juridique', 3, 1),
+  ('tnt_autre', 'categorie_doc', 'fiscal', 'Fiscal', 4, 1),
+  ('tnt_autre', 'categorie_doc', 'autre', 'Autre', 5, 1),
   ('tnt_autre', 'type_portefeuille', 'personne', 'Personne physique', 1, 1),
-  ('tnt_autre', 'type_portefeuille', 'holding', 'Holding', 2, 1);
+  ('tnt_autre', 'type_portefeuille', 'holding', 'Holding', 2, 1),
+  ('tnt_autre', 'type_portefeuille', 'sci', 'SCI', 3, 1),
+  ('tnt_autre', 'type_portefeuille', 'assurance_vie', 'Assurance-vie', 4, 1),
+  ('tnt_autre', 'type_portefeuille', 'autre', 'Autre', 5, 1);
 
-UPDATE liste_valeur SET marqueur = 'clos'   WHERE tenant_id = 'tnt_autre' AND liste = 'statut_mouvement'  AND cle = 'execute';
-UPDATE liste_valeur SET marqueur = 'defaut' WHERE tenant_id = 'tnt_autre' AND liste = 'type_portefeuille' AND cle = 'personne';
+UPDATE liste_valeur SET terminal = 1
+ WHERE tenant_id = 'tnt_autre' AND ((liste = 'statut_sujet' AND cle = 'fait') OR (liste = 'etape' AND cle = 'perdu'));
+UPDATE liste_valeur SET marqueur = 'parcours'   WHERE tenant_id = 'tnt_autre' AND liste = 'type_contact'      AND cle = 'prospect';
+UPDATE liste_valeur SET marqueur = 'client'     WHERE tenant_id = 'tnt_autre' AND liste = 'type_contact'      AND cle = 'client';
+UPDATE liste_valeur SET marqueur = 'en_cours'   WHERE tenant_id = 'tnt_autre' AND liste = 'statut_sujet'      AND cle = 'encours';
+UPDATE liste_valeur SET marqueur = 'en_attente' WHERE tenant_id = 'tnt_autre' AND liste = 'statut_sujet'      AND cle = 'attente';
+UPDATE liste_valeur SET marqueur = 'clos'       WHERE tenant_id = 'tnt_autre' AND liste = 'statut_mouvement'  AND cle IN ('execute', 'archive');
+UPDATE liste_valeur SET marqueur = 'defaut'     WHERE tenant_id = 'tnt_autre' AND liste = 'type_portefeuille' AND cle = 'personne';
 
 INSERT INTO portefeuille (id, tenant_id, viewer_id, libelle, type, ordre, cree_le) VALUES
   ('pf_autre', 'tnt_autre', 'usr_autre_viewer', 'Patrimoine', 'personne', 0, '2025-01-10T09:00:00Z');
@@ -257,3 +305,55 @@ INSERT INTO document (id, viewer_id, titre, categorie, date, cle_fichier, envoye
 INSERT INTO page_contenu (id, tenant_id, cle, langue, titre, contenu_json, maj_le) VALUES
   ('pc_autre_accueil', 'tnt_autre', 'accueil', 'fr', 'Cabinet Delmas',
    '{"accroche":"Un cabinet indépendant.","texte":"Page d''accueil du second cabinet."}', '2026-11-01');
+
+-- Le suivi du second cabinet : un membre, un contact (prospect, à l'étape RDV), un sujet et un échange, pour que le cloisonnement du
+-- module de suivi du second cabinet soit jouable (listes, contact, sujet, échange) ; ses données n'existent pas dans le premier cabinet.
+INSERT INTO membre (id, tenant_id, nom, initiale, couleur, actif, cree_le) VALUES
+  ('mbr_autre', 'tnt_autre', 'Paul Delmas', 'P', 'serie-3', 1, '2025-01-10T09:00:00Z');
+
+INSERT INTO contact (id, tenant_id, nom, prenom, email, metier, structure, responsable_id, etape, relance, dernier_echange, type_echange, notes, cree_le, maj_le) VALUES
+  ('ctc_autre_1', 'tnt_autre', 'Lefèvre', 'Marc', 'marc.lefevre@etude-lefevre.local', 'notaire', 'Étude Lefèvre', 'mbr_autre', 'rdv',
+   '2026-12-01', '2026-11-10', 'rdv', 'Contact du cabinet Delmas : n''existe pas dans le premier cabinet.', '2026-09-01T09:00:00Z', '2026-11-10T09:00:00Z');
+INSERT INTO contact_type (tenant_id, contact_id, type) VALUES ('tnt_autre', 'ctc_autre_1', 'prospect');
+
+INSERT INTO sujet (id, tenant_id, contact_id, texte, statut, echeance, origine, cree_le) VALUES
+  ('suj_autre_1', 'tnt_autre', 'ctc_autre_1', 'Préparer la proposition pour l''étude Lefèvre', 'encours', '2026-11-30', NULL, '2026-11-10T09:30:00Z');
+
+INSERT INTO echange (id, tenant_id, contact_id, date, type, note, cree_le) VALUES
+  ('ech_autre_1', 'tnt_autre', 'ctc_autre_1', '2026-11-10', 'rdv', 'Premier rendez-vous : besoin de transmission.', '2026-11-10T11:00:00Z');
+
+INSERT INTO version_locataire (tenant_id, version) VALUES ('tnt_autre', 1);
+
+-- Un second rapport pour le client du second cabinet, dans une catégorie de SA liste et sous une clé R2 qui commence par l'identifiant du
+-- cabinet (la règle de src/lib/fichiers.ts : `servir` refuse toute autre clé). Le fichier lui-même n'est pas dans R2 : le téléchargement répond 404.
+INSERT INTO document (id, viewer_id, titre, categorie, date, cle_fichier, envoye_le) VALUES
+  ('doc_autre_2', 'usr_autre_viewer', 'Lettre de mission Delmas', 'reglementaire', '2025-01-10', 'tnt_autre/documents/lettre-de-mission.pdf', '2025-01-10T09:30:00Z');
+
+-- ---------------------------------------------------------------------------
+-- Cours fictifs (lot 20) : le bloc Chiffres d'une fiche d'actu se lit dans `cours`, que le produit remplit avec une clé d'API. Sans clé, ces
+-- lignes le rendent jouable : les cinq symboles par défaut (src/lib/cours.ts, SYMBOLES_DEFAUT), quatre séances. Une fiche d'actu datée du
+-- jour J affiche, pour chaque symbole, la dernière séance du jour J ou avant. Valeurs inventées, au format du fournisseur (nombre à point).
+-- `recupere_le` est ancien : le produit tentera de récupérer les cours du jour, échouera faute de clé (incident `cours_cle`, que l'écran
+-- masque), et gardera ceux-ci. `variation_bp` : centièmes de point, par rapport à la séance précédente.
+-- ---------------------------------------------------------------------------
+INSERT INTO cours (symbole, date, valeur, variation_bp, sens, recupere_le) VALUES
+  ('cac40',     '2026-10-30', '78.4000',  NULL, NULL,      '2026-10-30T20:00:00Z'),
+  ('cac40',     '2026-11-06', '79.1500',   96, 'hausse',   '2026-11-06T20:00:00Z'),
+  ('cac40',     '2026-11-13', '78.7200',  -54, 'baisse',   '2026-11-13T20:00:00Z'),
+  ('cac40',     '2026-11-19', '79.9800',  160, 'hausse',   '2026-11-19T20:00:00Z'),
+  ('sp500',     '2026-10-30', '612.3000', NULL, NULL,      '2026-10-30T20:00:00Z'),
+  ('sp500',     '2026-11-06', '618.9000', 108, 'hausse',   '2026-11-06T20:00:00Z'),
+  ('sp500',     '2026-11-13', '621.4500',  41, 'hausse',   '2026-11-13T20:00:00Z'),
+  ('sp500',     '2026-11-19', '617.2000', -68, 'baisse',   '2026-11-19T20:00:00Z'),
+  ('nasdaq100', '2026-10-30', '541.1000', NULL, NULL,      '2026-10-30T20:00:00Z'),
+  ('nasdaq100', '2026-11-06', '548.7500', 141, 'hausse',   '2026-11-06T20:00:00Z'),
+  ('nasdaq100', '2026-11-13', '546.3000', -45, 'baisse',   '2026-11-13T20:00:00Z'),
+  ('nasdaq100', '2026-11-19', '551.0500',  87, 'hausse',   '2026-11-19T20:00:00Z'),
+  ('eurusd',    '2026-10-30', '1.0850',   NULL, NULL,      '2026-10-30T20:00:00Z'),
+  ('eurusd',    '2026-11-06', '1.0912',    57, 'hausse',   '2026-11-06T20:00:00Z'),
+  ('eurusd',    '2026-11-13', '1.0912',     0, 'stable',   '2026-11-13T20:00:00Z'),
+  ('eurusd',    '2026-11-19', '1.0874',   -35, 'baisse',   '2026-11-19T20:00:00Z'),
+  ('brent',     '2026-10-30', '71.2000',  NULL, NULL,      '2026-10-30T20:00:00Z'),
+  ('brent',     '2026-11-06', '69.8500', -190, 'baisse',   '2026-11-06T20:00:00Z'),
+  ('brent',     '2026-11-13', '70.4000',   79, 'hausse',   '2026-11-13T20:00:00Z'),
+  ('brent',     '2026-11-19', '72.1000',  241, 'hausse',   '2026-11-19T20:00:00Z');

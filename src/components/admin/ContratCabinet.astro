@@ -2,7 +2,7 @@
 // La fiche contrat d'un cabinet, dans la console de l'éditeur (lot 14). Six rubriques, un formulaire chacune, tous vers `${base}/contrat`.
 // Aucune règle n'est tenue ici : les formulaires ne masquent rien, la route refuse et dit pourquoi (contrat.ts porte les garde-fous).
 import { dateCourte, eurosPrecis } from '../../lib/format';
-import { MOIS_GEL_FONDATEUR, MOTIF_FONDATEUR, STATUTS_EN_SERVICE, estFondateur, plusJours, tarifGele, type Contrat } from '../../lib/contrat';
+import { GRILLE_STANDARD, MOIS_GEL_FONDATEUR, MOTIF_FONDATEUR, STATUTS_EN_SERVICE, estFondateur, plusJours, tarifGele, type Contrat } from '../../lib/contrat';
 import { JOURS_PREAVIS_RESILIATION, MOIS_ENGAGEMENT, REMISE_MAX, dateEffetPreavis, prochainAnniversaire, tauxEnTexte, tauxRemise, tauxParrainage } from '../../lib/tarif';
 import { JOURS_AVIS_APRES_FIN, JOURS_SUPPRESSION_APRES_FIN } from '../../lib/essai';
 
@@ -83,7 +83,7 @@ const MODULES: { code: 'pilotage' | 'site'; nom: string; actif: boolean; fin: st
   {PRIX.map(([cle, nom]) => (
     <div class="groupe">
       <label class="etiquette" for={cle}>Prix — {nom} (€ HT)</label>
-      <input class="champ" id={cle} name={cle} inputmode="decimal" required maxlength="12" value={saisieEuros(c ? (c[cle] as number) : undefined)} />
+      <input class="champ" id={cle} name={cle} inputmode="decimal" required maxlength="12" value={saisieEuros(c ? (c[cle] as number) : GRILLE_STANDARD[cle as keyof typeof GRILLE_STANDARD])} />
     </div>
   ))}
   <div class="groupe">
@@ -203,6 +203,23 @@ const MODULES: { code: 'pilotage' | 'site'; nom: string; actif: boolean; fin: st
       <input class="champ" id="date_mise_en_production" name="date_mise_en_production" type="date" value={c.date_mise_en_production ?? ''} style="max-width: 14rem" />
       <button class="btn" type="submit">Poser la mise en production</button>
     </form>
+    {c.statut === 'essai' ? (
+      <>
+        <p class="aide">
+          <strong>Signer le contrat</strong> fait passer l’essai en contrat <em>actif</em> et pose le début du service, c’est-à-dire la date anniversaire d’où partent tous les bons.
+          Le service commence à la <strong>fin d’essai ({c.date_fin_essai ? dateCourte(c.date_fin_essai) : '45e jour'})</strong>, même si la signature est antérieure : l’essai est gratuit et entier jusque-là. La signature exige le DPA signé.
+          Attention : un contrat actif ne bénéficie plus de l’ouverture de l’essai, les modules non pris se ferment dès la signature.
+        </p>
+        <form method="post" action={`${base}/contrat`} class="actions">
+          <input type="hidden" name="action" value="signature" />
+          <label class="etiquette" for="date_signature">Contrat signé le</label>
+          <input class="champ" id="date_signature" name="date_signature" type="date" value={c.date_signature ?? jour} max={jour} style="max-width: 14rem" />
+          <button class="btn" type="submit">Signer le contrat</button>
+        </form>
+      </>
+    ) : (
+      <p class="aide">Signer le contrat : possible seulement pendant l’essai (statut « Essai »).</p>
+    )}
     <p class="aide">
       DPA : {c.dpa_signe_le ? `signé le ${dateCourte(c.dpa_signe_le)}` : 'non signé'}. Contrat : {c.date_signature ? `signé le ${dateCourte(c.date_signature)}` : 'date de signature non renseignée (elle se pose avec le statut fondateur)'}. Mise en production : {c.date_mise_en_production ? `le ${dateCourte(c.date_mise_en_production)}, fin d’essai le ${dateCourte(c.date_fin_essai ?? c.date_mise_en_production)}` : 'pas encore posée'}.
     </p>
