@@ -43,6 +43,8 @@ interface ValeurListe { cle: string; libelle: string; ordre: number }
 interface Seuils { sans_echange: number; relance: number; arrete: number }
 interface Etat {
   version: number;
+  /** Faux pour le rôle `lecture` : aucun déplacement n'est proposé (glisser-déposer, boutons, liste). */
+  peut_ecrire?: boolean;
   seuils: Seuils;
   /** Clés terminales par liste (colonne `terminal` de liste_valeur), actives ou non. */
   terminaux: Record<string, string[]>;
@@ -333,7 +335,8 @@ function rendreMaintenant(): void {
   const racine = corps();
   if (!serveur) return;
   const actif = document.activeElement as HTMLElement | null;
-  const cible = actif?.dataset?.f ?? null;
+  const cible = focusDemande ?? actif?.dataset?.f ?? null;
+  focusDemande = null;
   const c = calculer();
   const champRecherche = racine.querySelector<HTMLInputElement>('#suivi-q');
   const garde = champRecherche ? { debut: champRecherche.selectionStart, fin: champRecherche.selectionEnd } : null;
@@ -543,11 +546,113 @@ function lienContact(x: Contact): HTMLElement {
     : h('a', { class: 'suivi-nom', href: `/gestionnaire/suivi/${encodeURIComponent(x.id)}` }, nomComplet(x));
 }
 
-function colonneDe(classe: string, id: string, titre: string, entete: Enfant[], cartes: HTMLElement[], vide: string, pied?: string): HTMLElement {
-  return h('section', { class: `suivi-colonne ${classe}`.trim(), 'aria-labelledby': id },
+/** Cible de dépôt d'une colonne : ce qu'elle accepte (sujets ou contacts) et ce qui se passe à l'arrivée d'une carte. */
+interface Depot { type: 'sujet' | 'contact'; cle: string; deposer: (id: string, cle: string) => void }
+
+function colonneDe(classe: string, id: string, titre: string, entete: Enfant[], cartes: HTMLElement[], vide: string, pied?: string, depot?: Depot): HTMLElement {
+  const colonne = h('section', { class: `suivi-colonne ${classe}`.trim(), 'aria-labelledby': id },
     h('header', {}, h('h2', { id }, titre), ...entete),
     cartes.length ? h('ul', { class: 'suivi-cartes' }, ...cartes) : h('p', { class: 'suivi-colonne-vide' }, vide),
     pied && h('p', { class: 'suivi-colonne-pied' }, pied));
+  if (depot && peutEcrire()) brancherDepot(colonne, depot);
+  return colonne;
+}
+
+// ---------------------------------------------------------------- glisser-déposer
+// L'API HTML5 native, sans bibliothèque. Le glisser-déposer s'ajoute aux boutons et à la liste « Déplacer vers… »
+// de chaque carte, il ne les remplace pas : au clavier et au toucher, ce sont eux qui font le déplacement.
+// Un dépôt appelle le même code que ces boutons (deplacerSujet, deplacerContact) : même file d'écritures, mêmes règles.
+
+/** Ce qui est en train d'être glissé. Les dépôts d'une carte d'une autre nature (sujet sur le parcours) sont ignorés. */
+let glisse: { type: 'sujet' | 'contact'; id: string } | null = null;
+let renduDiffere = false;
+/** Le `data-f` à refocaliser au prochain rendu : la carte déplacée, que le rendu reconstruit dans sa nouvelle colonne. */
+let focusDemande: string | null = null;
+
+const peutEcrire = (): boolean => serveur?.peut_ecrire !== false;
+
+function classe(el: HTMLElement, nom: string, actif: boolean): void {
+  const autres = el.className.split(/\s+/).filter((c) => c && c !== nom);
+  el.className = (actif ? [...autres, nom] : autres).join(' ');
+}
+
+function finGlisse(): void {
+  glisse = null;
+  for (const e of corps().querySelectorAll<HTMLElement>('.glisse')) classe(e, 'glisse', false);
+  for (const e of corps().querySelectorAll<HTMLElement>('.cible')) classe(e, 'cible', false);
+  if (renduDiffere) {
+    renduDiffere = false;
+    rendre();
+  }
+}
+
+/** Rend une carte glissable : elle porte son identifiant et sa nature. */
+function brancherCarte(carte: HTMLElement, type: 'sujet' | 'contact', id: string): void {
+  if (!peutEcrire() || id.startsWith('tmp-')) return; // un contact pas encore créé n'a pas d'identifiant définitif
+  carte.setAttribute('draggable', 'true');
+  carte.addEventListener('dragstart', (e) => {
+    const ev = e as DragEvent;
+    glisse = { type, id };
+    ev.dataTransfer?.setData('text/plain', id);
+    if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
+    classe(carte, 'glisse', true);
+  });
+  carte.addEventListener('dragend', finGlisse);
+}
+
+function brancherDepot(colonne: HTMLElement, depot: Depot): void {
+  const accepte = (): boolean => glisse !== null && glisse.type === depot.type;
+  const survol = (e: Event): void => {
+    if (!accepte()) return;
+    e.preventDefault(); // sans cela le navigateur refuse le dépôt
+    const ev = e as DragEvent;
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+    classe(colonne, 'cible', true);
+  };
+  colonne.addEventListener('dragenter', survol);
+  colonne.addEventListener('dragover', survol);
+  colonne.addEventListener('dragleave', (e) => {
+    const vers = (e as DragEvent).relatedTarget as Node | null;
+    if (!vers || !colonne.contains?.(vers)) classe(colonne, 'cible', false);
+  });
+  colonne.addEventListener('drop', (e) => {
+    if (!accepte()) return;
+    e.preventDefault();
+    classe(colonne, 'cible', false);
+    const { id } = glisse!;
+    depot.deposer(id, depot.cle);
+  });
+}
+
+/**
+ * Les gestes de déplacement d'une carte, communs au kanban et au parcours : reculer, avancer d'un cran (boutons), et
+ * « Déplacer vers… » qui saute n'importe où (liste déroulante, au clavier comme au toucher). Rien pour le rôle `lecture`.
+ */
+function gestesDeplacement(
+  data: string, intitule: string, courante: string | null, cibles: ValeurListe[], precedent: ValeurListe | null, suivant: ValeurListe | null,
+  deplacer: (cle: string) => void,
+): Enfant[] {
+  if (!peutEcrire()) return [];
+  const autres = cibles.filter((v) => v.cle !== courante);
+  return [
+    precedent && h('button', {
+      type: 'button', class: 'suivi-avancer suivi-reculer', 'data-f': `reculer:${data}`,
+      'aria-label': `Ramener ${intitule} à « ${precedent.libelle} »`,
+      onclick: () => deplacer(precedent.cle),
+    }, `← ${precedent.libelle}`),
+    suivant && h('button', {
+      type: 'button', class: 'suivi-avancer', 'data-f': data,
+      'aria-label': `Passer ${intitule} à « ${suivant.libelle} »`,
+      onclick: () => deplacer(suivant.cle),
+    }, `→ ${suivant.libelle}`),
+    autres.length > 0 && h('select', {
+      class: 'suivi-saut', 'data-f': `saut:${data}`, 'aria-label': `Déplacer ${intitule} vers…`,
+      onchange: (e) => {
+        const choix = e.target as HTMLSelectElement;
+        if (choix.value) deplacer(choix.value);
+      },
+    }, h('option', { value: '' }, 'Déplacer vers…'), ...autres.map((v) => h('option', { value: v.cle }, v.libelle))),
+  ];
 }
 
 /**
@@ -587,9 +692,9 @@ function kanban(c: Calcul): HTMLElement {
     const terminale = estTerminal(s.terminaux, 'statut_sujet', v.cle);
     const tous = sujets.filter((x) => x.statut === v.cle);
     const { recents, pied } = terminale ? bornerClos(tous) : { recents: tous, pied: undefined };
-    const suivant = statuts[i + 1] ?? null;
     return colonneDe(terminale ? 'terminale' : '', `kb-${i}`, v.libelle,
-      [nombre(recents.length)], recents.map((x) => carteSujet(x, parId.get(x.contact_id)!, suivant, false)), 'Aucun sujet', pied);
+      [nombre(recents.length)], recents.map((x) => carteSujet(x, parId.get(x.contact_id)!, false)), 'Aucun sujet', pied,
+      { type: 'sujet', cle: v.cle, deposer: deplacerSujet });
   });
   // Un statut retiré de la liste mais terminal clôt encore ses sujets : même bornage que sa colonne d'origine.
   const hors = sujets.filter((x) => !connus.has(x.statut));
@@ -597,15 +702,18 @@ function kanban(c: Calcul): HTMLElement {
     const ouverts = hors.filter((x) => !estClos(x));
     const { recents, pied } = bornerClos(hors.filter(estClos));
     const visibles = hors.filter((x) => ouverts.includes(x) || recents.includes(x));
-    colonnes.push(colonneDe('hors', 'kb-hors', 'Statut hors liste', [nombre(visibles.length)], visibles.map((x) => carteSujet(x, parId.get(x.contact_id)!, null, true)), '', pied));
+    colonnes.push(colonneDe('hors', 'kb-hors', 'Statut hors liste', [nombre(visibles.length)], visibles.map((x) => carteSujet(x, parId.get(x.contact_id)!, true)), '', pied));
   }
   if (colonnes.length === 0) return h('p', { class: 'suivi-vide' }, 'Aucun statut n’est défini pour les sujets.');
-  return h('div', { class: 'suivi-colonnes', role: 'group', 'aria-label': 'Sujets par statut' }, ...colonnes);
+  return h('div', {}, aideDeplacement(), h('div', { class: 'suivi-colonnes', role: 'group', 'aria-label': 'Sujets par statut' }, ...colonnes));
 }
 
-function carteSujet(x: Sujet, ct: Contact, suivant: ValeurListe | null, hors: boolean): HTMLElement {
+function carteSujet(x: Sujet, ct: Contact, hors: boolean): HTMLElement {
   const retard = !estClos(x) && x.echeance !== null && x.echeance < aujourdhui();
-  return h('li', { class: 'suivi-carte' },
+  const statuts = serveur?.listes.statut_sujet ?? [];
+  const i = statuts.findIndex((v) => v.cle === x.statut);
+  // Les cibles sont les statuts ACTIFS de la liste (celle que sert /api/suivi/etat) : un statut désactivé n'est jamais proposé.
+  const carte = h('li', { class: 'suivi-carte', 'data-f': `carte:${x.id}`, tabindex: '-1' },
     h('p', { class: 'suivi-carte-texte' }, x.texte),
     h('p', { class: 'suivi-carte-sous' }, lienContact(ct)),
     h('p', { class: 'suivi-carte-sous' },
@@ -613,23 +721,31 @@ function carteSujet(x: Sujet, ct: Contact, suivant: ValeurListe | null, hors: bo
       retard && h('span', { class: 'alerte' }, ' · en retard')),
     hors && h('p', { class: 'suivi-carte-sous' }, `Le statut « ${x.statut} » n’est plus dans la liste.`),
     marque('sujet', x.id, 'suivi-marque'),
-    // Faire avancer : un bouton, jamais un glisser-déposer. Le dernier statut n'a pas de suite.
-    suivant && h('button', {
-      type: 'button', class: 'suivi-avancer', 'data-f': `avancer:${x.id}`,
-      'aria-label': `Passer « ${x.texte} » à « ${suivant.libelle} »`,
-      onclick: () => avancer(x.id),
-    }, `→ ${suivant.libelle}`));
+    // Boutons (avancer, reculer) et liste « Déplacer vers… » : le déplacement au clavier et au toucher ; le glisser-déposer s'y ajoute.
+    h('div', { class: 'suivi-deplacer' },
+      ...gestesDeplacement(`avancer:${x.id}`, `« ${x.texte} »`, x.statut, statuts, i > 0 ? statuts[i - 1] : null, i >= 0 ? (statuts[i + 1] ?? null) : null,
+        (cle) => deplacerSujet(x.id, cle))));
+  brancherCarte(carte, 'sujet', x.id);
+  return carte;
 }
 
-/** Le sujet passe au statut suivant de la liste ; entrant dans un statut terminal, il prend la date du jour comme date de clôture. */
-function avancer(id: string): void {
+/**
+ * Le sujet passe à n'importe quel statut actif de la liste : le suivant, le précédent, ou un saut (« À faire » → « Fait »).
+ * Entrant dans un statut terminal il prend la date du jour comme date de clôture (gardée s'il l'était déjà : clos → clos) ;
+ * sortant d'un statut terminal (réouverture) il la perd, et redevient « ouvert » dans les indicateurs.
+ */
+function deplacerSujet(id: string, cle: string): void {
   const s = serveur;
   const x = tousSujets().find((y) => y.id === id);
-  const statuts = s?.listes.statut_sujet ?? [];
-  const i = x ? statuts.findIndex((v) => v.cle === x.statut) : -1;
-  const suivant = i >= 0 ? statuts[i + 1] : undefined;
-  if (!s || !x || !suivant) return;
-  empiler('sujet', id, 'patch', { statut: suivant.cle, fait_le: estTerminal(s.terminaux, 'statut_sujet', suivant.cle) ? aujourdhui() : null });
+  if (!s || !x || !peutEcrire() || x.statut === cle) return;
+  const cible = (s.listes.statut_sujet ?? []).find((v) => v.cle === cle);
+  if (!cible) return; // pas dans la liste active : refusé aussi par le serveur
+  const clos = estTerminal(s.terminaux, 'statut_sujet', cle);
+  focusDemande = `carte:${id}`;
+  empiler('sujet', id, 'patch', { statut: cle, fait_le: clos ? (estClos(x) && x.fait_le ? x.fait_le : aujourdhui()) : null });
+  annoncer(`« ${x.texte} » déplacé vers « ${cible.libelle} ».`, () => {
+    empiler('sujet', id, 'patch', { statut: x.statut, fait_le: x.fait_le });
+  });
 }
 
 /**
@@ -655,17 +771,18 @@ function parcours(c: Calcul): HTMLElement {
   const sortie = (v: ValeurListe): boolean => estTerminal(s.terminaux, 'etape', v.cle);
   const connues = new Set(etapes.map((v) => v.cle));
 
-  // Étape suivante : la suivante parmi les étapes qui ne sont pas des sorties, dans l'ordre de la liste. Un
-  // prospect sans étape (ou d'une étape retirée) entre à la première ; la dernière étape et les sorties n'ont
-  // pas de suite : sortir du parcours se décide sur la fiche.
+  // Étape suivante : la suivante parmi les étapes qui ne sont pas des sorties, dans l'ordre de la liste, et la précédente de
+  // la même façon (reculer). Un prospect sans étape (ou d'une étape retirée) entre à la première ; la dernière étape n'a pas de
+  // suite, et une sortie (« perdu ») n'est le suivant d'aucune étape ni n'a de suivant : on y va et on en revient par
+  // « Déplacer vers… » ou par le glisser-déposer, jamais par un « suivant » qui le déciderait à la place du conseiller.
   const enAvant = etapes.filter((v) => !sortie(v));
-  const suivantDe = (x: Contact): ValeurListe | null => {
-    if (x.etape === null || !connues.has(x.etape)) return enAvant[0] ?? null;
+  const voisins = (x: Contact): { precedent: ValeurListe | null; suivant: ValeurListe | null } => {
+    if (x.etape === null || !connues.has(x.etape)) return { precedent: null, suivant: enAvant[0] ?? null };
     const i = enAvant.findIndex((v) => v.cle === x.etape);
-    return i >= 0 ? (enAvant[i + 1] ?? null) : null;
+    return i >= 0 ? { precedent: enAvant[i - 1] ?? null, suivant: enAvant[i + 1] ?? null } : { precedent: null, suivant: null };
   };
 
-  const colonne = (classe: string, id: string, titre: string, items: Contact[], hors: boolean, tag?: string): HTMLElement => {
+  const colonne = (classe: string, id: string, titre: string, items: Contact[], hors: boolean, tag?: string, cle?: string): HTMLElement => {
     const total = items.reduce((t, x) => t + (avoirsDe(x)?.cents ?? 0), 0);
     return colonneDe(classe, id, titre,
       [tag && h('span', { class: 'suivi-colonne-tag' }, tag), nombre(items.length), h('span', { class: 'suivi-colonne-total' }, euros(total))],
@@ -674,32 +791,48 @@ function parcours(c: Calcul): HTMLElement {
         const membre = s.membres.find((m) => m.id === x.responsable_id);
         const sous = [libelle('metier', x.metier), x.structure].filter(Boolean).join(' · ');
         const perime = av?.portail && av.le !== null && ecartJours(av.le, aujourd) > s.seuils.arrete;
-        const suivant = suivantDe(x);
-        return h('li', { class: 'suivi-carte' },
+        const { precedent, suivant } = voisins(x);
+        const carte = h('li', { class: 'suivi-carte', 'data-f': `carte:${x.id}`, tabindex: '-1' },
           h('p', { class: 'suivi-carte-texte' }, lienContact(x)),
           sous && h('p', { class: 'suivi-carte-sous' }, sous),
           h('p', { class: 'suivi-carte-avoirs' }, celluleAvoirs(x, av, [], perime)),
           membre && h('p', { class: 'suivi-carte-sous' }, avatar(membre), ' ', membre.nom),
           hors && x.etape && h('p', { class: 'suivi-carte-sous' }, `L’étape « ${x.etape} » n’est plus dans la liste.`),
           marque('contact', x.id, 'suivi-marque'),
-          // Faire avancer : un bouton, jamais un glisser-déposer.
-          suivant && h('button', {
-            type: 'button', class: 'suivi-avancer', 'data-f': `etape:${x.id}`,
-            'aria-label': `Passer ${nomComplet(x)} à « ${suivant.libelle} »`,
-            onclick: () => { empiler('contact', x.id, 'patch', { etape: suivant.cle }); },
-          }, `→ ${suivant.libelle}`));
+          h('div', { class: 'suivi-deplacer' },
+            ...gestesDeplacement(`etape:${x.id}`, nomComplet(x), x.etape, etapes, precedent, suivant, (cle) => deplacerContact(x.id, cle))));
+        brancherCarte(carte, 'contact', x.id);
+        return carte;
       }),
-      'Aucun prospect');
+      'Aucun prospect', undefined, cle === undefined ? undefined : { type: 'contact', cle, deposer: deplacerContact });
   };
 
   const colonnes: HTMLElement[] = [];
   const sans = prospects.filter((x) => x.etape === null || !connues.has(x.etape));
   if (sans.length > 0) colonnes.push(colonne('hors', 'pc-hors', 'Sans étape', sans, true));
   [...etapes.filter((v) => !sortie(v)), ...etapes.filter(sortie)].forEach((v, i) => {
-    colonnes.push(colonne(sortie(v) ? 'sortie' : '', `pc-${i}`, v.libelle, prospects.filter((x) => x.etape === v.cle), false, sortie(v) ? 'Sortie' : undefined));
+    colonnes.push(colonne(sortie(v) ? 'sortie' : '', `pc-${i}`, v.libelle, prospects.filter((x) => x.etape === v.cle), false, sortie(v) ? 'Sortie' : undefined, v.cle));
   });
-  return h('div', { class: 'suivi-colonnes', role: 'group', 'aria-label': 'Prospects par étape' }, ...colonnes);
+  return h('div', {}, aideDeplacement(), h('div', { class: 'suivi-colonnes', role: 'group', 'aria-label': 'Prospects par étape' }, ...colonnes));
 }
+
+/** Le contact passe à n'importe quelle étape active de la liste : suivante, précédente, ou un saut (« Premier contact » → « Proposition »). */
+function deplacerContact(id: string, cle: string): void {
+  const s = serveur;
+  const x = tousContacts().find((y) => y.id === id);
+  if (!s || !x || !peutEcrire() || x.etape === cle) return;
+  const cible = (s.listes.etape ?? []).find((v) => v.cle === cle);
+  if (!cible) return; // pas dans la liste active : refusé aussi par le serveur
+  focusDemande = `carte:${id}`;
+  empiler('contact', id, 'patch', { etape: cle });
+  annoncer(`${nomComplet(x)} déplacé vers « ${cible.libelle} ».`, () => {
+    empiler('contact', id, 'patch', { etape: x.etape });
+  });
+}
+
+const aideDeplacement = (): HTMLElement | false =>
+  peutEcrire() && h('p', { class: 'suivi-note' },
+    'Glissez une carte vers une colonne pour la déplacer. Sans souris : les boutons fléchés de la carte, ou la liste « Déplacer vers… », vont à n’importe quelle colonne.');
 
 // ---------------------------------------------------------------- fenêtre de saisie
 
@@ -848,7 +981,11 @@ function archiver(c: Contact, archive: boolean): void {
 }
 
 /** Le rendu attend le relâchement d'un clic en cours : voir sansPerdreLeClic (commun.ts). */
-const rendre = sansPerdreLeClic(rendreMaintenant);
+const rendre = sansPerdreLeClic(() => {
+  // Redessiner en plein glissement annulerait le geste : le rendu attend la fin du glissement (voir finGlisse).
+  if (glisse) renduDiffere = true;
+  else rendreMaintenant();
+});
 
 // ---------------------------------------------------------------- démarrage
 

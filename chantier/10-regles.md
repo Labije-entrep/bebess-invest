@@ -71,7 +71,7 @@ deux lots qui ouvrent des chemins entre des données qui ne se touchaient pas.
 
 ## Ce qui reste exclu
 
-Aucune IA ni génération de texte. Pas de CI. Pas de glisser-déposer. Pas de champs
+Aucune IA ni génération de texte. Pas de CI. (Le glisser-déposer, exclu au départ, est admis depuis la recette en ligne du 20/11/2026, pour le kanban et le parcours seulement, et jamais seul : voir ETAT.md.) Pas de champs
 personnalisés ni de constructeur de formulaires. Pas de générateur Excel dans le
 Worker. Aucun domaine externe appelé par le navigateur. Aucune URL publique de R2.
 Aucune suspension automatique, pour aucun motif.

@@ -3,6 +3,7 @@ import { garde, json } from '../../../lib/api-suivi';
 import { marqueursDe, terminauxDe, valeursDe } from '../../../lib/listes';
 import { LISTES_DEFAUT, type Liste } from '../../../lib/listes-defaut';
 import { avoirsDesViewers, seuilsDe } from '../../../lib/suivi';
+import { aLeRole, GESTION_ECRIT } from '../../../lib/roles';
 import { versionDe } from '../../../lib/version';
 
 export const prerender = false;
@@ -28,6 +29,8 @@ export const GET: APIRoute = async (ctx) => {
   const [seuils, portail, terminaux, marqueurs] = await Promise.all([seuilsDe(a.db, T), avoirsDesViewers(a.db, T), terminauxDe(a.db, T), marqueursDe(a.db, T)]);
   return json({
     version,
+    // Le rôle `lecture` voit le suivi sans pouvoir le modifier : le client ne propose alors aucun déplacement.
+    peut_ecrire: aLeRole(a.utilisateur.role, GESTION_ECRIT),
     seuils,
     terminaux,
     // Rôles que le code attend de certaines valeurs (marqueurs de liste), sur les valeurs actives seulement.

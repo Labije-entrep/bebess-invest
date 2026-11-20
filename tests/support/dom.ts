@@ -71,6 +71,12 @@ export class Element extends Noeud {
   click(): void {
     for (const f of this.écouteurs.get('click') ?? []) f({ target: this, currentTarget: this });
   }
+  /** Déclenche les écouteurs d'un type d'événement avec l'événement donné (glisser-déposer : dragstart, dragover, drop…). `preventDefault` est suivi. */
+  dispatch(type: string, extra: Record<string, unknown> = {}): { defaultPrevented: boolean } {
+    const e = { type, target: this, currentTarget: this, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...extra };
+    for (const f of this.écouteurs.get(type) ?? []) f(e);
+    return e;
+  }
   focus(): void {}
   override get textContent(): string {
     return this.children.map((c) => c.textContent).join('');

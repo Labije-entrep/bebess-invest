@@ -11,7 +11,7 @@ import { COOKIE } from './auth';
 import { appartient, type Ressource } from './cloisonnement';
 import type { Base, Tenant, Utilisateur } from './db';
 import type { Liste } from './listes-defaut';
-import { refusValeur } from './listes';
+import { refusValeur, terminauxDe } from './listes';
 import { envDe } from './mail';
 import { incrementerVersion } from './version';
 
@@ -334,6 +334,20 @@ export async function modifier(ctx: APIContext, entite: Entite): Promise<Respons
       vals.push(await valider(c, v, a, id));
     }
     const types = entite.table === 'contact' ? await lireTypes(a, corps) : undefined;
+    // Changer le statut d'un sujet sans dire la date de clôture : le serveur la déduit, pour que le saut, le retour
+    // arrière et la réouverture donnent le même résultat quel que soit le client. Statut terminal : la date de clôture
+    // déjà posée est gardée (clos → clos), sinon celle du jour ; statut non terminal : plus de date.
+    if (entite.table === 'sujet' && 'statut' in corps && !('fait_le' in corps)) {
+      const actuel = await a.db
+        .prepare('SELECT statut, fait_le FROM sujet WHERE id = ? AND tenant_id = ?')
+        .bind(id, a.tenant.id)
+        .first<{ statut: string; fait_le: string | null }>();
+      const terminaux = (await terminauxDe(a.db, a.tenant.id)).statut_sujet ?? [];
+      const clos = terminaux.includes(String(corps.statut));
+      const etaitClos = actuel !== null && terminaux.includes(actuel.statut);
+      sets.push('fait_le = ?');
+      vals.push(clos ? (etaitClos && actuel?.fait_le ? actuel.fait_le : maintenant().slice(0, 10)) : null);
+    }
     if (sets.length === 0 && types === undefined) throw new Refus(422, 'Aucun champ à modifier.');
     if (entite.majLe) {
       sets.push('maj_le = ?');
