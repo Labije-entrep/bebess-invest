@@ -218,8 +218,24 @@ export function liste(v: unknown): Contenu[] {
 export function chaines(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string' && s.trim() !== '') : [];
 }
+/**
+ * Les retours à la ligne d'un texte saisi : `\r\n` (un `<textarea>` l'envoie ainsi) et `\r` seul deviennent `\n`. C'est ce que tout texte reçoit à
+ * l'ENREGISTREMENT (enregistrerPage, enregistrerNote, lireFormulaire) : ce qui est en base ne porte plus qu'un seul type de saut de ligne.
+ */
+export const normaliserSauts = (texte: string): string => texte.replace(/\r\n?/g, '\n');
+/** Le même passage, sur toutes les chaînes d'un contenu (objets et listes imbriqués). */
+function normaliserContenu(v: unknown): unknown {
+  if (typeof v === 'string') return normaliserSauts(v);
+  if (Array.isArray(v)) return v.map(normaliserContenu);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, normaliserContenu(x)]));
+  return v;
+}
+/**
+ * Les paragraphes d'un texte, séparés par une ligne vide. Normalise aussi à la lecture : les lignes déjà en base ont été enregistrées avec
+ * `\r\n`, et ne se réécrivent pas toutes seules.
+ */
 export function paragraphes(texte: string): string[] {
-  return texte.split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
+  return normaliserSauts(texte).split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
 }
 
 export interface PageLue {
@@ -258,7 +274,7 @@ export async function enregistrerPage(
   titre: string | null,
   contenu: Contenu,
 ): Promise<void> {
-  const json = JSON.stringify(contenu);
+  const json = JSON.stringify(normaliserContenu(contenu));
   const maintenant = new Date().toISOString();
   const existante = await pageContenu(db, tenantId, cle);
   if (existante) {
@@ -326,7 +342,7 @@ export function aplatir(m: Modele, titre: string | null, c: Contenu): Rang[] {
 
 /** Reconstruit l'objet du modèle depuis le formulaire. Les lignes vides des listes libres sont écartées. */
 export function lireFormulaire(m: Modele, f: FormData): { titre: string | null; contenu: Contenu } {
-  const g = (nom: string) => String(f.get(nom) ?? '').trim();
+  const g = (nom: string) => normaliserSauts(String(f.get(nom) ?? '')).trim();
   const contenu: Contenu = {};
   const description = g('meta_description');
   if (description) contenu.description = description;
@@ -419,8 +435,9 @@ export async function enregistrerNote(
   db: Base,
   tenantId: string,
   id: string | null,
-  n: SaisieNote,
+  saisie: SaisieNote,
 ): Promise<string> {
+  const n = { ...saisie, chapeau: saisie.chapeau === null ? null : normaliserSauts(saisie.chapeau), corps_md: normaliserSauts(saisie.corps_md) };
   if (id) {
     await db
       .prepare(

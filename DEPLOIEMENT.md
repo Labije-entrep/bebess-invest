@@ -1,6 +1,6 @@
 # Déploiement
 
-Prérequis : Node 20, un compte Cloudflare (`npx wrangler login`).
+Prérequis : Node 22.18 ou plus récent (le banc de vérification utilise `node:sqlite`), un compte Cloudflare (`npx wrangler login`).
 
 ```bash
 npm install

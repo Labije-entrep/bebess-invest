@@ -9,7 +9,7 @@
 import type { Base } from './db';
 import {
   annulerPreavis, CHAMPS_PRIX, contratEnCours, creerContrat, enregistrerPreavis, MESSAGES_CONTRAT, modifierFormule, modifierPrix, poserDpa, poserGelTarif,
-  poserMiseEnProduction, poserStatutFondateur, retirerStatutFondateur, basculerModule, saisirRemise, type CodeContrat, type Module, type Prix,
+  poserMiseEnProduction, poserStatutFondateur, retirerStatutFondateur, signerContrat, basculerModule, saisirRemise, type CodeContrat, type Module, type Prix,
 } from './contrat';
 import { apercuComplementaire, parrainagesValides, signalerBonsAnnulesParPreavis, traiterBonsApresEffet } from './facturation';
 import type { Acteur } from './journal';
@@ -17,7 +17,7 @@ import { REMISE_MAX, tauxParrainage } from './tarif';
 
 export type CodeSucces =
   | 'contrat_ouvert' | 'formule_enregistree' | 'prix_enregistres' | 'module_active' | 'module_desactive' | 'remise_enregistree' | 'remise_plafonnee'
-  | 'gel_pose' | 'dpa_pose' | 'production_posee' | 'fondateur_pose' | 'fondateur_retire' | 'desactivation_programmee' | 'desactivation_annulee'
+  | 'gel_pose' | 'dpa_pose' | 'production_posee' | 'contrat_signe' | 'contrat_signe_installation' | 'fondateur_pose' | 'fondateur_retire' | 'desactivation_programmee' | 'desactivation_annulee'
   | 'preavis_enregistre' | 'preavis_reconduit' | 'preavis_annule';
 
 export const MESSAGES_SUCCES: Record<CodeSucces, string> = {
@@ -34,6 +34,10 @@ export const MESSAGES_SUCCES: Record<CodeSucces, string> = {
   gel_pose: 'Gel du tarif enregistré.',
   dpa_pose: 'Date de signature du DPA enregistrée. La mise en production est maintenant possible.',
   production_posee: 'Mise en production posée : le contrat passe en essai de 45 jours.',
+  contrat_signe:
+    'Contrat signé : il est actif. Le début de service, qui est aussi la date anniversaire, est posé ; le traitement quotidien en tire le bon de la première période. Aucun frais d’installation : aucun bon d’installation.',
+  contrat_signe_installation:
+    'Contrat signé : il est actif. Le début de service, qui est aussi la date anniversaire, est posé. Un bon d’installation est à émettre (menu Facturation) ; le bon de la première période viendra du traitement quotidien.',
   fondateur_pose: 'Statut fondateur posé : frais d’installation à 0, tarif gelé 24 mois après la signature. Aucun pourcentage de remise.',
   fondateur_retire: 'Statut fondateur retiré. Le gel du tarif déjà posé reste en place : un gel ne se raccourcit jamais.',
   preavis_enregistre: 'Préavis enregistré : il a été reçu au moins 30 jours avant la date anniversaire, la résiliation prend effet à cette date. Le contrat reste actif jusque-là ; elle s’annule d’ici là.',
@@ -81,7 +85,7 @@ const entier = (texte: string): number | null => (/^\d{1,6}$/.test(texte) ? Numb
 // ---------------------------------------------------------------- appliquer
 
 /**
- * Applique l'écriture que le formulaire demande. `action` : formule, module, remise, gel, dpa, production, fondateur, fondateur_retirer, preavis, preavis_annuler.
+ * Applique l'écriture que le formulaire demande. `action` : formule, module, remise, gel, dpa, production, signature, fondateur, fondateur_retirer, preavis, preavis_annuler.
  * Une saisie illisible est refusée AVANT toute écriture : rien n'est enregistré à moitié.
  */
 export async function appliquerContrat(db: Base, tenantId: string, f: FormData, acteur: Acteur, jour = new Date().toISOString().slice(0, 10)): Promise<RetourContrat> {
@@ -155,6 +159,11 @@ export async function appliquerContrat(db: Base, tenantId: string, f: FormData, 
   if (action === 'production') {
     const r = await poserMiseEnProduction(db, tenantId, brut(f, 'date_mise_en_production'), acteur);
     return r.ok ? ok('production_posee') : ko(r.code);
+  }
+
+  if (action === 'signature') {
+    const r = await signerContrat(db, tenantId, brut(f, 'date_signature'), acteur);
+    return r.ok ? ok(r.installation ? 'contrat_signe_installation' : 'contrat_signe') : ko(r.code);
   }
 
   if (action === 'fondateur') {

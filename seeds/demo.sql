@@ -96,6 +96,20 @@ UPDATE liste_valeur SET marqueur = 'en_attente' WHERE tenant_id = 'tnt_demo' AND
 UPDATE liste_valeur SET marqueur = 'clos'       WHERE tenant_id = 'tnt_demo' AND liste = 'statut_mouvement'  AND cle IN ('execute', 'archive');
 UPDATE liste_valeur SET marqueur = 'defaut'     WHERE tenant_id = 'tnt_demo' AND liste = 'type_portefeuille' AND cle = 'personne';
 
+-- Cours fictifs (lot 19) : de quoi remplir le bloc « Chiffres » de l'actu sans clé d'API (COURS_API_KEY). Table GLOBALE, clés = les cinq symboles
+-- par défaut de src/lib/cours.ts. Deux séances chacune ; le dernier cours connu à la date d'une fiche s'affiche avec sa date de séance.
+INSERT INTO cours (symbole, date, valeur, variation_bp, sens, recupere_le) VALUES
+  ('cac40',     '2026-11-12', '7942.10',  NULL, NULL,     '2026-11-12T20:00:00Z'),
+  ('cac40',     '2026-11-13', '7985.55',    55, 'hausse', '2026-11-13T20:00:00Z'),
+  ('sp500',     '2026-11-12', '5821.40',  NULL, NULL,     '2026-11-12T22:00:00Z'),
+  ('sp500',     '2026-11-13', '5798.20',   -40, 'baisse', '2026-11-13T22:00:00Z'),
+  ('nasdaq100', '2026-11-12', '498.30',   NULL, NULL,     '2026-11-12T22:00:00Z'),
+  ('nasdaq100', '2026-11-13', '501.15',     57, 'hausse', '2026-11-13T22:00:00Z'),
+  ('eurusd',    '2026-11-12', '1.0840',   NULL, NULL,     '2026-11-12T22:00:00Z'),
+  ('eurusd',    '2026-11-13', '1.0840',      0, 'stable', '2026-11-13T22:00:00Z'),
+  ('brent',     '2026-11-12', '78.90',    NULL, NULL,     '2026-11-12T22:00:00Z'),
+  ('brent',     '2026-11-13', '77.60',    -165, 'baisse', '2026-11-13T22:00:00Z');
+
 -- Un portefeuille par viewer ; Claire en a un second, vide, pour éprouver le cas.
 INSERT INTO portefeuille (id, tenant_id, viewer_id, libelle, type, ordre, cree_le) VALUES
   ('pf_claire',   'tnt_demo', 'usr_claire', 'Patrimoine',      'personne', 0, '2023-11-01T09:00:00Z'),
@@ -253,6 +267,66 @@ INSERT INTO point (id, portefeuille_id, date, valeur_cents, versements_cumules_c
 
 INSERT INTO document (id, viewer_id, titre, categorie, date, cle_fichier, envoye_le) VALUES
   ('doc_autre', 'usr_autre_viewer', 'Rapport Delmas, troisième trimestre 2026', 'rapport', '2026-10-15', 'fabre/rapport-2026-t3.pdf', '2026-10-15T08:30:00Z');
+
+-- Le second cabinet a les MÊMES listes de référence que le premier (lot 19) : sans elles, on n'y crée ni contact typé, ni sujet, ni rapport, et le
+-- test de cloisonnement ne peut rien viser. Valeurs, terminaux et marqueurs identiques à ceux de `tnt_demo`.
+INSERT INTO liste_valeur (tenant_id, liste, cle, libelle, ordre, actif) VALUES
+  ('tnt_autre', 'type_contact', 'client', 'Client', 1, 1),
+  ('tnt_autre', 'type_contact', 'prospect', 'Prospect', 2, 1),
+  ('tnt_autre', 'type_contact', 'prescripteur', 'Prescripteur', 3, 1),
+  ('tnt_autre', 'type_contact', 'partenaire', 'Partenaire', 4, 1),
+  ('tnt_autre', 'type_contact', 'interne', 'Interne', 5, 1),
+  ('tnt_autre', 'statut_sujet', 'afaire', 'À faire', 1, 1),
+  ('tnt_autre', 'statut_sujet', 'encours', 'En cours', 2, 1),
+  ('tnt_autre', 'statut_sujet', 'attente', 'En attente', 3, 1),
+  ('tnt_autre', 'statut_sujet', 'fait', 'Fait', 4, 1),
+  ('tnt_autre', 'etape', 'contact', 'Premier contact', 1, 1),
+  ('tnt_autre', 'etape', 'rdv', 'RDV', 2, 1),
+  ('tnt_autre', 'etape', 'proposition', 'Proposition', 3, 1),
+  ('tnt_autre', 'etape', 'signe', 'Signé', 4, 1),
+  ('tnt_autre', 'etape', 'perdu', 'Perdu', 5, 1),
+  ('tnt_autre', 'type_echange', 'rdv', 'RDV', 1, 1),
+  ('tnt_autre', 'type_echange', 'tel', 'Appel', 2, 1),
+  ('tnt_autre', 'type_echange', 'visio', 'Visio', 3, 1),
+  ('tnt_autre', 'type_echange', 'mail', 'E-mail', 4, 1),
+  ('tnt_autre', 'metier', 'notaire', 'Notaire', 1, 1),
+  ('tnt_autre', 'metier', 'avocat', 'Avocat', 2, 1),
+  ('tnt_autre', 'metier', 'expert_comptable', 'Expert-comptable', 3, 1),
+  ('tnt_autre', 'metier', 'banquier', 'Banquier', 4, 1),
+  ('tnt_autre', 'metier', 'assureur', 'Assureur', 5, 1),
+  ('tnt_autre', 'metier', 'agent_immobilier', 'Agent immobilier', 6, 1),
+  ('tnt_autre', 'metier', 'cgp', 'Conseiller en gestion de patrimoine', 7, 1),
+  ('tnt_autre', 'metier', 'commissaire_comptes', 'Commissaire aux comptes', 8, 1),
+  ('tnt_autre', 'metier', 'autre', 'Autre', 9, 1),
+  ('tnt_autre', 'categorie_doc', 'reglementaire', 'Réglementaire', 1, 1),
+  ('tnt_autre', 'categorie_doc', 'modeles', 'Modèles et contrats', 2, 1),
+  ('tnt_autre', 'categorie_doc', 'juridique', 'Juridique', 3, 1),
+  ('tnt_autre', 'categorie_doc', 'fiscal', 'Fiscal', 4, 1),
+  ('tnt_autre', 'categorie_doc', 'autre', 'Autre', 5, 1);
+
+UPDATE liste_valeur SET terminal = 1
+ WHERE tenant_id = 'tnt_autre' AND ((liste = 'statut_sujet' AND cle = 'fait') OR (liste = 'etape' AND cle = 'perdu'));
+UPDATE liste_valeur SET marqueur = 'parcours'   WHERE tenant_id = 'tnt_autre' AND liste = 'type_contact' AND cle = 'prospect';
+UPDATE liste_valeur SET marqueur = 'client'     WHERE tenant_id = 'tnt_autre' AND liste = 'type_contact' AND cle = 'client';
+UPDATE liste_valeur SET marqueur = 'en_cours'   WHERE tenant_id = 'tnt_autre' AND liste = 'statut_sujet' AND cle = 'encours';
+UPDATE liste_valeur SET marqueur = 'en_attente' WHERE tenant_id = 'tnt_autre' AND liste = 'statut_sujet' AND cle = 'attente';
+
+INSERT INTO membre (id, tenant_id, nom, initiale, couleur, actif, cree_le) VALUES
+  ('mbr_autre', 'tnt_autre', 'Paul Delmas', 'P', 'serie-1', 1, '2025-01-10T09:00:00Z');
+
+-- Un contact, un sujet et un échange du second cabinet : de quoi viser, depuis le premier, une ressource du suivi qui existe vraiment.
+INSERT INTO contact (id, tenant_id, nom, prenom, email, etape, responsable_id, dernier_echange, type_echange, cree_le, maj_le) VALUES
+  ('ct_autre', 'tnt_autre', 'Morel', 'Judith', 'judith.morel@delmas.local', 'rdv', 'mbr_autre', '2026-11-05', 'rdv', '2026-10-20T09:00:00Z', '2026-11-05T09:00:00Z');
+INSERT INTO contact_type (tenant_id, contact_id, type) VALUES ('tnt_autre', 'ct_autre', 'prospect');
+INSERT INTO sujet (id, tenant_id, contact_id, texte, statut, echeance, cree_le) VALUES
+  ('su_autre', 'tnt_autre', 'ct_autre', 'Préparer la proposition de mandat', 'afaire', '2026-12-01', '2026-11-05T09:00:00Z');
+INSERT INTO echange (id, tenant_id, contact_id, date, type, note, cree_le) VALUES
+  ('ec_autre', 'tnt_autre', 'ct_autre', '2026-11-05', 'rdv', 'Premier rendez-vous au cabinet.', '2026-11-05T09:30:00Z');
+
+-- Un rapport de plus pour le second cabinet, rangé dans une catégorie qui existe dans sa liste (le premier, `doc_autre`, porte la catégorie
+-- historique « rapport »). Comme toutes les lignes de ce jeu, il ne pointe vers aucun fichier réel : le téléchargement ne sert pas ici.
+INSERT INTO document (id, viewer_id, titre, categorie, date, cle_fichier, envoye_le) VALUES
+  ('doc_autre_2', 'usr_autre_viewer', 'Lettre de mission Delmas', 'reglementaire', '2026-11-02', 'fabre/lettre-de-mission.pdf', '2026-11-02T08:30:00Z');
 
 INSERT INTO page_contenu (id, tenant_id, cle, langue, titre, contenu_json, maj_le) VALUES
   ('pc_autre_accueil', 'tnt_autre', 'accueil', 'fr', 'Cabinet Delmas',

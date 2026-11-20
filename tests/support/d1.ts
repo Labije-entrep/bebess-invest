@@ -3,7 +3,7 @@
 // Fidèle à ce que le code du dépôt en attend :
 //   - requêtes préparées et `bind` seulement ; `first`, `all` (`results`), `run` (`meta.changes`) ;
 //   - `batch` = UNE transaction, tout ou rien, `changes()` lisible d'une instruction à la suivante ;
-//   - clés étrangères actives, déclencheurs et index des vraies migrations (migrations/0001 à 0012, appliquées dans l'ordre) ;
+//   - clés étrangères actives, déclencheurs et index des vraies migrations (migrations/0001 à 0014, appliquées dans l'ordre) ;
 //   - chaque appel est asynchrone : deux appels concurrents s'entrelacent entre leurs `await`, mais un `batch` ne s'entrelace jamais,
 //     comme sur D1 qui sérialise les écritures.
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
