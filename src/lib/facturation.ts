@@ -201,6 +201,9 @@ export async function genererBons(ctx: Contexte): Promise<RapportBons> {
           module_pilotage: sortant(c.module_pilotage_fin_le) ? 0 : c.module_pilotage,
           module_site: sortant(c.module_site_fin_le) ? 0 : c.module_site,
           acces_facturables: acces, parrainages_valides: valides,
+          // Le bon périodique ne porte JAMAIS les frais d'installation (tarif.ts) : ils se facturent une fois, à part. Le contrat les
+          // porte (`...c`), il ne faut pas les transmettre au calcul, sans quoi chaque période les refacturerait.
+          frais_installation: 0,
         }),
         remise_motif: motif,
       };
