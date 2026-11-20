@@ -11,7 +11,7 @@ import {
   annulerPreavis, CHAMPS_PRIX, contratEnCours, creerContrat, enregistrerPreavis, MESSAGES_CONTRAT, modifierFormule, modifierPrix, poserDpa, poserGelTarif,
   poserMiseEnProduction, poserStatutFondateur, retirerStatutFondateur, basculerModule, saisirRemise, type CodeContrat, type Module, type Prix,
 } from './contrat';
-import { apercuComplementaire, parrainagesValides, signalerBonsApresEffet } from './facturation';
+import { apercuComplementaire, parrainagesValides, signalerBonsAnnulesParPreavis, traiterBonsApresEffet } from './facturation';
 import type { Acteur } from './journal';
 import { REMISE_MAX, tauxParrainage } from './tarif';
 
@@ -84,9 +84,8 @@ const entier = (texte: string): number | null => (/^\d{1,6}$/.test(texte) ? Numb
  * Applique l'écriture que le formulaire demande. `action` : formule, module, remise, gel, dpa, production, fondateur, fondateur_retirer, preavis, preavis_annuler.
  * Une saisie illisible est refusée AVANT toute écriture : rien n'est enregistré à moitié.
  */
-export async function appliquerContrat(db: Base, tenantId: string, f: FormData, acteur: Acteur): Promise<RetourContrat> {
+export async function appliquerContrat(db: Base, tenantId: string, f: FormData, acteur: Acteur, jour = new Date().toISOString().slice(0, 10)): Promise<RetourContrat> {
   const action = brut(f, 'action');
-  const jour = new Date().toISOString().slice(0, 10);
 
   if (action === 'formule') {
     const periodicite = brut(f, 'periodicite');
@@ -171,14 +170,17 @@ export async function appliquerContrat(db: Base, tenantId: string, f: FormData, 
   if (action === 'preavis') {
     const r = await enregistrerPreavis(db, tenantId, brut(f, 'preavis_recu_le'), acteur, jour);
     if (!r.ok) return ko(r.code);
-    // Le bon de la période suivante a pu être posé avant le préavis : la console le voit dans les incidents.
-    if (r.contrat.resiliation_effet_le) await signalerBonsApresEffet(db, tenantId, r.contrat.id, r.contrat.resiliation_effet_le);
+    // Le bon de la période suivante a pu être posé avant le préavis (J-30 de l'anniversaire, les deux le même jour) : brouillon annulé, émis signalé.
+    if (r.contrat.resiliation_effet_le) await traiterBonsApresEffet(db, tenantId, r.contrat.id, r.contrat.resiliation_effet_le, acteur);
     return ok(r.reconduit ? 'preavis_reconduit' : 'preavis_enregistre');
   }
 
   if (action === 'preavis_annuler') {
+    const avant = await contratEnCours(db, tenantId);
     const r = await annulerPreavis(db, tenantId, acteur, jour);
-    return r.ok ? ok('preavis_annule') : ko(r.code);
+    if (!r.ok) return ko(r.code);
+    if (avant?.resiliation_effet_le) await signalerBonsAnnulesParPreavis(db, tenantId, avant.id, avant.resiliation_effet_le);
+    return ok('preavis_annule');
   }
 
   return ko('inchange');
