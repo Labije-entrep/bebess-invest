@@ -337,7 +337,7 @@ export async function poserMiseEnProduction(db: Base, tenantId: string, date: st
  *     ne se facturent pas. Signé le jour de la fin d'essai ou après (avant que le traitement quotidien ne l'ait clos), le début de service
  *     est la date de signature. `debut_le = max(date_signature, date_fin_essai)` ;
  *   - si `frais_installation` est non nul, UN bon d'installation est posé dans la même écriture (type `installation`, une ligne, sans récurrent,
- *     sans remise, période = le jour de signature) ; à frais nuls (cabinet fondateur), aucun bon. L'index unique de la base garantit « un seul
+ *     sans remise, daté du jour de la MISE EN PRODUCTION : voir `jourBon`) ; à frais nuls (cabinet fondateur), aucun bon. L'index unique de la base garantit « un seul
  *     par contrat » même si deux signatures se croisent : la seconde échoue en entier.
  *
  * Journalisée (`contrat_signe`, avec l'avant et l'après), dans le même `batch` que le changement de statut.
@@ -351,6 +351,11 @@ export async function signerContrat(db: Base, tenantId: string, date: string, ac
   const debut = c.date_fin_essai && c.date_fin_essai > date ? c.date_fin_essai : date;
   const frais = c.frais_installation;
   const bonId = frais > 0 ? crypto.randomUUID() : null;
+  // La date du bon d'installation : le jour de la MISE EN PRODUCTION, jamais celui de la signature. Les bons de période et les bons complémentaires
+  // sont uniques par (contrat, début de période), et le premier bon de période commence à `debut`, qui peut être le jour même de la signature
+  // (signé le jour de la fin d'essai, ou après) : un bon d'installation daté de la signature entrerait en collision avec lui, et `poserBon` le
+  // prendrait pour le sien et l'écraserait. Le jour de la mise en production précède toujours `debut` d'au moins 45 jours.
+  const jourBon = c.date_mise_en_production ?? date;
   const maj = maintenant();
   const requetes = [
     db
@@ -378,12 +383,12 @@ export async function signerContrat(db: Base, tenantId: string, date: string, ac
            SELECT ?, ?, ?, 'installation', ?, ?, 'brouillon', 0, ?, 0, 0, 0, NULL, ?, ?, ?
             WHERE EXISTS (SELECT 1 FROM contrat WHERE id = ? AND tenant_id = ? AND statut = 'actif' AND maj_le = ?)`,
         )
-        .bind(bonId, tenantId, c.id, date, date, JSON.stringify(calcul.lignes), TVA_TAUX, calcul.total_ht, maj, c.id, tenantId, maj),
+        .bind(bonId, tenantId, c.id, jourBon, jourBon, JSON.stringify(calcul.lignes), TVA_TAUX, calcul.total_ht, maj, c.id, tenantId, maj),
       requeteEvenement(
         db,
         {
           tenantId, type: EVENEMENT.BON_GENERE, acteur: null, cible: { type: 'contrat', id: c.id },
-          detail: { bon_id: bonId, type: 'installation', periode_debut: date, periode_fin: date, acces_facturables: 0, remise_taux: 0, total_ht: calcul.total_ht },
+          detail: { bon_id: bonId, type: 'installation', periode_debut: jourBon, periode_fin: jourBon, acces_facturables: 0, remise_taux: 0, total_ht: calcul.total_ht },
         },
         true,
       ),
@@ -400,7 +405,7 @@ export async function signerContrat(db: Base, tenantId: string, date: string, ac
   if (!bonId) return apres;
   await noterIncident(
     db, tenantId, 'bon_a_emettre',
-    `Bon d'installation du ${date} : ${(frais / 100).toFixed(2).replace('.', ',')} € HT. À émettre.`,
+    `Bon d'installation du ${jourBon} : ${(frais / 100).toFixed(2).replace('.', ',')} € HT. À émettre.`,
   );
   return { ...apres, installation: { bon_id: bonId, total_ht: frais } };
 }

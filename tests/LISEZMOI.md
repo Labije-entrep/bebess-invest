@@ -39,6 +39,10 @@ corrigé, le test passe et la mention `todo` se retire. **Aucun écart n'est ouv
 
 - Corrigé (lot 19) — `cloisonnement.test.ts` : `/gestionnaire/notes/<id d'un autre cabinet>` répondait une redirection (302) vers la liste ;
   il répond 404, comme un identifiant inconnu.
+- Corrigé (lot 21) — `signature.test.ts` : le bon d'installation, posé à la signature, **masquait le premier bon périodique** (la condition « aucun
+  bon encore » de `genererBons` le comptait) et, signé le jour de la fin d'essai ou après, **portait la même clé** (contrat, début de période) que ce
+  premier bon : `poserBon` le prenait pour le sien et l'écrasait (948 € au lieu de 1 200 €, typé « installation »). Le bon d'installation est daté de
+  la mise en production, et `poserBon` ne reprend plus jamais le bon d'un autre type.
 - Corrigé (lot 18) — `facturation.test.ts` : `genererBons` transmettait les frais d'installation à `calculerBon` : chaque bon périodique
   les refacturait. Le test est désormais un test ordinaire.
 

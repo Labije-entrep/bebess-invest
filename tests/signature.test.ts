@@ -209,8 +209,8 @@ test('un contrat à 1 200 € de frais produit un bon d\'installation, et un seu
   assert.equal(b.remise_taux, 0, 'la remise ne s\'applique pas aux frais d\'installation, même avec une remise commerciale de 25 %');
   assert.equal(b.remise_montant, 0);
   assert.equal(b.acces_facturables, 0);
-  assert.equal(b.periode_debut, '2026-11-10', 'la période est le jour de signature');
-  assert.equal(b.periode_fin, '2026-11-10');
+  assert.equal(b.periode_debut, '2026-11-01', 'daté du jour de la mise en production, pas de la signature (voir le test de collision plus bas)');
+  assert.equal(b.periode_fin, '2026-11-01');
   assert.deepEqual(JSON.parse(b.lignes), [{ code: 'installation', quantite: 1, prix_unitaire: 120000, mois: 1, montant: 120000 }]);
 
   // L'éditeur en est prévenu (incident), et le journal garde la génération.
@@ -287,4 +287,64 @@ test('calculerBonInstallation : une ligne, pas de récurrent, pas de remise', ()
 
 test('la grille standard proposée à l\'ouverture d\'un contrat : 7900, 4900, 3900, 2500 centimes', () => {
   assert.deepEqual(GRILLE_STANDARD, { prix_socle: 7900, prix_pilotage: 4900, prix_site: 3900, prix_acces_sup: 2500 });
+});
+
+// ------------------------------------------------------------------ le bon d'installation ne masque pas le premier bon périodique
+
+// `genererBons` pose le bon de la période EN COURS d'un contrat qui n'a « encore aucun bon » (une mise en service tardive ne doit pas rester sans
+// facture). Le bon d'installation, posé à la signature, est un bon : s'il comptait, ce cas ne se déclencherait plus jamais pour un contrat à
+// frais d'installation, et son premier bon périodique n'existerait que si la passe tombait dans les 30 jours AVANT la date anniversaire.
+test('le bon d\'installation ne masque pas le premier bon périodique : posé même quand la période a commencé depuis plus d\'un mois', async () => {
+  const db = baseNeuve();
+  const { id } = enEssai(db, { frais_installation: 120000 });
+  assert.equal((await signerContrat(db, id, '2026-12-16', EDITEUR)).ok, true, 'signé le 45e jour : le service commence ce jour-là');
+  assert.deepEqual(bons(db, id).map((b) => b.type), ['installation']);
+  // Première passe du traitement longtemps après : la période a commencé le 16/12, le « premier bon » est la seule façon de la poser.
+  await passe(db, '2027-02-01');
+  await passe(db, '2027-02-01');
+  assert.deepEqual(bons(db, id).map((b) => [b.type, b.periode_debut, b.periode_fin]), [
+    ['installation', '2026-11-01', '2026-11-01'],
+    ['periode', '2026-12-16', '2027-12-16'],
+  ], 'un bon de période, et un seul, à côté du bon d\'installation');
+  assert.equal(bons(db, id, 'periode')[0].total_ht, 7900 * 12, 'sans les frais');
+});
+
+test('même ordre inverse : le premier bon périodique d\'abord, le bon d\'installation ne le fait ni disparaître ni se dupliquer', async () => {
+  const db = baseNeuve();
+  const { id } = enEssai(db, { frais_installation: 120000 });
+  await signerContrat(db, id, '2026-11-10', EDITEUR); // signé avant la fin d'essai : début de service le 16/12, dans 36 jours
+  await passe(db, '2026-11-10'); // trop tôt pour le bon de période (36 jours) : rien de plus
+  assert.equal(bons(db, id, 'periode').length, 0);
+  await passe(db, '2026-11-20'); // à 26 jours : le bon de la première période
+  await passe(db, '2027-03-01'); // et plus tard, rien de plus
+  await passe(db, '2027-03-01');
+  assert.deepEqual(bons(db, id, 'periode').map((b) => b.periode_debut), ['2026-12-16']);
+  assert.equal(bons(db, id, 'installation').length, 1);
+});
+
+// Le défaut que le test précédent a révélé : daté du jour de la signature, le bon d'installation portait la MÊME clé (contrat, début de période)
+// que le premier bon périodique quand le contrat est signé le jour de la fin d'essai ou après. `poserBon` le prenait pour le bon de la
+// période, le réécrivait (948 € au lieu de 1 200 €, durée d'un an) et le laissait typé « installation » : les frais disparaissaient du produit.
+test('signé le jour même du début de service : le bon d\'installation reste intact, le bon périodique est un autre bon', async () => {
+  const db = baseNeuve();
+  const { id } = enEssai(db, { frais_installation: 120000 });
+  await signerContrat(db, id, '2026-12-16', EDITEUR);
+  const [avant] = bons(db, id, 'installation');
+  for (const jour of ['2026-12-16', '2026-12-20', '2027-01-15', '2027-02-01']) await passe(db, jour);
+  const [apres, ...autres] = bons(db, id, 'installation');
+  assert.equal(autres.length, 0);
+  assert.deepEqual([apres.id, apres.total_ht, apres.recurrent_ht, apres.periode_debut, apres.periode_fin, apres.lignes], [avant.id, 120000, 0, '2026-11-01', '2026-11-01', avant.lignes], 'rien n\'a bougé : 1 200 €, une ligne, un jour');
+  assert.deepEqual(bons(db, id, 'periode').map((b) => [b.total_ht, b.periode_debut]), [[7900 * 12, '2026-12-16']]);
+  assert.equal(db.compte('bon_a_facturer', "type = 'installation' AND total_ht <> 120000"), 0);
+});
+
+test('poserBon ne reprend jamais le bon d\'un autre type : un bon d\'installation qui occuperait la clé d\'une période n\'est pas réécrit', async () => {
+  const db = baseNeuve();
+  const { id } = enEssai(db, { frais_installation: 120000 });
+  await signerContrat(db, id, '2026-12-16', EDITEUR);
+  // Un bon d'installation « mal daté » (comme avant ce lot) : le traitement ne doit pas le transformer en bon périodique.
+  db.exec("UPDATE bon_a_facturer SET periode_debut = '2026-12-16', periode_fin = '2026-12-16' WHERE tenant_id = ? AND type = 'installation'", id);
+  await passe(db, '2027-01-10');
+  const [b] = bons(db, id, 'installation');
+  assert.deepEqual([b.total_ht, b.recurrent_ht], [120000, 0], 'toujours le bon d\'installation de 1 200 €');
 });
