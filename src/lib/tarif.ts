@@ -222,6 +222,39 @@ export function periodeAu(debut_le: string, periodicite: Periodicite, jour: stri
   }
 }
 
+// ---------------------------------------------------------------- la résiliation (lot 17)
+
+/** Un préavis écrit doit être reçu au moins 30 jours avant la date anniversaire. */
+export const JOURS_PREAVIS_RESILIATION = 30;
+/** L'engagement est de douze mois, quelle que soit la périodicité de la facturation : la date anniversaire revient tous les douze mois. */
+export const MOIS_ENGAGEMENT = 12;
+
+const joursApres = (date: string, jours: number): string => new Date(Date.parse(`${date}T00:00:00Z`) + jours * 86_400_000).toISOString().slice(0, 10);
+
+/** La première date anniversaire strictement après `jour` (la première est un an après `debut_le`). */
+export function prochainAnniversaire(debut_le: string, jour: string): string {
+  for (let k = 1; ; k++) {
+    const a = ajouterMois(debut_le, k * MOIS_ENGAGEMENT);
+    if (a > jour) return a;
+  }
+}
+
+/**
+ * La date d'effet d'une résiliation : la première date anniversaire située AU MOINS 30 jours après la réception du préavis (30 jours
+ * pile suffisent). `prochain` est l'anniversaire que le préavis visait (le premier à partir de sa réception) ; s'il n'est pas atteint
+ * à temps, le contrat est reconduit pour douze mois et l'effet est l'anniversaire suivant (`reconduit`). Aucun remboursement au prorata :
+ * la période en cours va à son terme dans tous les cas. Fonction pure.
+ */
+export function dateEffetPreavis(debut_le: string, recu_le: string): { prochain: string; effet: string; reconduit: boolean } {
+  const limite = joursApres(recu_le, JOURS_PREAVIS_RESILIATION);
+  let prochain: string | null = null;
+  for (let k = 1; ; k++) {
+    const a = ajouterMois(debut_le, k * MOIS_ENGAGEMENT);
+    if (prochain === null && a >= recu_le) prochain = a;
+    if (a >= limite) return { prochain: prochain as string, effet: a, reconduit: a !== prochain };
+  }
+}
+
 // ---------------------------------------------------------------- le prorata d'un module activé en cours de période
 
 export interface EntreeComplementaire {

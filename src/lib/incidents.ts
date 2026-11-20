@@ -14,7 +14,8 @@ export const LIBELLES_INCIDENT: Record<string, string> = {
   // Lot 12 : ce que le traitement quotidien dit à l'éditeur. Jamais un courriel : la console, et elle seule.
   bon_a_emettre: 'Bon à facturer à émettre',
   remise_a_revoir: 'Remise commerciale à revoir',
-  purge_bloquee: 'Suppression du J+75 en attente',
+  purge_bloquee: 'Suppression en attente (J+75 de l’essai, J+30 d’une résiliation)',
+  bon_apres_resiliation: 'Bon à annuler : la résiliation prend effet avant sa période',
   traitement_echec: 'Traitement quotidien en échec',
 };
 

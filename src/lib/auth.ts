@@ -5,7 +5,7 @@
 import type { AstroCookies } from 'astro';
 import { utilisateurParId, type Base, type Role, type Utilisateur } from './db';
 import { ACCES_CABINET, ESSAI_ECHU_COUPES, enSql } from './roles';
-import { STATUTS_EN_COURS } from './contrat';
+import { STATUTS_DE_SORTIE, STATUTS_EN_COURS, statutsEnSql } from './contrat';
 
 export const COOKIE = 'bbs';
 
@@ -27,16 +27,17 @@ export const HORS_SUSPENSION =
   `NOT (u.role IN (${enSql(ACCES_CABINET)}) AND EXISTS (SELECT 1 FROM suspension sp WHERE sp.tenant_id = u.tenant_id AND sp.fin_le IS NULL))`;
 
 /**
- * L'essai non converti (lot 12) : à J+45 le contrat passe en `essai_non_converti` et, TANT QU'AUCUN AUTRE contrat n'est en cours,
- * le cabinet se ferme — ses viewers COMPRIS (ESSAI_ECHU_COUPES), contrairement à la suspension commerciale ci-dessus qui les laisse
- * en ligne. L'associé n'est pas coupé ici : il garde l'export de ses données (le middleware le borne à cette seule route). Un
- * contrat `suspendu` (litige de facturation) n'entre pas dans cette condition : seul `essai_non_converti` ferme.
+ * La sortie d'un contrat (lot 12 pour l'essai, lot 17 pour la résiliation) : à J+45 d'un essai le contrat passe en `essai_non_converti`,
+ * à la date d'effet d'une résiliation en `resilie` et, TANT QU'AUCUN AUTRE contrat n'est en cours, le cabinet se ferme — ses viewers
+ * COMPRIS (ESSAI_ECHU_COUPES), contrairement à la suspension commerciale ci-dessus qui les laisse en ligne. L'associé n'est pas coupé
+ * ici : il garde l'export de ses données (le middleware le borne à cette seule route). Un contrat `suspendu` (litige de facturation)
+ * n'entre pas dans cette condition : seuls `essai_non_converti` et `resilie` ferment (STATUTS_DE_SORTIE).
  * Les deux conditions ne se fusionnent pas : elles sont jointes par ACCES_OUVERT, qui est tout ce que les requêtes de session lisent.
  */
 export const HORS_ESSAI_ECHU =
   `NOT (u.role IN (${enSql(ESSAI_ECHU_COUPES)})
-        AND EXISTS (SELECT 1 FROM contrat ce WHERE ce.tenant_id = u.tenant_id AND ce.statut = 'essai_non_converti')
-        AND NOT EXISTS (SELECT 1 FROM contrat ec WHERE ec.tenant_id = u.tenant_id AND ec.statut IN (${STATUTS_EN_COURS.map((x) => `'${x}'`).join(',')})))`;
+        AND EXISTS (SELECT 1 FROM contrat ce WHERE ce.tenant_id = u.tenant_id AND ce.statut IN (${statutsEnSql(STATUTS_DE_SORTIE)}))
+        AND NOT EXISTS (SELECT 1 FROM contrat ec WHERE ec.tenant_id = u.tenant_id AND ec.statut IN (${statutsEnSql(STATUTS_EN_COURS)})))`;
 
 /** Les deux mesures d'accès, chacune avec son périmètre : la suspension du cabinet, la fin d'un essai non converti. */
 export const ACCES_OUVERT = `${HORS_SUSPENSION} AND ${HORS_ESSAI_ECHU}`;

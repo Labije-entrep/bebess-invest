@@ -8,16 +8,17 @@
 
 import type { Base } from './db';
 import {
-  CHAMPS_PRIX, contratEnCours, creerContrat, MESSAGES_CONTRAT, modifierFormule, modifierPrix, poserDpa, poserGelTarif, poserMiseEnProduction,
-  poserStatutFondateur, retirerStatutFondateur, basculerModule, saisirRemise, type CodeContrat, type Module, type Prix,
+  annulerPreavis, CHAMPS_PRIX, contratEnCours, creerContrat, enregistrerPreavis, MESSAGES_CONTRAT, modifierFormule, modifierPrix, poserDpa, poserGelTarif,
+  poserMiseEnProduction, poserStatutFondateur, retirerStatutFondateur, basculerModule, saisirRemise, type CodeContrat, type Module, type Prix,
 } from './contrat';
-import { apercuComplementaire, parrainagesValides } from './facturation';
+import { apercuComplementaire, parrainagesValides, signalerBonsApresEffet } from './facturation';
 import type { Acteur } from './journal';
 import { REMISE_MAX, tauxParrainage } from './tarif';
 
 export type CodeSucces =
   | 'contrat_ouvert' | 'formule_enregistree' | 'prix_enregistres' | 'module_active' | 'module_desactive' | 'remise_enregistree' | 'remise_plafonnee'
-  | 'gel_pose' | 'dpa_pose' | 'production_posee' | 'fondateur_pose' | 'fondateur_retire' | 'desactivation_programmee' | 'desactivation_annulee';
+  | 'gel_pose' | 'dpa_pose' | 'production_posee' | 'fondateur_pose' | 'fondateur_retire' | 'desactivation_programmee' | 'desactivation_annulee'
+  | 'preavis_enregistre' | 'preavis_reconduit' | 'preavis_annule';
 
 export const MESSAGES_SUCCES: Record<CodeSucces, string> = {
   contrat_ouvert: 'Contrat ouvert, en brouillon. Les quatre prix sont recopiés sur le contrat : ils n’existent nulle part ailleurs.',
@@ -35,6 +36,10 @@ export const MESSAGES_SUCCES: Record<CodeSucces, string> = {
   production_posee: 'Mise en production posée : le contrat passe en essai de 45 jours.',
   fondateur_pose: 'Statut fondateur posé : frais d’installation à 0, tarif gelé 24 mois après la signature. Aucun pourcentage de remise.',
   fondateur_retire: 'Statut fondateur retiré. Le gel du tarif déjà posé reste en place : un gel ne se raccourcit jamais.',
+  preavis_enregistre: 'Préavis enregistré : il a été reçu au moins 30 jours avant la date anniversaire, la résiliation prend effet à cette date. Le contrat reste actif jusque-là ; elle s’annule d’ici là.',
+  preavis_reconduit:
+    'Préavis enregistré, mais reçu MOINS de 30 jours avant la date anniversaire : le contrat est reconduit pour douze mois, la résiliation ne prendra effet qu’à l’anniversaire suivant. Aucun remboursement au prorata. Elle s’annule d’ici là.',
+  preavis_annule: 'Résiliation annulée : le contrat se poursuit, sans préavis enregistré.',
 };
 
 export type CodeRetour = CodeSucces | CodeContrat;
@@ -76,7 +81,7 @@ const entier = (texte: string): number | null => (/^\d{1,6}$/.test(texte) ? Numb
 // ---------------------------------------------------------------- appliquer
 
 /**
- * Applique l'écriture que le formulaire demande. `action` : formule, module, remise, gel, dpa, production, fondateur, fondateur_retirer.
+ * Applique l'écriture que le formulaire demande. `action` : formule, module, remise, gel, dpa, production, fondateur, fondateur_retirer, preavis, preavis_annuler.
  * Une saisie illisible est refusée AVANT toute écriture : rien n'est enregistré à moitié.
  */
 export async function appliquerContrat(db: Base, tenantId: string, f: FormData, acteur: Acteur): Promise<RetourContrat> {
@@ -161,6 +166,19 @@ export async function appliquerContrat(db: Base, tenantId: string, f: FormData, 
   if (action === 'fondateur_retirer') {
     const r = await retirerStatutFondateur(db, tenantId, acteur);
     return r.ok ? ok('fondateur_retire') : ko(r.code);
+  }
+
+  if (action === 'preavis') {
+    const r = await enregistrerPreavis(db, tenantId, brut(f, 'preavis_recu_le'), acteur, jour);
+    if (!r.ok) return ko(r.code);
+    // Le bon de la période suivante a pu être posé avant le préavis : la console le voit dans les incidents.
+    if (r.contrat.resiliation_effet_le) await signalerBonsApresEffet(db, tenantId, r.contrat.id, r.contrat.resiliation_effet_le);
+    return ok(r.reconduit ? 'preavis_reconduit' : 'preavis_enregistre');
+  }
+
+  if (action === 'preavis_annuler') {
+    const r = await annulerPreavis(db, tenantId, acteur, jour);
+    return r.ok ? ok('preavis_annule') : ko(r.code);
   }
 
   return ko('inchange');

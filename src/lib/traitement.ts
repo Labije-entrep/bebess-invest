@@ -6,7 +6,8 @@
 // registre des envois). Un travail qui échoue n'arrête pas les autres : l'échec est un incident de la console, sans cabinet.
 //
 // Cinq travaux, dans cet ordre : b (parrainages validés, pour que le bon du jour les compte), a (bons des contrats dont la date
-// anniversaire tombe dans 30 jours, remise de parrainage recalculée), c (essais : J+38, J+45, J+68, J+75), d (remises à revoir),
+// anniversaire tombe dans 30 jours, remise de parrainage recalculée), c (sorties : l'essai à J+38, J+45, J+68, J+75 ; la résiliation à sa
+// date d'effet J, J+23, J+30, lot 17), d (remises à revoir),
 // e (modules : bascule de ceux dont la date d'effet de désactivation est atteinte, lot 15).
 // Aucun appel à un modèle de langage.
 

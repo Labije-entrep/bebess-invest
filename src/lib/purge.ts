@@ -1,4 +1,4 @@
-// La suppression du J+75 (lot 12) : RÉELLE, pas un drapeau. Les données du cabinet et de ses clients finaux sont effacées ; les objets
+// La suppression du J+75 de l'essai non converti (lot 12) et du J+30 d'un contrat résilié (lot 17) : RÉELLE, pas un drapeau. Les données du cabinet et de ses clients finaux sont effacées ; les objets
 // R2 aussi ; le nom de domaine personnalisé est libéré chez Cloudflare.
 //
 // Effacés : comptes (personnel, support, clients finaux), sessions et jetons, dossiers, portefeuilles, valorisations, mouvements,
@@ -15,7 +15,7 @@
 // dans UN `batch` : tout ou rien.
 
 import { libererHoteCloudflare } from './admin';
-import { STATUTS_EN_COURS } from './contrat';
+import { STATUTS_DE_SORTIE, STATUTS_EN_COURS, type StatutContrat } from './contrat';
 import type { Contexte } from './envois';
 import type { Bucket } from './fichiers';
 import { EVENEMENT, requeteEvenement } from './journal';
@@ -75,10 +75,10 @@ async function viderR2(bucket: Bucket, tenantId: string): Promise<number> {
 
 export async function purgerCabinet(ctx: Contexte, contratId: string, tenantId: string): Promise<ResultatPurge> {
   const { db, env } = ctx;
-  // Trois gardes, avant tout geste irréversible : le contrat est bien celui d'un essai non converti, le cabinet n'en a pas de nouveau
-  // en cours, et il n'héberge pas un compte éditeur (on ne supprime pas sa propre console).
+  // Trois gardes, avant tout geste irréversible : le contrat est bien celui d'une sortie (essai non converti ou résilié), le cabinet n'en
+  // a pas de nouveau en cours, et il n'héberge pas un compte éditeur (on ne supprime pas sa propre console).
   const contrat = await db.prepare('SELECT statut FROM contrat WHERE id = ? AND tenant_id = ?').bind(contratId, tenantId).first<{ statut: string }>();
-  if (contrat?.statut !== 'essai_non_converti') return { etat: 'bloque', raison: 'le contrat n’est pas un essai non converti' };
+  if (!contrat || !STATUTS_DE_SORTIE.includes(contrat.statut as StatutContrat)) return { etat: 'bloque', raison: 'le contrat n’est ni un essai non converti ni résilié' };
   const enCours = await db
     .prepare(`SELECT 1 AS ok FROM contrat WHERE tenant_id = ? AND statut IN (${STATUTS_EN_COURS.map((x) => `'${x}'`).join(',')})`)
     .bind(tenantId)
