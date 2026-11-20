@@ -6,7 +6,7 @@
 --
 -- 1. SQLite ne change pas un CHECK en place : la table est reconstruite (copie, DROP, recréation, recopie), comme `contrat` en 0009 et
 --    `utilisateur` en 0008. `avoir` désigne `bon_a_facturer` : les clés étrangères sont différées jusqu'à la fin de la transaction.
--- 2. La période d'un bon d'installation est le jour de la signature (début = fin) : le CHECK « fin après début » ne vaut plus que pour les
+-- 2. La période d'un bon d'installation est un jour, celui de la mise en production (début = fin) : le CHECK « fin après début » ne vaut plus que pour les
 --    deux autres types.
 -- 3. Un seul bon d'installation par contrat : index unique partiel.
 -- 4. Les index et les quatre déclencheurs de 0010 et 0011 sont recréés à l'identique (le déclencheur « un bon émis est figé » est celui de 0011).

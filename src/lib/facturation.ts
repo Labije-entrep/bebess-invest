@@ -104,8 +104,8 @@ type EtatBon = 'cree' | 'actualise' | 'inchange' | 'fige';
 async function poserBon(db: Base, c: Contrat, type: 'periode' | 'complementaire' | 'installation', p: Periode, calc: Calcul, acces: number): Promise<EtatBon> {
   const lignes = JSON.stringify(calc.lignes);
   const existant = await db
-    .prepare('SELECT id, statut, periode_fin, acces_facturables, lignes, recurrent_ht, remise_taux, remise_montant, remise_motif, tva_taux, total_ht FROM bon_a_facturer WHERE contrat_id = ? AND periode_debut = ?')
-    .bind(c.id, p.debut)
+    .prepare('SELECT id, statut, periode_fin, acces_facturables, lignes, recurrent_ht, remise_taux, remise_montant, remise_motif, tva_taux, total_ht FROM bon_a_facturer WHERE contrat_id = ? AND periode_debut = ? AND type = ?')
+    .bind(c.id, p.debut, type)
     .first<{ id: string; statut: string; periode_fin: string; acces_facturables: number; lignes: string; recurrent_ht: number; remise_taux: number; remise_montant: number; remise_motif: string | null; tva_taux: number; total_ht: number }>();
   if (existant) {
     if (existant.statut !== 'brouillon') return 'fige';
@@ -180,7 +180,8 @@ export async function genererBons(ctx: Contexte): Promise<RapportBons> {
     // Une résiliation enregistrée met fin au contrat à sa date d'effet (la date anniversaire) : la période qui commencerait ce jour-là, ou
     // après, n'aura pas lieu et ne se facture pas. La période en cours va à son terme, sans remboursement.
     const periodes = periodesDebutant(debut, c.periodicite, ctx.jour, fenetre).filter((p) => c.resiliation_effet_le === null || p.debut < c.resiliation_effet_le);
-    const aUnBon = await ctx.db.prepare('SELECT 1 AS ok FROM bon_a_facturer WHERE contrat_id = ? LIMIT 1').bind(c.id).first();
+    // Le bon d'installation (posé à la signature) n'est pas un bon de période : il ne dispense pas du premier, celui de la période en cours.
+    const aUnBon = await ctx.db.prepare("SELECT 1 AS ok FROM bon_a_facturer WHERE contrat_id = ? AND type <> 'installation' LIMIT 1").bind(c.id).first();
     if (!aUnBon) {
       const courante = periodeAu(debut, c.periodicite, ctx.jour);
       if (courante && !periodes.some((p) => p.debut === courante.debut)) periodes.unshift(courante);
