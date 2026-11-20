@@ -69,7 +69,7 @@ const periodicite = bon.periodicite === 'mensuelle' ? 'mensuelle' : 'annuelle';
   <article class="bon" aria-labelledby="bon-titre">
     <header class="bon-tete">
       <div>
-        <h1 id="bon-titre">{bon.type === 'complementaire' ? 'Bon à facturer complémentaire' : 'Bon à facturer'}</h1>
+        <h1 id="bon-titre">{bon.type === 'complementaire' ? 'Bon à facturer complémentaire' : bon.type === 'installation' ? 'Bon à facturer d’installation' : 'Bon à facturer'}</h1>
         <p class="aide">{STATUTS[bon.statut]}{bon.emis_le && ` le ${dateCourte(bon.emis_le)}`}{bon.annule_le && ` · annulé le ${dateCourte(bon.annule_le)}`}</p>
       </div>
       <p class="bon-numero">{bon.numero ?? <span class="aide">Numéro attribué à l’émission</span>}</p>
@@ -80,8 +80,10 @@ const periodicite = bon.periodicite === 'mensuelle' ? 'mensuelle' : 'annuelle';
       <dt class="etiquette">SIREN</dt><dd class={manque('siren') ? 'perime' : undefined}>{bon.identite.siren ? afficherSiren(bon.identite.siren) : 'MANQUANT'}</dd>
       <dt class="etiquette">Adresse de facturation</dt><dd class={manque('adresse_facturation') ? 'perime' : 'bon-multi'}>{bon.identite.adresse_facturation ?? 'MANQUANTE'}</dd>
       <dt class="etiquette">Contact de facturation</dt><dd class={manque('contact_facturation') ? 'perime' : undefined}>{bon.identite.contact_facturation ?? 'MANQUANT'}</dd>
-      <dt class="etiquette">Période</dt><dd>Du {dateCourte(bon.periode_debut)} au {dateCourte(bon.periode_fin)} ({periodicite})</dd>
-      <dt class="etiquette">Accès facturables</dt><dd>{bon.acces_facturables}</dd>
+      {bon.type === 'installation'
+        ? <><dt class="etiquette">Date</dt><dd>{dateCourte(bon.periode_debut)} (mise en production)</dd></>
+        : <><dt class="etiquette">Période</dt><dd>Du {dateCourte(bon.periode_debut)} au {dateCourte(bon.periode_fin)} ({periodicite})</dd>
+      <dt class="etiquette">Accès facturables</dt><dd>{bon.acces_facturables}</dd></>}
     </dl>
 
     <div class="defile">
@@ -91,7 +93,7 @@ const periodicite = bon.periodicite === 'mensuelle' ? 'mensuelle' : 'annuelle';
           {bon.lignes.map((l) => (
             <tr><td>{l.libelle}</td><td class="num">{l.quantite}</td><td class="num">{eurosPrecis(l.prix_unitaire)}</td><td class="num">{l.mois}</td><td class="num">{eurosPrecis(l.montant)}</td></tr>
           ))}
-          <tr><td colspan="4">Sous-total HT</td><td class="num">{eurosPrecis(bon.recurrent_ht)}</td></tr>
+          {bon.type !== 'installation' && <tr><td colspan="4">Sous-total HT</td><td class="num">{eurosPrecis(bon.recurrent_ht)}</td></tr>}
           {bon.remise_taux > 0 && (
             <tr>
               <td colspan="4">Remise {tauxEnTexte(bon.remise_taux)}{bon.remise_motif && <><br /><span class="aide">{bon.remise_motif}</span></>}</td>

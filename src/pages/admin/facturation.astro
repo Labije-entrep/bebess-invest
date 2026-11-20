@@ -52,8 +52,8 @@ const oui = (n: number) => (n ? 'oui' : 'non');
                   <tr>
                     <td>{dateCourte(b.periode_debut)}</td>
                     <td><a href={cab(b.tenant_id)}>{b.cabinet}</a></td>
-                    <td>{b.type === 'complementaire' ? 'Complémentaire' : 'Périodique'}</td>
-                    <td>{dateCourte(b.periode_debut)} au {dateCourte(b.periode_fin)}</td>
+                    <td>{b.type === 'complementaire' ? 'Complémentaire' : b.type === 'installation' ? 'Installation' : 'Périodique'}</td>
+                    <td>{b.periode_debut === b.periode_fin ? dateCourte(b.periode_debut) : `${dateCourte(b.periode_debut)} au ${dateCourte(b.periode_fin)}`}</td>
                     <td class="num">{eurosPrecis(b.total_ht)}</td>
                     <td class={manque.length ? 'perime' : undefined}>{manque.length ? `Manque : ${manque.map((m) => LIBELLES_IDENTITE[m]).join(', ')}` : 'Complète'}</td>
                     <td>{b.numero ?? '—'}</td>

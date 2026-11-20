@@ -345,10 +345,24 @@ test('contenu du site : chaque cabinet ne modifie que ses pages et ses notes', a
   assert.deepEqual(db.un('SELECT * FROM note_marche WHERE id = ?', cab.B.donnees.note), noteB);
 });
 
-// Ce que le cahier des charges demande (404) et ce que la route fait (une redirection vers la liste, identique à un identifiant inconnu) :
-// un écart, relevé par ce banc, pas corrigé ici. Le test décrit l'attendu ; il reste « à faire » tant que la route ne répond pas 404.
-test('contenu du site : la note d\'un autre cabinet répond 404 sur sa page d\'édition', { todo: 'écart : la route redirige (302) vers la liste des notes, comme pour un identifiant inconnu' }, async () => {
-  const { cab, env, cookie } = await monde();
-  const r = await envoyer(env, { url: `/gestionnaire/notes/${cab.B.donnees.note}`, hote: cab.A.hote, cookie: cookie(cab.A) });
-  assert.equal(r.statut, 404);
+// La règle « 404, jamais 403 » n'a pas d'exception : la note d'un autre cabinet, comme une note inconnue, répond 404 (lot 19 ; la route
+// redirigeait auparavant vers la liste, sans rien divulguer mais en s'écartant de la règle).
+test('contenu du site : la note d\'un autre cabinet, en lecture comme en écriture, répond 404, comme une note inconnue', async () => {
+  const { cab, env, cookie, db } = await monde();
+  const noteB = db.un('SELECT * FROM note_marche WHERE id = ?', cab.B.donnees.note);
+  for (const [x, y] of PAIRES) {
+    const c = cookie(cab[x]);
+    for (const methode of ['GET', 'POST']) {
+      const extra = methode === 'POST' ? { formulaire: { titre: 'Piratée', slug: 'p', date: '2026-06-01', corps_md: 'x' } } : {};
+      const etranger = await envoyer(env, { url: `/gestionnaire/notes/${cab[y].donnees.note}`, hote: cab[x].hote, cookie: c, ...extra });
+      const inconnu = await envoyer(env, { url: '/gestionnaire/notes/inconnue', hote: cab[x].hote, cookie: c, ...extra });
+      assert.equal(etranger.statut, 404, `${x} → ${y} : ${methode}`);
+      memeReponse(etranger, inconnu, `${x} → ${y} : ${methode}`);
+    }
+  }
+  assert.deepEqual(db.un('SELECT * FROM note_marche WHERE id = ?', cab.B.donnees.note), noteB);
+  assert.equal(db.compte('note_marche', "titre = 'Piratée'"), 0);
+  // La sienne s'ouvre, et « nouveau » aussi.
+  assert.equal((await envoyer(env, { url: `/gestionnaire/notes/${cab.A.donnees.note}`, hote: cab.A.hote, cookie: cookie(cab.A) })).statut, 200);
+  assert.equal((await envoyer(env, { url: '/gestionnaire/notes/nouveau', hote: cab.A.hote, cookie: cookie(cab.A) })).statut, 200);
 });

@@ -19,7 +19,7 @@ import { cleDeFacture, cleFacture, deposer, type Bucket, type Depot } from './fi
 import { identiteFacturation, identiteManquante, type ChampIdentite, type IdentiteFacturation } from './identite';
 import { ACCES_FACTURABLES, enSql } from './roles';
 import {
-  calculerBon, calculerComplementaire, calculerTva, motifRemise, periodeAu, periodesDebutant, tauxParrainage, tauxRemise, TVA_TAUX,
+  calculerBon, calculerComplementaire, calculerInstallation, calculerTva, motifRemise, periodeAu, periodesDebutant, tauxParrainage, tauxRemise, TVA_TAUX,
   type LigneBon, type Periode,
 } from './tarif';
 
@@ -101,7 +101,7 @@ type EtatBon = 'cree' | 'actualise' | 'inchange' | 'fige';
  * Pose le bon d'une période : le crée, ou met à jour le brouillon existant s'il a changé, ou ne touche à rien (déjà là et pareil,
  * ou déjà émis). La CRÉATION seule écrit un événement et prévient l'éditeur : rejouer ne prévient jamais deux fois.
  */
-async function poserBon(db: Base, c: Contrat, type: 'periode' | 'complementaire', p: Periode, calc: Calcul, acces: number): Promise<EtatBon> {
+async function poserBon(db: Base, c: Contrat, type: 'periode' | 'complementaire' | 'installation', p: Periode, calc: Calcul, acces: number): Promise<EtatBon> {
   const lignes = JSON.stringify(calc.lignes);
   const existant = await db
     .prepare('SELECT id, statut, periode_fin, acces_facturables, lignes, recurrent_ht, remise_taux, remise_montant, remise_motif, tva_taux, total_ht FROM bon_a_facturer WHERE contrat_id = ? AND periode_debut = ?')
@@ -165,6 +165,8 @@ export interface RapportBons {
   crees: number;
   actualises: number;
   complementaires: number;
+  /** Les bons d'installation posés pendant cette passe. */
+  installations: number;
 }
 
 /**
@@ -173,14 +175,15 @@ export interface RapportBons {
  * cours (une mise en service tardive ne doit pas rester sans facture).
  */
 export async function genererBons(ctx: Contexte): Promise<RapportBons> {
-  const rapport: RapportBons = { crees: 0, actualises: 0, complementaires: 0 };
+  const rapport: RapportBons = { crees: 0, actualises: 0, complementaires: 0, installations: 0 };
   const fenetre = plusJours(ctx.jour, JOURS_AVANT_ANNIVERSAIRE);
   for (const c of await contratsActifs(ctx.db)) {
     const debut = c.debut_le as string;
     // Une résiliation enregistrée met fin au contrat à sa date d'effet (la date anniversaire) : la période qui commencerait ce jour-là, ou
     // après, n'aura pas lieu et ne se facture pas. La période en cours va à son terme, sans remboursement.
     const periodes = periodesDebutant(debut, c.periodicite, ctx.jour, fenetre).filter((p) => c.resiliation_effet_le === null || p.debut < c.resiliation_effet_le);
-    const aUnBon = await ctx.db.prepare('SELECT 1 AS ok FROM bon_a_facturer WHERE contrat_id = ? LIMIT 1').bind(c.id).first();
+    // Le bon d'installation (posé dès la mise en production, pendant l'essai) n'est pas un bon de période : il ne dispense pas du premier.
+    const aUnBon = await ctx.db.prepare("SELECT 1 AS ok FROM bon_a_facturer WHERE contrat_id = ? AND type <> 'installation' LIMIT 1").bind(c.id).first();
     if (!aUnBon) {
       const courante = periodeAu(debut, c.periodicite, ctx.jour);
       if (courante && !periodes.some((p) => p.debut === courante.debut)) periodes.unshift(courante);
@@ -213,6 +216,7 @@ export async function genererBons(ctx: Contexte): Promise<RapportBons> {
     }
   }
   rapport.complementaires = await genererComplementaires(ctx);
+  rapport.installations = await genererBonsInstallation(ctx);
   return rapport;
 }
 
@@ -354,6 +358,76 @@ export async function signalerBonsAnnulesParPreavis(db: Base, tenantId: string, 
   return results.length;
 }
 
+// ---------------------------------------------------------------- le bon d'installation (lot 19)
+
+/**
+ * Le bon d'installation : les frais d'installation du contrat, facturés UNE fois, à la mise en production. Le bon à facturer fait le pont
+ * entre « je n'ai pas d'outil de facturation » et « je ne dois pas oublier de facturer » : sans lui, rien ne rappelait ce qu'un cabinet doit
+ * à la signature, puisque le bon périodique ne porte jamais ces frais.
+ *
+ *   - Posé pour tout contrat qui a une date de mise en production, un statut en cours (essai, actif, suspendu : pas un cabinet sorti) et des
+ *     frais non nuls. Un contrat à frais nuls (un cabinet fondateur) n'en produit aucun : pas de bon à zéro euro.
+ *   - UN seul par contrat, quel que soit son statut : la base le garantit (idx_bon_installation). Un bon annulé ne se recrée pas, une date de
+ *     mise en production corrigée n'en crée pas un second.
+ *   - Une ligne, aucun récurrent, aucune remise (l'assiette des remises est le récurrent seul). Daté du jour de la mise en production.
+ *   - Comme les autres, un BROUILLON suit le contrat (les frais corrigés avant l'émission) ; un bon émis ne bouge plus.
+ *
+ * Rejoué, il ne crée jamais un second bon, ne répète ni l'événement ni l'incident. Renvoie le nombre de bons posés.
+ */
+export async function genererBonsInstallation(ctx: Contexte): Promise<number> {
+  const { results } = await ctx.db
+    .prepare(
+      `SELECT id, tenant_id, date_mise_en_production, frais_installation FROM contrat
+        WHERE statut IN ('essai', 'actif', 'suspendu') AND date_mise_en_production IS NOT NULL AND frais_installation > 0
+        ORDER BY tenant_id, id`,
+    )
+    .bind()
+    .all<{ id: string; tenant_id: string; date_mise_en_production: string; frais_installation: number }>();
+  let crees = 0;
+  for (const c of results) {
+    const calc = calculerInstallation(c.frais_installation);
+    if (!calc) continue;
+    const lignes = JSON.stringify(calc.lignes);
+    const existant = await ctx.db
+      .prepare("SELECT id, statut, lignes, total_ht FROM bon_a_facturer WHERE contrat_id = ? AND type = 'installation'")
+      .bind(c.id)
+      .first<{ id: string; statut: string; lignes: string; total_ht: number }>();
+    if (existant) {
+      if (existant.statut === 'brouillon' && (existant.lignes !== lignes || existant.total_ht !== calc.total_ht)) {
+        await ctx.db
+          .prepare("UPDATE bon_a_facturer SET lignes = ?, total_ht = ? WHERE id = ? AND statut = 'brouillon'")
+          .bind(lignes, calc.total_ht, existant.id)
+          .run();
+      }
+      continue;
+    }
+    const id = crypto.randomUUID();
+    const jour = c.date_mise_en_production;
+    const r = await ctx.db.batch([
+      ctx.db
+        .prepare(
+          `INSERT INTO bon_a_facturer (id, tenant_id, contrat_id, type, periode_debut, periode_fin, statut, acces_facturables, lignes, recurrent_ht,
+                                       remise_taux, remise_montant, remise_motif, tva_taux, total_ht, cree_le)
+           VALUES (?, ?, ?, 'installation', ?, ?, 'brouillon', 0, ?, 0, 0, 0, NULL, ?, ?, ?)
+           ON CONFLICT DO NOTHING`,
+        )
+        .bind(id, c.tenant_id, c.id, jour, jour, lignes, TVA_TAUX, calc.total_ht, new Date().toISOString()),
+      requeteEvenement(
+        ctx.db,
+        {
+          tenantId: c.tenant_id, type: EVENEMENT.BON_GENERE, acteur: null, cible: { type: 'contrat', id: c.id },
+          detail: { bon_id: id, type: 'installation', periode_debut: jour, periode_fin: jour, remise_taux: 0, total_ht: calc.total_ht },
+        },
+        true,
+      ),
+    ]);
+    if (lignesModifiees(r[0]) === 0) continue;
+    await noterIncident(ctx.db, c.tenant_id, 'bon_a_emettre', `Bon d'installation du ${jour} : ${eur(calc.total_ht)} HT. À émettre.`);
+    crees++;
+  }
+  return crees;
+}
+
 // ---------------------------------------------------------------- remises à revoir
 
 export interface RemiseARevoir {
@@ -397,7 +471,7 @@ export interface Bon {
   id: string;
   tenant_id: string;
   contrat_id: string;
-  type: 'periode' | 'complementaire';
+  type: 'periode' | 'complementaire' | 'installation';
   periode_debut: string;
   periode_fin: string;
   statut: 'brouillon' | 'emise' | 'annulee';
@@ -525,6 +599,7 @@ export interface LigneBonComplet extends LigneBon {
 
 /** Les libellés des postes, tels que le bon et la page d'abonnement les écrivent. */
 export const LIBELLES_LIGNE: Record<LigneBon['code'], string> = {
+  installation: 'Frais d’installation',
   socle: 'Socle',
   pilotage: 'Module Pilotage',
   site: 'Module Site vitrine',
@@ -536,7 +611,7 @@ export interface BonComplet {
   id: string;
   tenant_id: string;
   contrat_id: string;
-  type: 'periode' | 'complementaire';
+  type: 'periode' | 'complementaire' | 'installation';
   statut: 'brouillon' | 'emise' | 'annulee';
   numero: string | null;
   emis_le: string | null;
@@ -561,7 +636,7 @@ export interface BonComplet {
 }
 
 interface LigneSql {
-  id: string; tenant_id: string; contrat_id: string; type: 'periode' | 'complementaire'; statut: 'brouillon' | 'emise' | 'annulee';
+  id: string; tenant_id: string; contrat_id: string; type: 'periode' | 'complementaire' | 'installation'; statut: 'brouillon' | 'emise' | 'annulee';
   numero: string | null; emis_le: string | null; annule_le: string | null; periode_debut: string; periode_fin: string; periodicite: string;
   facture_cle: string | null; acces_facturables: number; lignes: string; recurrent_ht: number; remise_taux: number; remise_montant: number;
   remise_motif: string | null; total_ht: number; tva_taux: number;
@@ -599,7 +674,7 @@ export interface LigneListeBon {
   id: string;
   tenant_id: string;
   cabinet: string;
-  type: 'periode' | 'complementaire';
+  type: 'periode' | 'complementaire' | 'installation';
   statut: 'brouillon' | 'emise' | 'annulee';
   periode_debut: string;
   periode_fin: string;

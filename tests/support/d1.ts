@@ -59,21 +59,29 @@ export interface BaseTest extends Base {
   compte(table: string, ou?: string, ...valeurs: Valeur[]): number;
 }
 
-export function baseNeuve(): BaseTest {
+/** `jusqua` : s'arrêter à cette migration comprise (« 0013 »), pour éprouver la suivante sur une base qui a déjà des lignes. */
+export function baseNeuve(jusqua?: string): BaseTest {
   const brut = new DatabaseSync(':memory:');
   brut.exec('PRAGMA foreign_keys = ON');
-  const fichiers = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort();
-  for (const f of fichiers) {
-    // D1 applique une migration dans une transaction.
-    brut.exec('BEGIN');
-    try {
-      brut.exec(readFileSync(MIGRATIONS + f, 'utf8'));
-      brut.exec('COMMIT');
-    } catch (e) {
-      brut.exec('ROLLBACK');
-      throw new Error(`migration ${f} : ${e instanceof Error ? e.message : e}`);
-    }
+  for (const f of listerMigrations().filter((x) => !jusqua || x.slice(0, 4) <= jusqua)) appliquer(brut, f);
+  return enrober(brut);
+}
+
+export const listerMigrations = (): string[] => readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort();
+
+/** Applique une migration comme D1 : dans une transaction. */
+export function appliquer(brut: DatabaseSync, f: string): void {
+  brut.exec('BEGIN');
+  try {
+    brut.exec(readFileSync(MIGRATIONS + f, 'utf8'));
+    brut.exec('COMMIT');
+  } catch (e) {
+    brut.exec('ROLLBACK');
+    throw new Error(`migration ${f} : ${e instanceof Error ? e.message : e}`);
   }
+}
+
+export function enrober(brut: DatabaseSync): BaseTest {
   const db: BaseTest = {
     brut,
     prepare: (sql) => new RequeteD1(brut, sql),

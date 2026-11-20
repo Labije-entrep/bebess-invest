@@ -102,7 +102,7 @@ const mois = (n: number) => `${n} mois`;
               {v.factures.map((f) => (
                 <tr>
                   <td>{f.numero}</td>
-                  <td>{dateCourte(f.periode_debut)} au {dateCourte(f.periode_fin)}</td>
+                  <td>{f.periode_debut === f.periode_fin ? dateCourte(f.periode_debut) : `${dateCourte(f.periode_debut)} au ${dateCourte(f.periode_fin)}`}</td>
                   <td class="num">{eurosPrecis(f.total_ht)}</td>
                   <td><a href={`/gestionnaire/reglages/abonnement/facture/${encodeURIComponent(f.id)}`}>Télécharger</a></td>
                 </tr>

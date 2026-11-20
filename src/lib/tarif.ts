@@ -17,7 +17,7 @@ import type { Role } from './db';
 import { ACCES_FACTURABLES } from './roles.ts';
 
 export type Periodicite = 'mensuelle' | 'annuelle';
-export type CodeLigne = 'socle' | 'pilotage' | 'site' | 'acces_sup';
+export type CodeLigne = 'socle' | 'pilotage' | 'site' | 'acces_sup' | 'installation';
 
 /** Le plafond de la remise, et celui de la remise de parrainage seule : 50 %. */
 export const REMISE_MAX = 5000;
@@ -285,4 +285,18 @@ export function calculerComplementaire(e: EntreeComplementaire): BonComplementai
   const remise_taux = Math.min(REMISE_MAX, Math.max(0, e.remise_taux));
   const remise_montant = appliquer(recurrent_ht, remise_taux);
   return { lignes, recurrent_ht, remise_taux, remise_montant, total_ht: recurrent_ht - remise_montant, mois };
+}
+
+// ---------------------------------------------------------------- le bon d'installation (lot 19)
+
+/**
+ * Le bon d'installation : UNE ligne, les frais du contrat, une fois. Pas de récurrent (donc pas d'assiette), donc pas de remise : l'assiette
+ * des remises est le récurrent seul. Null quand il n'y a pas de frais : un contrat à frais nuls (un cabinet fondateur) n'a pas de bon à zéro euro.
+ */
+export function calculerInstallation(frais: number): Omit<Bon, 'frais_installation_ht'> | null {
+  if (!Number.isInteger(frais) || frais <= 0) return null;
+  return {
+    lignes: [{ code: 'installation', quantite: 1, prix_unitaire: frais, mois: 1, montant: frais }],
+    recurrent_ht: 0, remise_taux: 0, remise_montant: 0, total_ht: frais,
+  };
 }

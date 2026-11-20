@@ -6,11 +6,11 @@
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { baseNeuve, type BaseTest } from './support/d1.ts';
-import { nouveauCompte, poserContrat, poserTenant, type Contrat } from './support/monde.ts';
-import { environnement, reseau } from './support/serveur.ts';
+import { cabinetEditeur, nouveauCompte, ouvrirSession, poserContrat, poserTenant, type Contrat } from './support/monde.ts';
+import { dernier, envoyer, environnement, reseau } from './support/serveur.ts';
 import { traitementQuotidien } from '../src/lib/traitement';
-import { accesFacturables, annulerBon, bonComplet, emettreBon } from '../src/lib/facturation';
-import { basculerModule } from '../src/lib/contrat';
+import { accesFacturables, annulerBon, bonComplet, bonsParStatut, emettreBon } from '../src/lib/facturation';
+import { basculerModule, modifierFormule, poserMiseEnProduction, poserStatutFondateur } from '../src/lib/contrat';
 import type { LigneBon } from '../src/lib/tarif';
 
 const EDITEUR = { id: 'u-editeur', role: 'editeur' as const };
@@ -387,4 +387,180 @@ test('numérotation : la base refuse un numéro modifié, un bon effacé, un mon
   // Le journal est en écriture seule.
   assert.throws(() => db.exec("UPDATE evenement SET type = 'x'"), /écriture seule/);
   assert.throws(() => db.exec('DELETE FROM evenement'), /écriture seule/);
+});
+
+// ------------------------------------------------------------------ le bon d'installation (lot 19)
+
+const FRAIS = 120000; // 1 200 €
+const MEP = '2026-11-01';
+const installations = (db: BaseTest, tenant: string) => bons(db, tenant).filter((b) => b.type === 'installation');
+/** Un cabinet à 1 200 € de frais, mis en production par la vraie fonction (DPA signé, essai de 45 jours). */
+async function enProduction(db: BaseTest, c: Partial<Contrat> = {}, jour = MEP): Promise<Cab> {
+  const cab = cabinet(db, { statut: 'brouillon', debut_le: null, frais_installation: FRAIS, ...c });
+  const r = await poserMiseEnProduction(db, cab.id, jour, EDITEUR);
+  assert.equal(r.ok, true);
+  return cab;
+}
+
+test('installation : 1 200 € de frais mis en production → un bon de 1 200 €, et un seul, même après trois passes', async () => {
+  const db = baseNeuve();
+  const env = environnement(db);
+  const c = await enProduction(db);
+  assert.equal(installations(db, c.id).length, 0, 'rien avant la passe du traitement');
+  const rapport = await passe(env, '2026-11-02');
+  assert.equal(rapport.bons?.installations, 1);
+  await passe(env, '2026-11-02');
+  await passe(env, '2026-11-03');
+  const [b] = installations(db, c.id);
+  assert.equal(installations(db, c.id).length, 1);
+  assert.equal(b.total_ht, FRAIS);
+  assert.deepEqual(lignes(b).map((l) => [l.code, l.quantite, l.prix_unitaire, l.mois, l.montant]), [['installation', 1, FRAIS, 1, FRAIS]], 'une seule ligne');
+  assert.equal(b.recurrent_ht, 0, 'aucun récurrent');
+  assert.equal(b.remise_taux, 0);
+  assert.equal(b.remise_montant, 0);
+  assert.equal(b.remise_motif, null);
+  assert.equal(b.statut, 'brouillon');
+  assert.equal(b.numero, null);
+  assert.deepEqual([b.periode_debut, b.periode_fin], [MEP, MEP], 'daté du jour de la mise en production');
+  assert.equal(db.compte('evenement', "type = 'bon_genere' AND cible_id = ? AND detail LIKE '%installation%'", c.contrat), 1, 'un seul événement');
+  assert.equal(db.compte('incident', "quoi = 'bon_a_emettre' AND tenant_id = ?", c.id), 1, 'l\'éditeur n\'est prévenu qu\'une fois');
+  assert.match(db.un<{ detail: string }>("SELECT detail FROM incident WHERE quoi = 'bon_a_emettre' AND tenant_id = ?", c.id)!.detail, /installation.*1200,00 €/);
+});
+
+test('installation : la remise ne s\'applique pas — l\'assiette des remises est le récurrent seul', async () => {
+  const db = baseNeuve();
+  const env = environnement(db);
+  const marraine = await enProduction(db, { remise_commerciale_taux: 4000, remise_motif: 'Réseau' });
+  db.exec("UPDATE contrat SET remise_revue_le = '2027-06-01' WHERE id = ?", marraine.contrat);
+  for (const f of [cabinet(db, { debut_le: '2026-01-10' }), cabinet(db, { debut_le: '2026-02-10' })]) {
+    db.exec("INSERT INTO parrainage (id, tenant_id, filleul_tenant_id, statut, cree_le) VALUES (?, ?, ?, 'valide', '2026-01-01')", `p-${f.id}`, marraine.id, f.id);
+  }
+  await passe(env, '2026-11-02');
+  const [b] = installations(db, marraine.id);
+  assert.equal(b.total_ht, FRAIS, 'ni 40 %, ni 50 % de parrainage : 1 200 € pleins');
+  assert.equal(b.remise_taux, 0);
+  // La base le refuse aussi : un bon d'installation avec récurrent ou remise, ou à zéro euro, n'entre pas.
+  const ligne = (o: string) => `UPDATE bon_a_facturer SET ${o} WHERE id = '${b.id}'`;
+  assert.throws(() => db.exec(ligne('remise_taux = 2500, remise_montant = 30000')), /CHECK/);
+  assert.throws(() => db.exec(ligne('recurrent_ht = 1000')), /CHECK/);
+  assert.throws(() => db.exec(ligne('total_ht = 0')), /CHECK/);
+});
+
+test('installation : un contrat à frais nuls (cabinet fondateur) n\'en produit aucun — pas de bon à zéro euro', async () => {
+  const db = baseNeuve();
+  const env = environnement(db);
+  // Un fondateur : le statut met les frais à zéro (vraie fonction), avant ou après la mise en production.
+  const avant = cabinet(db, { statut: 'brouillon', debut_le: null, frais_installation: FRAIS });
+  const f = await poserStatutFondateur(db, avant.id, '2026-11-01', EDITEUR);
+  assert.equal(f.ok && f.contrat.frais_installation, 0);
+  assert.equal((await poserMiseEnProduction(db, avant.id, MEP, EDITEUR)).ok, true);
+  const nuls = await enProduction(db, { frais_installation: 0 });
+  const rapport = await passe(env, '2026-11-02');
+  await passe(env, '2026-11-03');
+  assert.equal(rapport.bons?.installations, 0);
+  assert.equal(installations(db, avant.id).length, 0);
+  assert.equal(installations(db, nuls.id).length, 0);
+  assert.equal(db.compte('bon_a_facturer', "type = 'installation'"), 0);
+});
+
+test('installation : seulement avec une mise en production, et pour un contrat en cours', async () => {
+  const db = baseNeuve();
+  const env = environnement(db);
+  const sansMep = cabinet(db, { statut: 'brouillon', debut_le: null, frais_installation: FRAIS });
+  const actifSansMep = cabinet(db, { statut: 'actif', frais_installation: FRAIS });
+  const sortis = [await enProduction(db), await enProduction(db)];
+  db.exec("UPDATE contrat SET statut = 'essai_non_converti' WHERE id = ?", sortis[0].contrat);
+  db.exec("UPDATE contrat SET statut = 'resilie' WHERE id = ?", sortis[1].contrat);
+  await passe(env, '2026-11-02');
+  for (const c of [sansMep, actifSansMep, ...sortis]) assert.equal(installations(db, c.id).length, 0, c.id);
+  // Pour un contrat déjà en production avant ce lot, le traitement rattrape : le bon est posé à la première passe.
+  const ancien = cabinet(db, { statut: 'actif', frais_installation: FRAIS, date_mise_en_production: '2026-03-01', date_fin_essai: '2026-04-15' });
+  await passe(env, '2026-11-02');
+  assert.deepEqual(installations(db, ancien.id).map((b) => [b.periode_debut, b.total_ht]), [['2026-03-01', FRAIS]]);
+});
+
+test('installation : il apparaît dans les bons à émettre, s\'émet, se numérote et s\'annule comme les autres', async () => {
+  const db = baseNeuve();
+  const env = environnement(db);
+  const c = await enProduction(db);
+  await passe(env, '2026-11-02');
+  const aEmettre = await bonsParStatut(db, 'brouillon');
+  assert.deepEqual(aEmettre.filter((b) => b.tenant_id === c.id).map((b) => [b.type, b.total_ht]), [['installation', FRAIS]]);
+  const [b] = installations(db, c.id);
+  const complet = await bonComplet(db, b.id);
+  assert.equal(complet?.type, 'installation');
+  assert.deepEqual(complet?.lignes.map((l) => l.libelle), ['Frais d’installation']);
+  assert.deepEqual([complet?.total_ht, complet?.tva_montant, complet?.total_ttc], [FRAIS, 24000, 144000], '1 200 € HT, 240 € de TVA, 1 440 € TTC');
+
+  const emis = await emettreBon(db, c.id, b.id, EDITEUR);
+  assert.equal(emis.ok && /^FACT-\d{4}-0001$/.test(emis.bon.numero ?? ''), true);
+  assert.equal((await bonsParStatut(db, 'brouillon')).some((x) => x.id === b.id), false, 'émis : il sort des bons à émettre');
+  assert.equal((await bonsParStatut(db, 'emise')).some((x) => x.id === b.id), true);
+  // Annulé, il ne se recrée pas : un seul bon d'installation par contrat, quel que soit son statut.
+  const an = await annulerBon(db, c.id, b.id, EDITEUR);
+  assert.equal(an.ok && an.avoir?.montant_ht, FRAIS);
+  await passe(env, '2026-11-03');
+  await passe(env, '2026-11-04');
+  assert.equal(installations(db, c.id).length, 1);
+  assert.equal(installations(db, c.id)[0].statut, 'annulee');
+});
+
+test('installation : la console liste le bon (type et date), et la page du bon s\'ouvre', async () => {
+  const db = baseNeuve();
+  const env = environnement(db);
+  const c = await enProduction(db);
+  await passe(env, '2026-11-02');
+  const ed = cabinetEditeur(db);
+  const cookie = ouvrirSession(db, ed.editeur);
+  const liste = await envoyer(env, { url: '/admin/facturation?onglet=bons&statut=brouillon', hote: ed.hote, cookie });
+  assert.equal(liste.statut, 200);
+  const rendus = (dernier.rendu?.bons ?? []) as { type: string; tenant_id: string; total_ht: number }[];
+  assert.deepEqual(rendus.filter((b) => b.tenant_id === c.id).map((b) => [b.type, b.total_ht]), [['installation', FRAIS]]);
+  const page = await envoyer(env, { url: `/admin/bons/${installations(db, c.id)[0].id}`, hote: ed.hote, cookie });
+  assert.equal(page.statut, 200);
+});
+
+test('installation : un brouillon suit les frais du contrat, un bon émis ne bouge plus, une date de mise en production corrigée n\'en crée pas un second', async () => {
+  const db = baseNeuve();
+  const env = environnement(db);
+  const c = await enProduction(db);
+  await passe(env, '2026-11-02');
+  const f = await modifierFormule(db, c.id, { frais_installation: 90000 }, EDITEUR);
+  assert.equal(f.ok, true);
+  await passe(env, '2026-11-03');
+  assert.equal(installations(db, c.id)[0].total_ht, 90000, 'les frais corrigés avant l\'émission : le brouillon suit');
+  // Date de mise en production corrigée : le même bon, pas un second.
+  assert.equal((await poserMiseEnProduction(db, c.id, '2026-11-05', EDITEUR)).ok, true);
+  await passe(env, '2026-11-06');
+  await passe(env, '2026-11-07');
+  assert.equal(installations(db, c.id).length, 1);
+  assert.equal(installations(db, c.id)[0].periode_debut, MEP, 'le bon garde sa date');
+  // Émis : figé, quoi que devienne le contrat ensuite.
+  await emettreBon(db, c.id, installations(db, c.id)[0].id, EDITEUR);
+  await modifierFormule(db, c.id, { frais_installation: 50000 }, EDITEUR);
+  await passe(env, '2026-11-08');
+  assert.equal(installations(db, c.id)[0].total_ht, 90000);
+  assert.equal(installations(db, c.id).length, 1);
+});
+
+test('installation : le bon périodique suivant ne contient toujours pas les frais, et l\'installation ne dispense pas du premier bon de période', async () => {
+  const db = baseNeuve();
+  const env = environnement(db);
+  const c = await enProduction(db, { remise_commerciale_taux: 2500, remise_motif: 'Réseau' });
+  db.exec("UPDATE contrat SET remise_revue_le = '2027-06-01' WHERE id = ?", c.contrat);
+  await passe(env, '2026-11-02');
+  assert.equal(bons(db, c.id).filter((b) => b.type === 'periode').length, 0, 'en essai : pas de bon de période');
+  // L'essai devient contrat : début de service au 16/12/2026. Le traitement pose le bon de la période en cours, malgré le bon d'installation.
+  db.exec("UPDATE contrat SET statut = 'actif', debut_le = '2026-12-16' WHERE id = ?", c.contrat);
+  await passe(env, '2027-01-20'); // la période a commencé depuis plus d'un mois : seul le « premier bon » (période en cours) peut la poser
+  await passe(env, '2027-11-20'); // un an plus tard : le bon de la période suivante
+  const periodiques = bons(db, c.id).filter((b) => b.type === 'periode');
+  assert.deepEqual(periodiques.map((b) => b.periode_debut), ['2026-12-16', '2027-12-16']);
+  for (const b of periodiques) {
+    assert.equal(b.recurrent_ht, 7900 * 12);
+    assert.equal(b.total_ht, 7900 * 9, `${b.periode_debut} : récurrent moins 25 %, sans les 1 200 €`);
+    assert.deepEqual(Object.keys(montants(b)), ['socle']);
+  }
+  assert.equal(installations(db, c.id).length, 1, 'et toujours un seul bon d\'installation');
+  assert.equal(installations(db, c.id)[0].total_ht, FRAIS);
 });

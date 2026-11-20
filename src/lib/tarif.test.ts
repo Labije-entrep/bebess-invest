@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ajouterMois, calculerBon, calculerComplementaire, compterAccesFacturables, dateEffetPreavis, moisArrondisAuSuperieur, periodeAu, periodesDebutant,
+  ajouterMois, calculerBon, calculerComplementaire, calculerInstallation, compterAccesFacturables, dateEffetPreavis, moisArrondisAuSuperieur, periodeAu, periodesDebutant,
   prixMensuel, prochainAnniversaire, tauxParrainage, tauxRemise, type EntreeBon,
 } from './tarif.ts';
 
@@ -131,4 +131,12 @@ test('résiliation : 30 jours pile suffisent, 29 non ; jamais avant le premier a
   assert.equal(dateEffetPreavis('2026-03-14', '2027-02-13').effet, '2028-03-14'); // 29 jours
   assert.deepEqual(dateEffetPreavis('2026-03-14', '2026-04-01'), { prochain: '2027-03-14', effet: '2027-03-14', reconduit: false });
   assert.equal(prochainAnniversaire('2026-03-14', '2027-03-14'), '2028-03-14');
+});
+
+test('bon d\'installation : une ligne, les frais, aucun récurrent, aucune remise ; rien sans frais', () => {
+  assert.deepEqual(calculerInstallation(120000), {
+    lignes: [{ code: 'installation', quantite: 1, prix_unitaire: 120000, mois: 1, montant: 120000 }],
+    recurrent_ht: 0, remise_taux: 0, remise_montant: 0, total_ht: 120000,
+  });
+  for (const frais of [0, -100, 1200.5, Number.NaN]) assert.equal(calculerInstallation(frais), null, String(frais));
 });
