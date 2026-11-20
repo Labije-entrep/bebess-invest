@@ -4,7 +4,7 @@ import { dossierFerme, sessionCourante } from './lib/auth';
 import { envDe } from './lib/mail';
 import { appartient } from './lib/cloisonnement';
 import { COMPTES_EDITEUR, EXPORT_ESSAI_ECHU, GESTION_LIT, REGLAGES, aLeRole } from './lib/roles';
-import { essaiEchu } from './lib/essai';
+import { sortieDuCabinet, type GenreSortie } from './lib/essai';
 import { journaliserAccesEditeur } from './lib/journal';
 import { estPageSite, estRouteContenu, estRoutePilotage, modulesDuTenant, type Modules } from './lib/modules';
 
@@ -56,13 +56,15 @@ function pageDossierFerme(cabinet: string): Response {
   return new Response(html, { status: 403, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
-// Ce que voit l'associé d'un cabinet dont l'essai n'a pas été converti (lot 12) : le cabinet est fermé, sauf l'export de ses données, qui
-// reste ouvert jusqu'à la suppression. Un message, pas une erreur technique ; rien du cabinet n'est lu pour l'afficher.
-function pageEssaiEchu(cabinet: string): Response {
+// Ce que voit l'associé d'un cabinet dont l'essai n'a pas été converti (lot 12) ou dont le contrat est résilié (lot 17) : le cabinet est
+// fermé, sauf l'export de ses données, qui reste ouvert jusqu'à la suppression. Un message, pas une erreur technique ; rien du cabinet
+// n'est lu pour l'afficher.
+function pageEssaiEchu(cabinet: string, genre: GenreSortie): Response {
+  const titre = genre === 'resiliation' ? `Le contrat de ${echapper(cabinet)} est résilié` : `L’essai de ${echapper(cabinet)} est terminé`;
   const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">` +
-    `<meta name="robots" content="noindex"><title>Essai terminé · ${echapper(cabinet)}</title></head>` +
+    `<meta name="robots" content="noindex"><title>${genre === 'resiliation' ? 'Contrat résilié' : 'Essai terminé'} · ${echapper(cabinet)}</title></head>` +
     `<body style="font-family: system-ui, sans-serif; max-width: 34rem; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.6">` +
-    `<h1 style="font-weight: 300">L’essai de ${echapper(cabinet)} est terminé</h1>` +
+    `<h1 style="font-weight: 300">${titre}</h1>` +
     `<p>L’accès au cabinet et les espaces de ses clients sont suspendus.</p>` +
     `<p>Vos données restent disponibles jusqu’à leur suppression définitive : vous pouvez en télécharger l’export complet.</p>` +
     `<p><a href="${EXPORT_ESSAI_ECHU}">Télécharger l’export complet</a></p>` +
@@ -143,12 +145,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // Un dossier archivé ferme l'accès de son viewer (auth.ts, dossierFerme). Ce n'est PAS la suspension d'un cabinet, qui laisse
   // les viewers en ligne : deux mécanismes opposés, à ne pas faire converger. /deconnexion reste ouverte.
   const archive = !refuse && dossierFerme(u) && (sous(chemin, '/espace') || sous(chemin, '/fichiers'));
-  // Essai non converti : l'associé garde l'export et rien d'autre. Les autres rôles du cabinet et les viewers sont coupés plus tôt, à la
+  // Essai non converti ou contrat résilié : l'associé garde l'export et rien d'autre. Les autres rôles du cabinet et les viewers sont coupés plus tôt, à la
   // session (auth.ts, HORS_ESSAI_ECHU) : leur session n'existe plus. Ce mécanisme n'a rien de commun avec la suspension commerciale d'un
   // cabinet sous contrat, qui laisse les viewers en ligne.
-  const essaiFerme =
+  const sortie: GenreSortie | null =
     !refuse && !!tenant && u?.role === 'associe' && chemin !== EXPORT_ESSAI_ECHU &&
-    ['/gestionnaire', '/api/suivi', '/fichiers'].some((p) => sous(chemin, p)) && (await essaiEchu(DB, tenant.id));
+    ['/gestionnaire', '/api/suivi', '/fichiers'].some((p) => sous(chemin, p))
+      ? await sortieDuCabinet(DB, tenant.id)
+      : null;
   // Un module non acheté : 404, jamais 403. Sans session, une route gardée redirige comme avant vers /connexion (rien n'est annoncé).
   // Le site public non acheté : la racine mène à /connexion, les autres pages sont introuvables.
   // Les écrans de contenu (notes de marché, textes) suivent le module Site vitrine : leur seul lecteur est le site public.
@@ -162,8 +166,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
   const reponse = archive
     ? pageDossierFerme(tenant?.nom ?? 'votre cabinet')
-    : essaiFerme
-    ? pageEssaiEchu(tenant?.nom ?? 'votre cabinet')
+    : sortie !== null
+    ? pageEssaiEchu(tenant?.nom ?? 'votre cabinet', sortie)
     : moduleFerme
     ? new Response('Introuvable.', { status: 404 })
     : siteFerme

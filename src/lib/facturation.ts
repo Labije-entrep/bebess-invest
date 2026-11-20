@@ -6,8 +6,9 @@
 // Rejouabilité : la clé (contrat_id, periode_debut) de `bon_a_facturer` fait qu'une passe rejouée dix fois ne crée qu'un bon. Un
 // BROUILLON suit le contrat (accès, modules, remises) tant qu'il n'est pas émis ; un bon ÉMIS ne bouge plus.
 //
-// Aucun courriel ici. « Notifier l'éditeur », c'est une ligne dans les incidents de la console (incidents.ts) : les quatre courriels
-// de l'essai sont les seuls envois automatiques du produit vers un cabinet, et rien n'en part sur l'abonnement.
+// Aucun courriel ici. « Notifier l'éditeur », c'est une ligne dans les incidents de la console (incidents.ts) : les six courriels
+// de la sortie (quatre pour l'essai, deux pour la résiliation, essai.ts) sont les seuls envois automatiques du produit vers un cabinet,
+// et rien n'en part sur l'abonnement.
 
 import type { Base } from './db';
 import { contratsActifs, plusJours, saisirRemise, STATUTS_EN_COURS, type Contrat } from './contrat';
@@ -176,7 +177,9 @@ export async function genererBons(ctx: Contexte): Promise<RapportBons> {
   const fenetre = plusJours(ctx.jour, JOURS_AVANT_ANNIVERSAIRE);
   for (const c of await contratsActifs(ctx.db)) {
     const debut = c.debut_le as string;
-    const periodes = periodesDebutant(debut, c.periodicite, ctx.jour, fenetre);
+    // Une résiliation enregistrée met fin au contrat à sa date d'effet (la date anniversaire) : la période qui commencerait ce jour-là, ou
+    // après, n'aura pas lieu et ne se facture pas. La période en cours va à son terme, sans remboursement.
+    const periodes = periodesDebutant(debut, c.periodicite, ctx.jour, fenetre).filter((p) => c.resiliation_effet_le === null || p.debut < c.resiliation_effet_le);
     const aUnBon = await ctx.db.prepare('SELECT 1 AS ok FROM bon_a_facturer WHERE contrat_id = ? LIMIT 1').bind(c.id).first();
     if (!aUnBon) {
       const courante = periodeAu(debut, c.periodicite, ctx.jour);
@@ -283,6 +286,27 @@ export async function apercuComplementaire(db: Base, c: Contrat, module: 'pilota
     activation: jour, anniversaire: periode.fin, remise_taux: taux,
   });
   return bon ? { mois: bon.mois, total_ht: bon.total_ht, anniversaire: periode.fin } : null;
+}
+
+// ---------------------------------------------------------------- les bons que la résiliation rend caducs
+
+/**
+ * Un préavis enregistré APRÈS la pose du bon de la période suivante : ce bon (début à la date d'effet ou après) ne correspond plus à rien.
+ * Rien n'est annulé d'office : un bon annulé ne se rouvre pas, et un préavis peut encore s'annuler (le bon manquerait alors). Une ligne
+ * dans les incidents de la console, par bon, une seule fois : l'éditeur annule le bon, ou l'avoir suit s'il est déjà émis.
+ */
+export async function signalerBonsApresEffet(db: Base, tenantId: string, contratId: string, effet: string): Promise<number> {
+  const { results } = await db
+    .prepare("SELECT id, statut, periode_debut, periode_fin FROM bon_a_facturer WHERE contrat_id = ? AND tenant_id = ? AND statut <> 'annulee' AND periode_debut >= ? ORDER BY periode_debut")
+    .bind(contratId, tenantId, effet)
+    .all<{ id: string; statut: string; periode_debut: string; periode_fin: string }>();
+  for (const b of results) {
+    await noterIncident(
+      db, tenantId, 'bon_apres_resiliation',
+      `Bon du ${b.periode_debut} au ${b.periode_fin} (${b.statut === 'emise' ? 'émis : un avoir est à faire' : 'brouillon : à annuler'}) : la résiliation prend effet le ${effet}, cette période n'aura pas lieu.`,
+    );
+  }
+  return results.length;
 }
 
 // ---------------------------------------------------------------- remises à revoir

@@ -2,8 +2,9 @@
 // La fiche contrat d'un cabinet, dans la console de l'éditeur (lot 14). Six rubriques, un formulaire chacune, tous vers `${base}/contrat`.
 // Aucune règle n'est tenue ici : les formulaires ne masquent rien, la route refuse et dit pourquoi (contrat.ts porte les garde-fous).
 import { dateCourte, eurosPrecis } from '../../lib/format';
-import { MOIS_GEL_FONDATEUR, MOTIF_FONDATEUR, estFondateur, tarifGele, type Contrat } from '../../lib/contrat';
-import { REMISE_MAX, tauxEnTexte, tauxRemise, tauxParrainage } from '../../lib/tarif';
+import { MOIS_GEL_FONDATEUR, MOTIF_FONDATEUR, STATUTS_EN_SERVICE, estFondateur, plusJours, tarifGele, type Contrat } from '../../lib/contrat';
+import { JOURS_PREAVIS_RESILIATION, MOIS_ENGAGEMENT, REMISE_MAX, dateEffetPreavis, prochainAnniversaire, tauxEnTexte, tauxRemise, tauxParrainage } from '../../lib/tarif';
+import { JOURS_AVIS_APRES_FIN, JOURS_SUPPRESSION_APRES_FIN } from '../../lib/essai';
 
 interface Apercu { mois: number; total_ht: number; anniversaire: string }
 interface Props {
@@ -18,8 +19,10 @@ interface Props {
   parrainagesValides: number;
   /** Ce que coûterait l'activation de chaque module aujourd'hui (prorata du lot 12), ou null. */
   apercus: { pilotage: Apercu | null; site: Apercu | null };
+  /** Le contrat résilié du cabinet, quand il n'en a plus d'autre en cours : la suite du calendrier de sortie (lot 17). */
+  resilie: { preavis_recu_le: string | null; resiliation_effet_le: string; purge: boolean } | null;
 }
-const { contrat: c, base, jour, retour, attendu, fondateurs, parrainagesValides, apercus } = Astro.props;
+const { contrat: c, base, jour, retour, attendu, fondateurs, parrainagesValides, apercus, resilie } = Astro.props;
 
 const saisieEuros = (n: number | undefined): string => (n === undefined ? '' : (n / 100).toFixed(2).replace('.', ','));
 const saisieTaux = (n: number): string => String(n / 100).replace('.', ',');
@@ -30,6 +33,12 @@ const gele = c ? tarifGele(c, jour) : false;
 const fondateur = c ? estFondateur(c) : false;
 const parrainage = tauxParrainage(parrainagesValides);
 const effectif = c ? tauxRemise(parrainage, c.remise_commerciale_taux) : 0;
+// La résiliation (lot 17) : la date d'effet est posée sur le contrat ; « reconduit » se relit sur les deux dates, sans rien stocker de plus.
+const enService = c ? STATUTS_EN_SERVICE.includes(c.statut) : false;
+const anniversaire = c?.debut_le ? prochainAnniversaire(c.debut_le, jour) : null;
+const effet = c?.resiliation_effet_le ?? null;
+const calcul = c?.debut_le && c.preavis_recu_le ? dateEffetPreavis(c.debut_le, c.preavis_recu_le) : null;
+const sortie = (d: string, n: number): string => dateCourte(plusJours(d, n));
 const MODULES: { code: 'pilotage' | 'site'; nom: string; actif: boolean; fin: string | null }[] = c
   ? [
       { code: 'pilotage', nom: 'Pilotage', actif: !!c.module_pilotage, fin: c.module_pilotage_fin_le },
@@ -220,5 +229,64 @@ const MODULES: { code: 'pilotage' | 'site'; nom: string; actif: boolean; fin: st
       </form>
     )}
     {fondateur && <p class="aide">Retirer le statut est journalisé. Il ne lève pas le gel du tarif déjà posé : un gel ne se raccourcit jamais.</p>}
+
+    <hr class="filet" />
+    <h3>7. Résiliation</h3>
+    <p class="aide">
+      <strong>Un préavis écrit reçu au moins {JOURS_PREAVIS_RESILIATION} jours avant la date anniversaire prend effet à cette date ; sinon le contrat est reconduit pour {MOIS_ENGAGEMENT} mois.</strong>
+      Aucun remboursement au prorata : la période en cours va à son terme. Le contrat reste actif jusqu’à la date d’effet ; le traitement quotidien le passe alors en résilié.
+    </p>
+    {effet ? (
+      <>
+        <p class={calcul?.reconduit ? 'info alerte' : 'info'} role="status">
+          Préavis reçu le <strong>{dateCourte(c.preavis_recu_le as string)}</strong>. Date d’effet de la résiliation : <strong>{dateCourte(effet)}</strong>.
+          {calcul?.reconduit && <> <strong>Reconduction de douze mois :</strong> le préavis est arrivé moins de {JOURS_PREAVIS_RESILIATION} jours avant la date anniversaire du {dateCourte(calcul.prochain)}, le contrat se poursuit donc jusqu’au {dateCourte(effet)}.</>}
+          {effet <= jour && <> La date d’effet est atteinte : la résiliation n’est plus annulable, le traitement quotidien clôt le contrat.</>}
+        </p>
+        <p class="aide">
+          À la date d’effet ({dateCourte(effet)}) : l’accès du cabinet et les espaces de ses clients sont suspendus ; l’associé garde l’export ; courriel annonçant la suppression au {sortie(effet, JOURS_SUPPRESSION_APRES_FIN)}, avec le lien d’export.
+          Au {sortie(effet, JOURS_AVIS_APRES_FIN)} : courriel « suppression dans une semaine ». Au {sortie(effet, JOURS_SUPPRESSION_APRES_FIN)} : suppression réelle (base, fichiers, domaine personnalisé libéré).
+          Conservés : raison sociale, SIREN, contact, historique du contrat, factures émises, journal.
+        </p>
+        {effet > jour && (
+          <form method="post" action={`${base}/contrat`} class="actions">
+            <input type="hidden" name="action" value="preavis_annuler" />
+            <button class="btn" type="submit">Annuler la résiliation</button>
+          </form>
+        )}
+      </>
+    ) : !enService ? (
+      <p class="info" role="status">Un préavis ne s’enregistre que sur un contrat actif ou suspendu. Pendant l’essai, aucun préavis n’est nécessaire : un essai non converti se clôt de lui-même au 45e jour.</p>
+    ) : !anniversaire ? (
+      <p class="info alerte" role="status">Ce contrat n’a pas de date de début de service : sans elle, pas de date anniversaire, donc pas de date d’effet. Renseignez-la d’abord.</p>
+    ) : (
+      <>
+        <p class="aide">
+          Prochaine date anniversaire : <strong>{dateCourte(anniversaire)}</strong>. Un préavis reçu au plus tard le <strong>{dateCourte(plusJours(anniversaire, -JOURS_PREAVIS_RESILIATION))}</strong> prend effet le {dateCourte(anniversaire)} ;
+          reçu plus tard, il vaut reconduction jusqu’au {dateCourte(prochainAnniversaire(c.debut_le as string, anniversaire))}. La date d’effet calculée s’affiche après l’enregistrement.
+        </p>
+        <form method="post" action={`${base}/contrat`} class="actions">
+          <input type="hidden" name="action" value="preavis" />
+          <label class="etiquette" for="preavis_recu_le">Préavis écrit reçu le</label>
+          <input class="champ" id="preavis_recu_le" name="preavis_recu_le" type="date" max={jour} required style="max-width: 14rem" />
+          <button class="btn" type="submit">Enregistrer le préavis</button>
+        </form>
+      </>
+    )}
   </>
 )}
+
+{!c && resilie && (
+  <>
+    <hr class="filet" />
+    <h3>Résiliation</h3>
+    <p class="info alerte" role="status">
+      Contrat résilié depuis le <strong>{dateCourte(resilie.resiliation_effet_le)}</strong>{resilie.preavis_recu_le ? <> (préavis reçu le {dateCourte(resilie.preavis_recu_le)})</> : ''}.
+      L’accès du cabinet et les espaces de ses clients sont suspendus ; l’associé garde l’export.
+      {resilie.purge
+        ? <> Les données ont été supprimées. Restent : raison sociale, SIREN, contact, historique du contrat, factures émises, journal.</>
+        : <> Suppression réelle le <strong>{sortie(resilie.resiliation_effet_le, JOURS_SUPPRESSION_APRES_FIN)}</strong> (rappel d’une semaine le {sortie(resilie.resiliation_effet_le, JOURS_AVIS_APRES_FIN)}).</>}
+    </p>
+  </>
+)}
+

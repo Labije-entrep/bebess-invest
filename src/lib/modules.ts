@@ -15,11 +15,14 @@
 //                                   bridée. Un essai amputé ne prouverait rien ici. » (spécification tarifaire) ;
 //   statut actif ou suspendu      → les drapeaux font foi ; l'essai qui devient contrat les rend donc à leur valeur : un module non pris
 //                                   se ferme à la signature ;
-//   statut resilie ou essai_non_converti → hors de ce fichier : le calendrier de sortie s'applique (contrat.ts, essai.ts).
+//   statut resilie ou essai_non_converti, sans nouveau contrat en cours
+//                               → tout fermé (lot 17). Le cabinet est en sortie : ses accès, ses viewers et ses modules sont coupés (auth.ts),
+//                                 seul l'export de l'associé reste ouvert jusqu'à la suppression (essai.ts). Avant ce lot, l'absence de
+//                                 contrat « en cours » rouvrait tout pour ces deux statuts : un cabinet résilié gardait l'accès complet.
 // Le drapeau lu est celui du contrat ; une désactivation programmée ne le baisse qu'à sa date (contrat.ts).
 
 import type { Base } from './db';
-import { STATUTS_EN_COURS } from './contrat';
+import { STATUTS_DE_SORTIE, STATUTS_EN_COURS, statutsEnSql } from './contrat';
 
 export interface Modules {
   pilotage: boolean;
@@ -27,6 +30,7 @@ export interface Modules {
 }
 
 export const TOUT_OUVERT: Modules = { pilotage: true, site: true };
+export const TOUT_FERME: Modules = { pilotage: false, site: false };
 
 /** Les routes du module de suivi (préfixes) : l'espace du personnel, son API, et les fichiers qui n'ont de sens que dedans. */
 export const ROUTES_PILOTAGE = [
@@ -59,10 +63,16 @@ export const estRouteContenu = (chemin: string): boolean => ROUTES_SITE_CONTENU.
 export const estPageSite = (chemin: string): boolean => PAGES_SITE.some((p) => (p === '/' ? chemin === '/' : sous(chemin, p)));
 
 export async function modulesDuTenant(db: Base, tenantId: string): Promise<Modules> {
+  // Le contrat en cours l'emporte ; à défaut, le plus récent contrat sorti. Une seule lecture.
   const c = await db
-    .prepare(`SELECT statut, module_pilotage, module_site FROM contrat WHERE tenant_id = ? AND statut IN (${STATUTS_EN_COURS.map((x) => `'${x}'`).join(',')})`)
+    .prepare(
+      `SELECT statut, module_pilotage, module_site FROM contrat
+        WHERE tenant_id = ? AND statut IN (${statutsEnSql(STATUTS_EN_COURS)}, ${statutsEnSql(STATUTS_DE_SORTIE)})
+        ORDER BY CASE WHEN statut IN (${statutsEnSql(STATUTS_DE_SORTIE)}) THEN 1 ELSE 0 END, maj_le DESC LIMIT 1`,
+    )
     .bind(tenantId)
     .first<{ statut: string; module_pilotage: number; module_site: number }>();
   if (!c || c.statut === 'brouillon' || c.statut === 'essai') return TOUT_OUVERT;
+  if (c.statut === 'resilie' || c.statut === 'essai_non_converti') return TOUT_FERME;
   return { pilotage: c.module_pilotage === 1, site: c.module_site === 1 };
 }

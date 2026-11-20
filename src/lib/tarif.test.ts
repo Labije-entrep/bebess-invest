@@ -3,8 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ajouterMois, calculerBon, calculerComplementaire, compterAccesFacturables, moisArrondisAuSuperieur, periodeAu, periodesDebutant,
-  prixMensuel, tauxParrainage, tauxRemise, type EntreeBon,
+  ajouterMois, calculerBon, calculerComplementaire, compterAccesFacturables, dateEffetPreavis, moisArrondisAuSuperieur, periodeAu, periodesDebutant,
+  prixMensuel, prochainAnniversaire, tauxParrainage, tauxRemise, type EntreeBon,
 } from './tarif.ts';
 
 const BASE: EntreeBon = {
@@ -118,4 +118,17 @@ test('périodes : début à la date anniversaire, bornes comprises', () => {
   assert.deepEqual(periodeAu('2026-03-14', 'annuelle', '2026-11-20'), { debut: '2026-03-14', fin: '2027-03-14' });
   assert.deepEqual(periodeAu('2026-03-14', 'annuelle', '2027-03-14'), { debut: '2027-03-14', fin: '2028-03-14' });
   assert.equal(periodeAu('2026-03-14', 'annuelle', '2026-03-13'), null);
+});
+
+test('résiliation : préavis à 40 jours de l’anniversaire = effet à cet anniversaire ; à 20 jours = reconduction de douze mois', () => {
+  // Début au 14/03/2026 : anniversaires au 14/03/2027, 14/03/2028.
+  assert.deepEqual(dateEffetPreavis('2026-03-14', '2027-02-02'), { prochain: '2027-03-14', effet: '2027-03-14', reconduit: false }); // 40 jours
+  assert.deepEqual(dateEffetPreavis('2026-03-14', '2027-02-22'), { prochain: '2027-03-14', effet: '2028-03-14', reconduit: true }); // 20 jours
+});
+
+test('résiliation : 30 jours pile suffisent, 29 non ; jamais avant le premier anniversaire', () => {
+  assert.equal(dateEffetPreavis('2026-03-14', '2027-02-12').effet, '2027-03-14'); // 30 jours
+  assert.equal(dateEffetPreavis('2026-03-14', '2027-02-13').effet, '2028-03-14'); // 29 jours
+  assert.deepEqual(dateEffetPreavis('2026-03-14', '2026-04-01'), { prochain: '2027-03-14', effet: '2027-03-14', reconduit: false });
+  assert.equal(prochainAnniversaire('2026-03-14', '2027-03-14'), '2028-03-14');
 });

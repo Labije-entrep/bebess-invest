@@ -8,7 +8,7 @@ import { dateCourte } from '../../../lib/format';
 import { identiteFacturation, identiteManquante, LIBELLES_IDENTITE } from '../../../lib/identite';
 import { afficherSiren } from '../../../lib/siren';
 import ContratCabinet from '../../../components/admin/ContratCabinet.astro';
-import { compterFondateurs, contratEnCours } from '../../../lib/contrat';
+import { compterFondateurs, contratEnCours, contratResilie } from '../../../lib/contrat';
 import { MESSAGES_RETOUR } from '../../../lib/contrat-ecran';
 import { apercuComplementaire, parrainagesValides } from '../../../lib/facturation';
 
@@ -20,7 +20,7 @@ const cabinet = await cabinetDe(g.db, id);
 if (!cabinet) return new Response('Introuvable.', { status: 404 });
 await accesCabinet(g, cabinet.id, `GET ${Astro.url.pathname}`);
 
-const [domaines, acces, suspensions, recents, identite, contrat, fondateurs, valides] = await Promise.all([
+const [domaines, acces, suspensions, recents, identite, contrat, fondateurs, valides, resilie] = await Promise.all([
   domainesDe(g.db, cabinet.id),
   accesDuCabinet(g.db, cabinet.id),
   suspensionsDe(g.db, cabinet.id),
@@ -29,6 +29,7 @@ const [domaines, acces, suspensions, recents, identite, contrat, fondateurs, val
   contratEnCours(g.db, cabinet.id),
   compterFondateurs(g.db),
   parrainagesValides(g.db, cabinet.id),
+  contratResilie(g.db, cabinet.id),
 ]);
 const manque = identite ? identiteManquante(identite) : [];
 const cf = configCloudflare(g.env);
@@ -97,14 +98,14 @@ const horodate = (iso: string) => `${dateCourte(iso)} à ${iso.slice(11, 16)} UT
   <p class="aide">Associés, collaborateurs et lecture. Le compte de support de l’éditeur n’est jamais compté ni affiché ici.</p>
 
   <hr class="filet" />
-  <ContratCabinet contrat={contrat} base={base} jour={jour} retour={retourContrat} attendu={attendu} fondateurs={fondateurs} parrainagesValides={valides} apercus={apercus} />
+  <ContratCabinet contrat={contrat} base={base} jour={jour} retour={retourContrat} attendu={attendu} fondateurs={fondateurs} parrainagesValides={valides} apercus={apercus} resilie={resilie} />
 
   <hr class="filet" />
   <h2>Facturation</h2>
   {manque.length > 0 && (
     <p class="info alerte" role="status">Identité de facturation incomplète : {manque.map((m) => LIBELLES_IDENTITE[m]).join(', ')} {manque.length > 1 ? 'manquent' : 'manque'}. Le bon à facturer le signale et ne s’émet pas sans confirmation.</p>
   )}
-  <p class="aide">La raison sociale est le nom du cabinet : {cabinet.nom}. Le SIREN, l’adresse et le contact figurent sur chaque bon à facturer ; ils survivent à la suppression du J+75, avec la raison sociale.</p>
+  <p class="aide">La raison sociale est le nom du cabinet : {cabinet.nom}. Le SIREN, l’adresse et le contact figurent sur chaque bon à facturer ; ils survivent à la suppression des données (J+75 d’un essai, J+30 d’une résiliation), avec la raison sociale.</p>
   <form method="post" action={`${base}/facturation`} style="max-width: 32rem">
     <div class="groupe">
       <label class="etiquette" for="siren">SIREN</label>

@@ -8,7 +8,8 @@
 //   4. une date de mise en production est refusée tant que `dpa_signe_le` est vide ; elle fait passer le contrat en essai.
 //
 // Statuts : brouillon, essai, actif, suspendu, resilie, essai_non_converti. Les quatre premiers sont « en cours » (un seul par
-// locataire) ; resilie et essai_non_converti sont de l'historique. Le lot 12 déclenche le calendrier d'essai sur ces statuts.
+// locataire) ; resilie et essai_non_converti sont de l'historique (STATUTS_DE_SORTIE) : le cabinet est fermé, le calendrier de sortie court
+// (essai.ts : lot 12 pour l'essai non converti, lot 17 pour la résiliation).
 // `suspendu` est le statut du CONTRAT (litige de facturation) : rien à voir avec la suspension d'un cabinet (admin.ts), qui est
 // une mesure d'accès et ne change pas le contrat.
 //
@@ -18,7 +19,7 @@
 import type { Base } from './db';
 import { EVENEMENT, journaliser, requeteEvenement, type Acteur } from './journal';
 import { lignesModifiees } from './envois';
-import { ajouterMois, periodeAu } from './tarif';
+import { ajouterMois, dateEffetPreavis, periodeAu } from './tarif';
 
 export interface Prix {
   prix_socle: number;
@@ -32,6 +33,12 @@ export const STATUTS_CONTRAT = ['brouillon', 'essai', 'actif', 'suspendu', 'resi
 export type StatutContrat = (typeof STATUTS_CONTRAT)[number];
 /** Ceux d'un contrat « en cours » : le locataire n'en a qu'un. */
 export const STATUTS_EN_COURS: StatutContrat[] = ['brouillon', 'essai', 'actif', 'suspendu'];
+/** Ceux d'un contrat SORTI : le cabinet est fermé (accès, viewers, modules) tant qu'il n'en a pas de nouveau en cours, puis ses données sont supprimées. */
+export const STATUTS_DE_SORTIE: StatutContrat[] = ['essai_non_converti', 'resilie'];
+/** Ceux d'un contrat en service, qu'un préavis de résiliation peut viser. */
+export const STATUTS_EN_SERVICE: StatutContrat[] = ['actif', 'suspendu'];
+/** Une liste de statuts pour une clause SQL « IN (…) » : seules des constantes de ce fichier y passent. */
+export const statutsEnSql = (statuts: readonly StatutContrat[]): string => statuts.map((x) => `'${x}'`).join(',');
 /** Durée de l'essai, à compter de la mise en production. */
 export const JOURS_ESSAI = 45;
 
@@ -59,6 +66,8 @@ export interface Contrat extends Prix {
   remise_revue_le: string | null;
   dpa_signe_le: string | null;
   preavis_recu_le: string | null;
+  /** Lot 17 : la date d'effet de la résiliation, calculée à l'enregistrement du préavis ; null tant qu'aucun préavis n'est enregistré. */
+  resiliation_effet_le: string | null;
   /** Date de signature du contrat : le gel d'un fondateur se calcule dessus. */
   date_signature: string | null;
   /** Le jour où le statut fondateur a été posé ; null : pas fondateur. C'est cette colonne, et elle seule, qui fait le statut. */
@@ -73,13 +82,17 @@ export interface Contrat extends Prix {
 const COLONNES =
   `id, tenant_id, statut, periodicite, debut_le, fin_le, date_mise_en_production, date_fin_essai, ${CHAMPS_PRIX.join(', ')}, module_pilotage, module_site,
    acces_inclus, frais_installation, tarif_gele_jusqu_au, remise_parrainage_taux, remise_commerciale_taux, remise_motif, remise_revue_le,
-   dpa_signe_le, preavis_recu_le, date_signature, fondateur_le, module_pilotage_fin_le, module_site_fin_le, cree_le, maj_le`;
+   dpa_signe_le, preavis_recu_le, resiliation_effet_le, date_signature, fondateur_le, module_pilotage_fin_le, module_site_fin_le, cree_le, maj_le`;
 
 export type CodeContrat =
   | 'aucun_contrat' | 'deja_un_contrat' | 'tarif_gele' | 'gel_raccourci' | 'gel_efface' | 'deja_en_production' | 'dpa_manquant' | 'date_invalide' | 'montant_invalide' | 'taux_invalide'
-  | 'motif_requis' | 'revue_requise' | 'periodicite' | 'inchange' | 'signature_manquante' | 'pas_fondateur' | 'effet_atteint';
-/** `effet` : pour un module, ce que l'écriture a fait (immédiat, désactivation programmée, programmation annulée). */
-export type ResultatContrat = { ok: true; contrat: Contrat; effet?: 'immediat' | 'programme' | 'annule' } | { ok: false; code: CodeContrat };
+  | 'motif_requis' | 'revue_requise' | 'periodicite' | 'inchange' | 'signature_manquante' | 'pas_fondateur' | 'effet_atteint'
+  | 'preavis_hors_service' | 'debut_manquant' | 'preavis_existant' | 'preavis_futur' | 'effet_passe' | 'aucun_preavis' | 'preavis_effet_atteint';
+/**
+ * `effet` : pour un module, ce que l'écriture a fait (immédiat, désactivation programmée, programmation annulée).
+ * `reconduit` : pour un préavis, vrai quand il est arrivé trop tard pour la prochaine date anniversaire (reconduction de douze mois).
+ */
+export type ResultatContrat = { ok: true; contrat: Contrat; effet?: 'immediat' | 'programme' | 'annule'; reconduit?: boolean } | { ok: false; code: CodeContrat };
 
 export const MESSAGES_CONTRAT: Record<CodeContrat, string> = {
   aucun_contrat: 'Ce cabinet n’a pas de contrat en cours.',
@@ -99,6 +112,13 @@ export const MESSAGES_CONTRAT: Record<CodeContrat, string> = {
   signature_manquante: 'Le statut fondateur exige la date de signature du contrat : le gel du tarif se calcule dessus (signature + 24 mois). Renseignez-la.',
   pas_fondateur: 'Ce cabinet ne porte pas le statut fondateur.',
   effet_atteint: 'La date d’effet est atteinte : la désactivation n’est plus annulable. Le traitement quotidien bascule le module.',
+  preavis_hors_service: 'Un préavis ne vaut que pour un contrat actif ou suspendu. Un essai non converti se clôt de lui-même au 45e jour.',
+  debut_manquant: 'Ce contrat n’a pas de date de début de service : sans elle, pas de date anniversaire, donc pas de date d’effet.',
+  preavis_existant: 'Un préavis est déjà enregistré pour ce contrat : annulez-le d’abord si la date saisie était fausse.',
+  preavis_futur: 'La date de réception du préavis ne peut pas être dans le futur.',
+  effet_passe: 'La date d’effet calculée est déjà passée : vérifiez la date de réception du préavis. Une résiliation ne s’enregistre pas après coup.',
+  aucun_preavis: 'Ce contrat n’a pas de préavis enregistré.',
+  preavis_effet_atteint: 'La date d’effet est atteinte : la résiliation n’est plus annulable. Le traitement quotidien clôt le contrat.',
 };
 
 const refus = (code: CodeContrat): { ok: false; code: CodeContrat } => ({ ok: false, code });
@@ -380,6 +400,85 @@ export async function basculerModulesEchus(db: Base, jour: string): Promise<numb
     }
   }
   return n;
+}
+
+// ---------------------------------------------------------------- la résiliation (lot 17)
+
+/**
+ * Enregistre un préavis de résiliation REÇU le `recuLe`. La règle de la spécification : un préavis écrit reçu au moins 30 jours avant la
+ * date anniversaire prend effet à cette date ; sinon le contrat est reconduit pour douze mois et l'effet est l'anniversaire suivant
+ * (`reconduit`). Aucun remboursement au prorata. La date d'effet est calculée ICI, une fois (tarif.ts, `dateEffetPreavis`), et posée sur
+ * le contrat avec la date de réception et l'événement `preavis_enregistre` : le contrat reste `actif` ; c'est le traitement quotidien
+ * qui le passe en `resilie` à la date d'effet (essai.ts).
+ *
+ * Refusé : sans contrat en service (actif ou suspendu), sans date de début de service (pas de date anniversaire), si un préavis est déjà
+ * enregistré, pour une réception dans le futur, et quand la date d'effet calculée est déjà passée ou tombe aujourd'hui (une résiliation
+ * qui a déjà pris effet ne s'enregistre pas après coup : c'est presque toujours une date de réception mal saisie, et le calendrier de
+ * sortie qui suit supprime des données).
+ */
+export async function enregistrerPreavis(db: Base, tenantId: string, recuLe: string, acteur: Acteur | null, jour = aujourdhui()): Promise<ResultatContrat> {
+  const c = await contratEnCours(db, tenantId);
+  if (!c) return refus('aucun_contrat');
+  if (!STATUTS_EN_SERVICE.includes(c.statut)) return refus('preavis_hors_service');
+  if (!c.debut_le) return refus('debut_manquant');
+  if (c.resiliation_effet_le !== null || c.preavis_recu_le !== null) return refus('preavis_existant');
+  if (!dateIso(recuLe)) return refus('date_invalide');
+  if (recuLe > jour) return refus('preavis_futur');
+  const { prochain, effet, reconduit } = dateEffetPreavis(c.debut_le, recuLe);
+  if (effet <= jour) return refus('effet_passe');
+  const r = await db.batch([
+    db
+      .prepare(
+        `UPDATE contrat SET preavis_recu_le = ?, resiliation_effet_le = ?, maj_le = ?
+          WHERE id = ? AND tenant_id = ? AND statut IN (${statutsEnSql(STATUTS_EN_SERVICE)}) AND resiliation_effet_le IS NULL AND preavis_recu_le IS NULL`,
+      )
+      .bind(recuLe, effet, maintenant(), c.id, tenantId),
+    requeteEvenement(
+      db,
+      { tenantId, type: EVENEMENT.PREAVIS_ENREGISTRE, acteur, cible: { type: 'contrat', id: c.id }, detail: { recu_le: recuLe, anniversaire_vise: prochain, effet_le: effet, reconduit } },
+      true,
+    ),
+  ]);
+  if (lignesModifiees(r[0]) === 0) return refus('preavis_existant');
+  const apres = await relire(db, tenantId);
+  return apres.ok ? { ...apres, reconduit } : apres;
+}
+
+/**
+ * Annule la résiliation, TANT QUE sa date d'effet n'est pas atteinte (le jour même, elle l'est : le traitement quotidien clôt le contrat).
+ * La date de réception et la date d'effet s'effacent du contrat ; l'événement `preavis_annule` garde l'une et l'autre.
+ */
+export async function annulerPreavis(db: Base, tenantId: string, acteur: Acteur | null, jour = aujourdhui()): Promise<ResultatContrat> {
+  const c = await contratEnCours(db, tenantId);
+  if (!c) return refus('aucun_contrat');
+  if (c.resiliation_effet_le === null) return refus('aucun_preavis');
+  if (c.resiliation_effet_le <= jour) return refus('preavis_effet_atteint');
+  const r = await db.batch([
+    db
+      .prepare(
+        `UPDATE contrat SET preavis_recu_le = NULL, resiliation_effet_le = NULL, maj_le = ?
+          WHERE id = ? AND tenant_id = ? AND resiliation_effet_le = ? AND resiliation_effet_le > ?`,
+      )
+      .bind(maintenant(), c.id, tenantId, c.resiliation_effet_le, jour),
+    requeteEvenement(
+      db,
+      { tenantId, type: EVENEMENT.PREAVIS_ANNULE, acteur, cible: { type: 'contrat', id: c.id }, detail: { recu_le: c.preavis_recu_le, effet_le: c.resiliation_effet_le } },
+      true,
+    ),
+  ]);
+  if (lignesModifiees(r[0]) === 0) return refus('preavis_effet_atteint');
+  return relire(db, tenantId);
+}
+
+/** Le contrat RÉSILIÉ du locataire (le plus récent), avec ce qu'il faut pour afficher la suite : la fiche de la console. Null s'il n'en a pas. */
+export async function contratResilie(db: Base, tenantId: string): Promise<{ id: string; preavis_recu_le: string | null; resiliation_effet_le: string; purge: boolean } | null> {
+  const c = await db
+    .prepare("SELECT id, preavis_recu_le, resiliation_effet_le FROM contrat WHERE tenant_id = ? AND statut = 'resilie' AND resiliation_effet_le IS NOT NULL ORDER BY resiliation_effet_le DESC, id DESC LIMIT 1")
+    .bind(tenantId)
+    .first<{ id: string; preavis_recu_le: string | null; resiliation_effet_le: string }>();
+  if (!c) return null;
+  const purge = await db.prepare('SELECT 1 AS ok FROM envoi_automatique WHERE cle = ?').bind(`purge:${c.id}`).first();
+  return { ...c, purge: purge !== null };
 }
 
 export interface SaisieRemise {

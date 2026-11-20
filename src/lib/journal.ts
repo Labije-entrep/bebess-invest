@@ -50,6 +50,11 @@ export const EVENEMENT = {
   PARRAINAGE_VALIDE: 'parrainage_valide',
   ESSAI_NON_CONVERTI: 'essai_non_converti',
   CABINET_PURGE: 'cabinet_purge',
+  // Lot 17 : la résiliation. Le préavis et son annulation (acteur : l'éditeur), puis le passage en `resilie` à la date d'effet (acteur null :
+  // le traitement quotidien). Des identifiants, des dates et le statut du contrat.
+  PREAVIS_ENREGISTRE: 'preavis_enregistre',
+  PREAVIS_ANNULE: 'preavis_annule',
+  CONTRAT_RESILIE: 'contrat_resilie',
   // Lot 13. L'identité de facturation : les NOMS des champs modifiés, jamais leurs valeurs. La facture : l'identifiant du bon.
   IDENTITE_FACTURATION: 'identite_facturation',
   FACTURE_DEPOSEE: 'facture_deposee',
