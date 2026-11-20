@@ -17,7 +17,7 @@ import type { Role } from './db';
 import { ACCES_FACTURABLES } from './roles.ts';
 
 export type Periodicite = 'mensuelle' | 'annuelle';
-export type CodeLigne = 'socle' | 'pilotage' | 'site' | 'acces_sup';
+export type CodeLigne = 'socle' | 'pilotage' | 'site' | 'acces_sup' | 'installation';
 
 /** Le plafond de la remise, et celui de la remise de parrainage seule : 50 %. */
 export const REMISE_MAX = 5000;
@@ -156,6 +156,21 @@ export function calculerBon(e: EntreeBon): Bon {
   const remise_montant = appliquer(recurrent_ht, remise_taux);
   const frais_installation_ht = e.frais_installation ?? 0;
   return { lignes, recurrent_ht, remise_taux, remise_montant, frais_installation_ht, total_ht: recurrent_ht - remise_montant + frais_installation_ht };
+}
+
+/**
+ * Le bon d'installation (lot 19) : une seule ligne, les frais du contrat, sans récurrent. La remise ne s'y applique JAMAIS (elle ne porte
+ * que sur le récurrent). Fonction pure ; l'appelant ne la sollicite que pour des frais non nuls : pas de bon à zéro euro.
+ */
+export function calculerBonInstallation(frais: number): Bon {
+  return {
+    lignes: [{ code: 'installation', quantite: 1, prix_unitaire: frais, mois: 1, montant: frais }],
+    recurrent_ht: 0,
+    remise_taux: 0,
+    remise_montant: 0,
+    frais_installation_ht: frais,
+    total_ht: frais,
+  };
 }
 
 // ---------------------------------------------------------------- les dates

@@ -8,7 +8,8 @@ const tenant = Astro.locals.tenant!;
 const id = Astro.params.id ?? '';
 const nouvelle = id === 'nouveau';
 const existante = nouvelle ? null : await noteParId(DB, tenant.id, id);
-if (!nouvelle && !existante) return Astro.redirect('/gestionnaire/notes');
+// Une note inconnue ou d'un autre cabinet : un 404, comme sur les autres écrans à identifiant (jamais une redirection vers la liste).
+if (!nouvelle && !existante) return Astro.rewrite('/404');
 
 const aujourdhui = new Date().toISOString().slice(0, 10);
 const v = {

@@ -101,7 +101,7 @@ type EtatBon = 'cree' | 'actualise' | 'inchange' | 'fige';
  * Pose le bon d'une période : le crée, ou met à jour le brouillon existant s'il a changé, ou ne touche à rien (déjà là et pareil,
  * ou déjà émis). La CRÉATION seule écrit un événement et prévient l'éditeur : rejouer ne prévient jamais deux fois.
  */
-async function poserBon(db: Base, c: Contrat, type: 'periode' | 'complementaire', p: Periode, calc: Calcul, acces: number): Promise<EtatBon> {
+async function poserBon(db: Base, c: Contrat, type: 'periode' | 'complementaire' | 'installation', p: Periode, calc: Calcul, acces: number): Promise<EtatBon> {
   const lignes = JSON.stringify(calc.lignes);
   const existant = await db
     .prepare('SELECT id, statut, periode_fin, acces_facturables, lignes, recurrent_ht, remise_taux, remise_montant, remise_motif, tva_taux, total_ht FROM bon_a_facturer WHERE contrat_id = ? AND periode_debut = ?')
@@ -397,7 +397,7 @@ export interface Bon {
   id: string;
   tenant_id: string;
   contrat_id: string;
-  type: 'periode' | 'complementaire';
+  type: 'periode' | 'complementaire' | 'installation';
   periode_debut: string;
   periode_fin: string;
   statut: 'brouillon' | 'emise' | 'annulee';
@@ -529,6 +529,7 @@ export const LIBELLES_LIGNE: Record<LigneBon['code'], string> = {
   pilotage: 'Module Pilotage',
   site: 'Module Site vitrine',
   acces_sup: 'Accès supplémentaires',
+  installation: 'Frais d’installation',
 };
 
 /** Tout ce qu'il faut pour taper la facture sans rien chercher ailleurs. */
@@ -536,7 +537,7 @@ export interface BonComplet {
   id: string;
   tenant_id: string;
   contrat_id: string;
-  type: 'periode' | 'complementaire';
+  type: 'periode' | 'complementaire' | 'installation';
   statut: 'brouillon' | 'emise' | 'annulee';
   numero: string | null;
   emis_le: string | null;
@@ -561,7 +562,7 @@ export interface BonComplet {
 }
 
 interface LigneSql {
-  id: string; tenant_id: string; contrat_id: string; type: 'periode' | 'complementaire'; statut: 'brouillon' | 'emise' | 'annulee';
+  id: string; tenant_id: string; contrat_id: string; type: 'periode' | 'complementaire' | 'installation'; statut: 'brouillon' | 'emise' | 'annulee';
   numero: string | null; emis_le: string | null; annule_le: string | null; periode_debut: string; periode_fin: string; periodicite: string;
   facture_cle: string | null; acces_facturables: number; lignes: string; recurrent_ht: number; remise_taux: number; remise_montant: number;
   remise_motif: string | null; total_ht: number; tva_taux: number;
@@ -599,7 +600,7 @@ export interface LigneListeBon {
   id: string;
   tenant_id: string;
   cabinet: string;
-  type: 'periode' | 'complementaire';
+  type: 'periode' | 'complementaire' | 'installation';
   statut: 'brouillon' | 'emise' | 'annulee';
   periode_debut: string;
   periode_fin: string;

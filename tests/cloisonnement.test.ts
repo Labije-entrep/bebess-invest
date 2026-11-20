@@ -345,10 +345,11 @@ test('contenu du site : chaque cabinet ne modifie que ses pages et ses notes', a
   assert.deepEqual(db.un('SELECT * FROM note_marche WHERE id = ?', cab.B.donnees.note), noteB);
 });
 
-// Ce que le cahier des charges demande (404) et ce que la route fait (une redirection vers la liste, identique à un identifiant inconnu) :
-// un écart, relevé par ce banc, pas corrigé ici. Le test décrit l'attendu ; il reste « à faire » tant que la route ne répond pas 404.
-test('contenu du site : la note d\'un autre cabinet répond 404 sur sa page d\'édition', { todo: 'écart : la route redirige (302) vers la liste des notes, comme pour un identifiant inconnu' }, async () => {
+// Écart relevé par ce banc (la route redirigeait en 302 vers la liste), corrigé au lot 19 : la note d'un autre cabinet répond 404.
+test('contenu du site : la note d\'un autre cabinet répond 404 sur sa page d\'édition', async () => {
   const { cab, env, cookie } = await monde();
   const r = await envoyer(env, { url: `/gestionnaire/notes/${cab.B.donnees.note}`, hote: cab.A.hote, cookie: cookie(cab.A) });
   assert.equal(r.statut, 404);
+  const inconnue = await envoyer(env, { url: '/gestionnaire/notes/00000000-0000-0000-0000-000000000000', hote: cab.A.hote, cookie: cookie(cab.A) });
+  assert.equal(inconnue.statut, 404, 'un identifiant inconnu répond comme celui d\'un autre cabinet');
 });

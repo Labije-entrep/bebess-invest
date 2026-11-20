@@ -2,7 +2,7 @@
 // La fiche contrat d'un cabinet, dans la console de l'éditeur (lot 14). Six rubriques, un formulaire chacune, tous vers `${base}/contrat`.
 // Aucune règle n'est tenue ici : les formulaires ne masquent rien, la route refuse et dit pourquoi (contrat.ts porte les garde-fous).
 import { dateCourte, eurosPrecis } from '../../lib/format';
-import { MOIS_GEL_FONDATEUR, MOTIF_FONDATEUR, STATUTS_EN_SERVICE, estFondateur, plusJours, tarifGele, type Contrat } from '../../lib/contrat';
+import { GRILLE_STANDARD, MOIS_GEL_FONDATEUR, MOTIF_FONDATEUR, STATUTS_EN_SERVICE, estFondateur, plusJours, tarifGele, type Contrat } from '../../lib/contrat';
 import { JOURS_PREAVIS_RESILIATION, MOIS_ENGAGEMENT, REMISE_MAX, dateEffetPreavis, prochainAnniversaire, tauxEnTexte, tauxRemise, tauxParrainage } from '../../lib/tarif';
 import { JOURS_AVIS_APRES_FIN, JOURS_SUPPRESSION_APRES_FIN } from '../../lib/essai';
 
@@ -83,7 +83,7 @@ const MODULES: { code: 'pilotage' | 'site'; nom: string; actif: boolean; fin: st
   {PRIX.map(([cle, nom]) => (
     <div class="groupe">
       <label class="etiquette" for={cle}>Prix — {nom} (€ HT)</label>
-      <input class="champ" id={cle} name={cle} inputmode="decimal" required maxlength="12" value={saisieEuros(c ? (c[cle] as number) : undefined)} />
+      <input class="champ" id={cle} name={cle} inputmode="decimal" required maxlength="12" value={saisieEuros(c ? (c[cle] as number) : (GRILLE_STANDARD as unknown as Record<string, number>)[cle])} />
     </div>
   ))}
   <div class="groupe">
@@ -203,8 +203,17 @@ const MODULES: { code: 'pilotage' | 'site'; nom: string; actif: boolean; fin: st
       <input class="champ" id="date_mise_en_production" name="date_mise_en_production" type="date" value={c.date_mise_en_production ?? ''} style="max-width: 14rem" />
       <button class="btn" type="submit">Poser la mise en production</button>
     </form>
+    <form method="post" action={`${base}/contrat`} class="actions">
+      <input type="hidden" name="action" value="signature" />
+      <label class="etiquette" for="date_signature">Contrat signé le</label>
+      <input class="champ" id="date_signature" name="date_signature" type="date" value={c.statut === 'essai' ? jour : (c.date_signature ?? '')} style="max-width: 14rem" />
+      <button class="btn-plein" type="submit">Signer le contrat</button>
+    </form>
     <p class="aide">
-      DPA : {c.dpa_signe_le ? `signé le ${dateCourte(c.dpa_signe_le)}` : 'non signé'}. Contrat : {c.date_signature ? `signé le ${dateCourte(c.date_signature)}` : 'date de signature non renseignée (elle se pose avec le statut fondateur)'}. Mise en production : {c.date_mise_en_production ? `le ${dateCourte(c.date_mise_en_production)}, fin d’essai le ${dateCourte(c.date_fin_essai ?? c.date_mise_en_production)}` : 'pas encore posée'}.
+      <strong>Signer le contrat le fait passer de l’essai à l’actif</strong> : sans cette étape, rien ne se facture. Il faut un DPA signé, et le contrat doit être en essai. La signature pose le début de service, qui est la date anniversaire : le 45ᵉ jour de l’essai quand le contrat est signé avant sa fin (les jours d’essai restants ne se facturent pas), sinon le jour de la signature. Si les frais d’installation ne sont pas nuls, elle pose le bon d’installation, une seule fois. À partir de la signature, les drapeaux des modules font foi : un module non activé se ferme.
+    </p>
+    <p class="aide">
+      DPA : {c.dpa_signe_le ? `signé le ${dateCourte(c.dpa_signe_le)}` : 'non signé'}. Contrat : {c.date_signature ? `signé le ${dateCourte(c.date_signature)}` : 'date de signature non renseignée (elle se pose avec « Signer le contrat », ou avec le statut fondateur)'}. Mise en production : {c.date_mise_en_production ? `le ${dateCourte(c.date_mise_en_production)}, fin d’essai le ${dateCourte(c.date_fin_essai ?? c.date_mise_en_production)}` : 'pas encore posée'}.
     </p>
 
     <hr class="filet" />

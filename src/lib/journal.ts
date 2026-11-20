@@ -33,6 +33,8 @@ export const EVENEMENT = {
   // Contrat
   CONTRAT_CREE: 'contrat_cree',
   MISE_EN_PRODUCTION: 'mise_en_production',
+  // Lot 19 : la signature fait passer le contrat de l'essai à l'actif ; elle pose le début de service et la date anniversaire.
+  CONTRAT_SIGNE: 'contrat_signe',
   PRIX_MODIFIE: 'prix_modifie',
   REMISE_SAISIE: 'remise_saisie',
   REMISE_MODIFIEE: 'remise_modifiee',

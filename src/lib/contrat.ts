@@ -6,6 +6,8 @@
 //   2. aucun prix ne change tant que `tarif_gele_jusqu_au` est dans le futur ;
 //   3. une date de gel se PROLONGE, jamais elle ne se raccourcit ni ne s'efface (le refus est journalisé) ;
 //   4. une date de mise en production est refusée tant que `dpa_signe_le` est vide ; elle fait passer le contrat en essai.
+//   5. (lot 19) la signature (`signerContrat`) fait passer l'essai à l'actif : seule écriture de `statut = 'actif'` et de `debut_le`.
+//      Même exigence de DPA ; refusée hors de l'essai.
 //
 // Statuts : brouillon, essai, actif, suspendu, resilie, essai_non_converti. Les quatre premiers sont « en cours » (un seul par
 // locataire) ; resilie et essai_non_converti sont de l'historique (STATUTS_DE_SORTIE) : le cabinet est fermé, le calendrier de sortie court
@@ -19,7 +21,8 @@
 import type { Base } from './db';
 import { EVENEMENT, journaliser, requeteEvenement, type Acteur } from './journal';
 import { lignesModifiees } from './envois';
-import { ajouterMois, dateEffetPreavis, periodeAu } from './tarif';
+import { noterIncident } from './incidents';
+import { ajouterMois, calculerBonInstallation, dateEffetPreavis, periodeAu, TVA_TAUX } from './tarif';
 
 export interface Prix {
   prix_socle: number;
@@ -28,6 +31,12 @@ export interface Prix {
   prix_acces_sup: number;
 }
 export const CHAMPS_PRIX: (keyof Prix)[] = ['prix_socle', 'prix_pilotage', 'prix_site', 'prix_acces_sup'];
+/**
+ * La grille standard (79 / 49 / 39 / 25 € HT par mois, en centimes), PROPOSÉE à l'ouverture d'un contrat dans la console : le formulaire la
+ * préremplit, l'éditeur la garde ou la change, et le contrat recopie ce qui a été envoyé. Aucun calcul ne la lit : la règle 1 (les prix se lisent
+ * SUR LE CONTRAT) reste entière.
+ */
+export const GRILLE_STANDARD: Prix = { prix_socle: 7900, prix_pilotage: 4900, prix_site: 3900, prix_acces_sup: 2500 };
 
 export const STATUTS_CONTRAT = ['brouillon', 'essai', 'actif', 'suspendu', 'resilie', 'essai_non_converti'] as const;
 export type StatutContrat = (typeof STATUTS_CONTRAT)[number];
@@ -87,12 +96,16 @@ const COLONNES =
 export type CodeContrat =
   | 'aucun_contrat' | 'deja_un_contrat' | 'tarif_gele' | 'gel_raccourci' | 'gel_efface' | 'deja_en_production' | 'dpa_manquant' | 'date_invalide' | 'montant_invalide' | 'taux_invalide'
   | 'motif_requis' | 'revue_requise' | 'periodicite' | 'inchange' | 'signature_manquante' | 'pas_fondateur' | 'effet_atteint'
-  | 'preavis_hors_service' | 'debut_manquant' | 'preavis_existant' | 'preavis_futur' | 'effet_passe' | 'aucun_preavis' | 'preavis_effet_atteint';
+  | 'preavis_hors_service' | 'debut_manquant' | 'preavis_existant' | 'preavis_futur' | 'effet_passe' | 'aucun_preavis' | 'preavis_effet_atteint'
+  | 'signature_sans_dpa' | 'signature_hors_essai';
 /**
  * `effet` : pour un module, ce que l'écriture a fait (immédiat, désactivation programmée, programmation annulée).
  * `reconduit` : pour un préavis, vrai quand il est arrivé trop tard pour la prochaine date anniversaire (reconduction de douze mois).
+ * `installation` : pour une signature, le bon d'installation posé (frais non nuls), sinon absent.
  */
-export type ResultatContrat = { ok: true; contrat: Contrat; effet?: 'immediat' | 'programme' | 'annule'; reconduit?: boolean } | { ok: false; code: CodeContrat };
+export type ResultatContrat =
+  | { ok: true; contrat: Contrat; effet?: 'immediat' | 'programme' | 'annule'; reconduit?: boolean; installation?: { bon_id: string; total_ht: number } }
+  | { ok: false; code: CodeContrat };
 
 export const MESSAGES_CONTRAT: Record<CodeContrat, string> = {
   aucun_contrat: 'Ce cabinet n’a pas de contrat en cours.',
@@ -119,6 +132,8 @@ export const MESSAGES_CONTRAT: Record<CodeContrat, string> = {
   effet_passe: 'La date d’effet calculée est déjà passée : vérifiez la date de réception du préavis. Une résiliation ne s’enregistre pas après coup.',
   aucun_preavis: 'Ce contrat n’a pas de préavis enregistré.',
   preavis_effet_atteint: 'La date d’effet est atteinte : la résiliation n’est plus annulable. Le traitement quotidien clôt le contrat.',
+  signature_sans_dpa: 'La signature exige un DPA signé : renseignez sa date d’abord.',
+  signature_hors_essai: 'Seul un contrat en essai se signe : celui-ci est soit encore en brouillon (posez la mise en production d’abord), soit déjà signé, suspendu ou sorti.',
 };
 
 const refus = (code: CodeContrat): { ok: false; code: CodeContrat } => ({ ok: false, code });
@@ -308,6 +323,86 @@ export async function poserMiseEnProduction(db: Base, tenantId: string, date: st
     return refus('dpa_manquant');
   }
   return relire(db, tenantId);
+}
+
+/**
+ * Signe le contrat (lot 19) : il passe de l'essai à l'ACTIF. C'est la seule écriture du produit qui pose `statut = 'actif'`, `debut_le` et
+ * `date_signature` ; sans elle, `contratsActifs` ne retient aucun contrat et rien ne se facture.
+ *
+ *   - REFUSÉE sans DPA signé (`signature_sans_dpa`), comme la mise en production ;
+ *   - REFUSÉE hors du statut `essai` (`signature_hors_essai`) : un brouillon n'a rien à signer, un contrat déjà actif ne se signe pas deux fois ;
+ *   - `date_signature` est la date saisie ;
+ *   - `debut_le`, le début de service et donc la DATE ANNIVERSAIRE (periodesDebutant, periodeAu, dateEffetPreavis, dateAnniversaire ne lisent
+ *     que lui), est le 45e JOUR de l'essai (`date_fin_essai`) quand le contrat est signé AVANT la fin de l'essai : les jours d'essai restants
+ *     ne se facturent pas. Signé le jour de la fin d'essai ou après (avant que le traitement quotidien ne l'ait clos), le début de service
+ *     est la date de signature. `debut_le = max(date_signature, date_fin_essai)` ;
+ *   - si `frais_installation` est non nul, UN bon d'installation est posé dans la même écriture (type `installation`, une ligne, sans récurrent,
+ *     sans remise, période = le jour de signature) ; à frais nuls (cabinet fondateur), aucun bon. L'index unique de la base garantit « un seul
+ *     par contrat » même si deux signatures se croisent : la seconde échoue en entier.
+ *
+ * Journalisée (`contrat_signe`, avec l'avant et l'après), dans le même `batch` que le changement de statut.
+ */
+export async function signerContrat(db: Base, tenantId: string, date: string, acteur: Acteur | null): Promise<ResultatContrat> {
+  const c = await contratEnCours(db, tenantId);
+  if (!c) return refus('aucun_contrat');
+  if (!dateIso(date)) return refus('date_invalide');
+  if (!c.dpa_signe_le || c.dpa_signe_le.trim() === '') return refus('signature_sans_dpa');
+  if (c.statut !== 'essai') return refus('signature_hors_essai');
+  const debut = c.date_fin_essai && c.date_fin_essai > date ? c.date_fin_essai : date;
+  const frais = c.frais_installation;
+  const bonId = frais > 0 ? crypto.randomUUID() : null;
+  const maj = maintenant();
+  const requetes = [
+    db
+      .prepare("UPDATE contrat SET statut = 'actif', date_signature = ?, debut_le = ?, maj_le = ? WHERE id = ? AND tenant_id = ? AND statut = 'essai'")
+      .bind(date, debut, maj, c.id, tenantId),
+    requeteEvenement(
+      db,
+      {
+        tenantId, type: EVENEMENT.CONTRAT_SIGNE, acteur, cible: { type: 'contrat', id: c.id },
+        detail: {
+          statut_avant: 'essai', statut_apres: 'actif', date_signature: date, debut_le: debut, date_fin_essai: c.date_fin_essai,
+          avant_fin_essai: c.date_fin_essai !== null && date < c.date_fin_essai, frais_installation: frais, bon_installation: bonId,
+        },
+      },
+      true,
+    ),
+  ];
+  if (bonId) {
+    const calcul = calculerBonInstallation(frais);
+    requetes.push(
+      db
+        .prepare(
+          `INSERT INTO bon_a_facturer (id, tenant_id, contrat_id, type, periode_debut, periode_fin, statut, acces_facturables, lignes, recurrent_ht,
+                                       remise_taux, remise_montant, remise_motif, tva_taux, total_ht, cree_le)
+           SELECT ?, ?, ?, 'installation', ?, ?, 'brouillon', 0, ?, 0, 0, 0, NULL, ?, ?, ?
+            WHERE EXISTS (SELECT 1 FROM contrat WHERE id = ? AND tenant_id = ? AND statut = 'actif' AND maj_le = ?)`,
+        )
+        .bind(bonId, tenantId, c.id, date, date, JSON.stringify(calcul.lignes), TVA_TAUX, calcul.total_ht, maj, c.id, tenantId, maj),
+      requeteEvenement(
+        db,
+        {
+          tenantId, type: EVENEMENT.BON_GENERE, acteur: null, cible: { type: 'contrat', id: c.id },
+          detail: { bon_id: bonId, type: 'installation', periode_debut: date, periode_fin: date, acces_facturables: 0, remise_taux: 0, total_ht: calcul.total_ht },
+        },
+        true,
+      ),
+    );
+  }
+  try {
+    await db.batch(requetes);
+  } catch {
+    // Une autre signature est passée entre la lecture et l'écriture : le bon d'installation existait déjà, tout a été annulé.
+    return refus('signature_hors_essai');
+  }
+  const apres = await relire(db, tenantId);
+  if (!apres.ok || apres.contrat.statut !== 'actif' || apres.contrat.maj_le !== maj) return refus('signature_hors_essai');
+  if (!bonId) return apres;
+  await noterIncident(
+    db, tenantId, 'bon_a_emettre',
+    `Bon d'installation du ${date} : ${(frais / 100).toFixed(2).replace('.', ',')} € HT. À émettre.`,
+  );
+  return { ...apres, installation: { bon_id: bonId, total_ht: frais } };
 }
 
 /**
