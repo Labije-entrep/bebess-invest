@@ -3,12 +3,16 @@
 #
 #   npx wrangler deploy -c wrangler.cron.toml
 #   npx wrangler secret put SCW_SECRET_KEY -c wrangler.cron.toml      # idem SCW_PROJECT_ID, MAIL_FROM, CF_API_TOKEN
+#   npx wrangler secret put COURS_API_KEY -c wrangler.cron.toml       # clé Alpha Vantage (gratuite : 25 appels par jour) ; le même secret au site
 #
 # Reporter ici le même database_id que dans wrangler.toml, et CF_ZONE_ID (la zone des « custom hostnames », celle du site).
 name = "bebess-traitement"
 main = "src/cron.ts"
 compatibility_date = "2026-11-01"
 workers_dev = false
+
+# Le traitement récupère aussi, chaque nuit, les cours de marché (un appel par symbole suivi, tous cabinets confondus, 25 par jour au plus).
+# COURS_API_KEY est un SECRET : jamais ici, jamais dans le dépôt. COURS_API_URL et COURS_BUDGET ne servent qu'aux essais.
 
 # 03:00 UTC, tous les jours. Un seul : le traitement est idempotent, un déclenchement manqué se rattrape le lendemain.
 [triggers]

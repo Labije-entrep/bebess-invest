@@ -17,6 +17,8 @@ export interface Env {
   COURS_API_KEY?: string;
   COURS_API_URL?: string;
   COURS_BUDGET?: string;
+  /** Pause (ms) entre deux appels du traitement quotidien ; « 0 » pour les essais. */
+  COURS_PAUSE_MS?: string;
   /**
    * Domaines personnalisés (lot 10, Cloudflare for SaaS), appelés côté serveur seulement. CF_API_TOKEN est un secret ;
    * sans lui, la console le dit et continue de fonctionner pour le reste. CF_ZONE_ID : la zone qui porte les « custom
