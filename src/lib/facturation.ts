@@ -19,9 +19,10 @@ import { cleDeFacture, cleFacture, deposer, type Bucket, type Depot } from './fi
 import { identiteFacturation, identiteManquante, type ChampIdentite, type IdentiteFacturation } from './identite';
 import { ACCES_FACTURABLES, enSql } from './roles';
 import {
-  calculerBon, calculerComplementaire, calculerTva, motifRemise, periodeAu, periodesDebutant, tauxParrainage, tauxRemise, TVA_TAUX,
+  calculerBon, calculerComplementaire, calculerTva, motifRemise, periodeAu, periodesDebutant, retenirRemises, tauxParrainage, tauxRemise, totauxDuBon, TVA_TAUX,
   type LigneBon, type Periode,
 } from './tarif';
+import { creditsEnAttente, enRemises, remisesDuBon, type RemiseLigne } from './remises';
 
 /** Un bon est généré à l'avance : celui dont la date anniversaire tombe dans les 30 jours. */
 export const JOURS_AVANT_ANNIVERSAIRE = 30;
@@ -92,6 +93,8 @@ interface Calcul {
   remise_montant: number;
   /** Le motif de la remise en clair (tarif.ts, motifRemise), figé avec le bon. Null : pas de remise. */
   remise_motif: string | null;
+  /** Somme des remises ponctuelles retenues (remises.ts) : calculée par `poserBon`, qui relit les remises du bon. */
+  remise_ponctuelle_montant?: number;
   total_ht: number;
 }
 
@@ -104,52 +107,107 @@ type EtatBon = 'cree' | 'actualise' | 'inchange' | 'fige';
 async function poserBon(db: Base, c: Contrat, type: 'periode' | 'complementaire' | 'installation', p: Periode, calc: Calcul, acces: number): Promise<EtatBon> {
   const lignes = JSON.stringify(calc.lignes);
   const existant = await db
-    .prepare('SELECT id, statut, periode_fin, acces_facturables, lignes, recurrent_ht, remise_taux, remise_montant, remise_motif, tva_taux, total_ht FROM bon_a_facturer WHERE contrat_id = ? AND periode_debut = ? AND type = ?')
+    .prepare('SELECT id, statut, periode_fin, acces_facturables, lignes, recurrent_ht, remise_taux, remise_montant, remise_ponctuelle_montant, remise_motif, tva_taux, total_ht FROM bon_a_facturer WHERE contrat_id = ? AND periode_debut = ? AND type = ?')
     .bind(c.id, p.debut, type)
-    .first<{ id: string; statut: string; periode_fin: string; acces_facturables: number; lignes: string; recurrent_ht: number; remise_taux: number; remise_montant: number; remise_motif: string | null; tva_taux: number; total_ht: number }>();
+    .first<{ id: string; statut: string; periode_fin: string; acces_facturables: number; lignes: string; recurrent_ht: number; remise_taux: number; remise_montant: number; remise_ponctuelle_montant: number; remise_motif: string | null; tva_taux: number; total_ht: number }>();
+  if (existant && existant.statut !== 'brouillon') return 'fige';
+
+  // Les remises ponctuelles SURVIVENT au recalcul : celles que le brouillon porte déjà (posées à la main, ou crédits déjà rattachés) sont
+  // relues dans leur table et réappliquées. Un crédit de prorata en attente se rattache au bon PÉRIODIQUE dont la période commence à
+  // (ou après) la date anniversaire de la sienne, dans la limite de ce qu'il reste à remiser sur la ligne « accès supplémentaires » ; le
+  // surplus reste en attente pour le bon d'après.
+  const portees: RemiseLigne[] = existant ? await remisesDuBon(db, c.tenant_id, existant.id) : [];
+  const rattacher: { credit: RemiseLigne; part: number }[] = [];
+  if (type === 'periode') {
+    // Un crédit s'impute d'abord sur la ligne « accès supplémentaires », puis sur le reste du récurrent (tarif.ts, `repli`) : ce qu'un bon peut
+    // encore absorber est son récurrent moins ce que les remises déjà portées en retiennent.
+    let reste = calc.recurrent_ht - totauxDuBon(calc.lignes, calc.remise_taux, enRemises(portees)).remise_ponctuelle_montant;
+    for (const credit of await creditsEnAttente(db, c.tenant_id, c.id, p.debut)) {
+      if (reste <= 0) break;
+      const part = Math.min(credit.montant, reste);
+      rattacher.push({ credit, part });
+      reste -= part;
+    }
+  }
+  const toutes = [...enRemises(portees), ...rattacher.map((r) => ({ code: r.credit.code_ligne, montant: r.part, repli: true }))];
+  const t = totauxDuBon(calc.lignes, calc.remise_taux, toutes);
+  calc = { ...calc, remise_montant: t.remise_montant, remise_ponctuelle_montant: t.remise_ponctuelle_montant, total_ht: t.total_ht };
+
+  let etat: EtatBon;
+  let bonId: string;
   if (existant) {
-    if (existant.statut !== 'brouillon') return 'fige';
+    bonId = existant.id;
     if (
       existant.periode_fin === p.fin && existant.acces_facturables === acces && existant.lignes === lignes && existant.recurrent_ht === calc.recurrent_ht
       && existant.remise_taux === calc.remise_taux && existant.remise_montant === calc.remise_montant && existant.remise_motif === calc.remise_motif
-      && existant.tva_taux === TVA_TAUX && existant.total_ht === calc.total_ht
-    ) return 'inchange';
-    await db
-      .prepare(
-        `UPDATE bon_a_facturer SET periode_fin = ?, acces_facturables = ?, lignes = ?, recurrent_ht = ?, remise_taux = ?, remise_montant = ?, remise_motif = ?,
-                                   tva_taux = ?, total_ht = ?
-          WHERE id = ? AND statut = 'brouillon'`,
-      )
-      .bind(p.fin, acces, lignes, calc.recurrent_ht, calc.remise_taux, calc.remise_montant, calc.remise_motif, TVA_TAUX, calc.total_ht, existant.id)
-      .run();
-    return 'actualise';
+      && existant.remise_ponctuelle_montant === calc.remise_ponctuelle_montant && existant.tva_taux === TVA_TAUX && existant.total_ht === calc.total_ht
+    ) {
+      etat = 'inchange';
+    } else {
+      await db
+        .prepare(
+          `UPDATE bon_a_facturer SET periode_fin = ?, acces_facturables = ?, lignes = ?, recurrent_ht = ?, remise_taux = ?, remise_montant = ?, remise_ponctuelle_montant = ?,
+                                     remise_motif = ?, tva_taux = ?, total_ht = ?
+            WHERE id = ? AND statut = 'brouillon'`,
+        )
+        .bind(p.fin, acces, lignes, calc.recurrent_ht, calc.remise_taux, calc.remise_montant, calc.remise_ponctuelle_montant ?? 0, calc.remise_motif, TVA_TAUX, calc.total_ht, existant.id)
+        .run();
+      etat = 'actualise';
+    }
+  } else {
+    bonId = crypto.randomUUID();
+    const r = await db.batch([
+      db
+        .prepare(
+          `INSERT INTO bon_a_facturer (id, tenant_id, contrat_id, type, periode_debut, periode_fin, statut, acces_facturables, lignes, recurrent_ht,
+                                       remise_taux, remise_montant, remise_ponctuelle_montant, remise_motif, tva_taux, total_ht, cree_le)
+           VALUES (?, ?, ?, ?, ?, ?, 'brouillon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(contrat_id, periode_debut) DO NOTHING`,
+        )
+        .bind(bonId, c.tenant_id, c.id, type, p.debut, p.fin, acces, lignes, calc.recurrent_ht, calc.remise_taux, calc.remise_montant, calc.remise_ponctuelle_montant ?? 0, calc.remise_motif, TVA_TAUX, calc.total_ht, new Date().toISOString()),
+      requeteEvenement(
+        db,
+        {
+          tenantId: c.tenant_id, type: EVENEMENT.BON_GENERE, acteur: null, cible: { type: 'contrat', id: c.id },
+          detail: { bon_id: bonId, type, periode_debut: p.debut, periode_fin: p.fin, acces_facturables: acces, remise_taux: calc.remise_taux, total_ht: calc.total_ht },
+        },
+        true,
+      ),
+    ]);
+    // Une autre passe l'a posé entre la lecture et l'écriture : rien n'a été écrit ici, et la notification est déjà partie.
+    if (lignesModifiees(r[0]) === 0) return 'inchange';
+    await noterIncident(
+      db, c.tenant_id, 'bon_a_emettre',
+      `Bon ${type === 'complementaire' ? 'complémentaire ' : ''}du ${p.debut} au ${p.fin} : ${eur(calc.total_ht)} HT, ${acces} accès facturables, remise ${calc.remise_taux / 100} %. À émettre.`,
+    );
+    etat = 'cree';
   }
-  const id = crypto.randomUUID();
-  const r = await db.batch([
-    db
-      .prepare(
-        `INSERT INTO bon_a_facturer (id, tenant_id, contrat_id, type, periode_debut, periode_fin, statut, acces_facturables, lignes, recurrent_ht,
-                                     remise_taux, remise_montant, remise_motif, tva_taux, total_ht, cree_le)
-         VALUES (?, ?, ?, ?, ?, ?, 'brouillon', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(contrat_id, periode_debut) DO NOTHING`,
-      )
-      .bind(id, c.tenant_id, c.id, type, p.debut, p.fin, acces, lignes, calc.recurrent_ht, calc.remise_taux, calc.remise_montant, calc.remise_motif, TVA_TAUX, calc.total_ht, new Date().toISOString()),
-    requeteEvenement(
-      db,
-      {
-        tenantId: c.tenant_id, type: EVENEMENT.BON_GENERE, acteur: null, cible: { type: 'contrat', id: c.id },
-        detail: { bon_id: id, type, periode_debut: p.debut, periode_fin: p.fin, acces_facturables: acces, remise_taux: calc.remise_taux, total_ht: calc.total_ht },
-      },
-      true,
-    ),
-  ]);
-  // Une autre passe l'a posé entre la lecture et l'écriture : rien n'a été écrit ici, et la notification est déjà partie.
-  if (lignesModifiees(r[0]) === 0) return 'inchange';
-  await noterIncident(
-    db, c.tenant_id, 'bon_a_emettre',
-    `Bon ${type === 'complementaire' ? 'complémentaire ' : ''}du ${p.debut} au ${p.fin} : ${eur(calc.total_ht)} HT, ${acces} accès facturables, remise ${calc.remise_taux / 100} %. À émettre.`,
-  );
-  return 'cree';
+
+  // Le rattachement s'écrit APRÈS le bon (clé étrangère) ; si la passe s'arrête entre les deux, la suivante retrouve le crédit en attente et
+  // recalcule le brouillon : rien ne se perd, rien ne se double (la mise à jour est conditionnée à l'état `en_attente`).
+  for (const { credit, part } of rattacher) {
+    const now = new Date().toISOString();
+    const r = await db.batch([
+      db
+        .prepare("UPDATE remise_ponctuelle SET bon_id = ?, etat = 'appliquee', montant = ?, maj_le = ? WHERE id = ? AND tenant_id = ? AND etat = 'en_attente'")
+        .bind(bonId, part, now, credit.id, c.tenant_id),
+      requeteEvenement(
+        db,
+        { tenantId: c.tenant_id, type: EVENEMENT.CREDIT_PRORATA_APPLIQUE, acteur: null, cible: { type: 'contrat', id: c.id }, detail: { remise_id: credit.id, bon_id: bonId, montant: part } },
+        true,
+      ),
+    ]);
+    if (lignesModifiees(r[0]) > 0 && part < credit.montant) {
+      await db
+        .prepare(
+          `INSERT INTO remise_ponctuelle (id, tenant_id, contrat_id, bon_id, code_ligne, montant, motif, origine, acces_id, etat, applicable_des, cree_le, maj_le)
+           VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, 'en_attente', ?, ?, ?)`,
+        )
+        .bind(crypto.randomUUID(), c.tenant_id, c.id, credit.code_ligne, credit.montant - part, credit.motif, credit.origine, credit.acces_id, credit.applicable_des, credit.cree_le, now)
+        .run();
+    }
+  }
+  return etat;
 }
 
 /**
@@ -218,11 +276,23 @@ export async function genererBons(ctx: Contexte): Promise<RapportBons> {
 }
 
 /**
- * Un module activé EN COURS de période d'un contrat annuel : un bon complémentaire, au prorata (tarif.ts, calculerComplementaire),
- * daté du jour de l'activation. L'activation se lit dans le JOURNAL (événement `module_active`, jamais modifié) ; seule la dernière
- * compte, et seulement si le module est toujours actif. On attend le lendemain (`< jour`) : toutes les activations d'une même
- * date entrent alors dans le même bon, dont la clé est (contrat, date d'activation). Un module déjà au bon de la période n'est pas
- * refacturé. Une activation faite avant le début de la période relève du bon périodique (un brouillon suit le contrat).
+ * Un module OU UN ACCÈS SUPPLÉMENTAIRE ajouté EN COURS de période d'un contrat annuel : un bon complémentaire, au prorata (tarif.ts,
+ * calculerComplementaire : mêmes mois entiers arrondis au supérieur, jusqu'à la date anniversaire), daté du jour de l'ajout. On attend
+ * le lendemain (`< jour`) : tout ce qui est ajouté une même date entre alors dans le même bon, dont la clé est (contrat, date).
+ *
+ * MODULES : l'activation se lit dans le JOURNAL (événement `module_active`, jamais modifié) ; seule la dernière compte, et seulement si
+ * le module est toujours actif. Un module déjà au bon de la période n'est pas refacturé.
+ *
+ * ACCÈS (retour de recette du 21/11/2026 : fini « l'accès est offert jusqu'à l'anniversaire ») : un accès facturable ajouté (créé, réactivé,
+ * ou passé de lecture à collaborateur) APRÈS l'émission du bon périodique de la période est facturé tout de suite, au prorata. Pas de
+ * double facturation :
+ *   - bon périodique de la période EN BROUILLON qui suit encore le contrat (la période n'a pas commencé : il est recalculé chaque nuit), ou
+ *     pas encore posé (le premier bon de rattrapage les comptera) : il compte déjà l'accès, aucun complémentaire ;
+ *   - bon périodique ÉMIS (ou brouillon que sa période commencée ne recalcule plus) : seuls les accès ajoutés après son émission (ou après
+ *     le début de la période) peuvent donner un complémentaire, et au plus autant que d'accès facturables au-delà des inclus (un accès
+ *     « inclus » ne coûte rien) ; on retient les plus récents. Même règle que pour les modules.
+ * Rejouée, la passe retombe sur les mêmes bons (clé du contrat et de la date) : rien n'est dupliqué, un bon émis ne bouge plus.
+ * Une activation faite avant le début de la période relève du bon périodique (un brouillon suit le contrat).
  */
 async function genererComplementaires(ctx: Contexte): Promise<number> {
   let crees = 0;
@@ -243,35 +313,85 @@ async function genererComplementaires(ctx: Contexte): Promise<number> {
     for (const e of results) if (e.module) dernier.set(e.module, { actif: e.type === 'module_active', jour: e.cree_le.slice(0, 10) });
 
     const regulier = await ctx.db
-      .prepare("SELECT lignes FROM bon_a_facturer WHERE contrat_id = ? AND periode_debut = ? AND type = 'periode' AND statut <> 'annulee'")
+      .prepare("SELECT lignes, statut, emis_le, cree_le FROM bon_a_facturer WHERE contrat_id = ? AND periode_debut = ? AND type = 'periode' AND statut <> 'annulee'")
       .bind(c.id, periode.debut)
-      .first<{ lignes: string }>();
+      .first<{ lignes: string; statut: string; emis_le: string | null; cree_le: string }>();
     const dejaAuBon = new Set<string>(regulier ? (JSON.parse(regulier.lignes) as LigneBon[]).map((l) => l.code) : []);
 
-    const parJour = new Map<string, { code: 'pilotage' | 'site'; prix: number }[]>();
+    const parJour = new Map<string, { modules: { code: 'pilotage' | 'site'; prix: number }[]; acces: number }>();
+    const jourDuBon = (jour: string) => {
+      const e = parJour.get(jour) ?? { modules: [], acces: 0 };
+      parJour.set(jour, e);
+      return e;
+    };
     for (const [module, d] of dernier) {
       if (module !== 'pilotage' && module !== 'site') continue;
       if (!d.actif || !(module === 'pilotage' ? c.module_pilotage : c.module_site)) continue;
       if (!(d.jour > periode.debut && d.jour < periode.fin && d.jour < ctx.jour)) continue;
       if (dejaAuBon.has(module)) continue;
-      const liste = parJour.get(d.jour) ?? [];
-      liste.push({ code: module, prix: module === 'pilotage' ? c.prix_pilotage : c.prix_site });
-      parJour.set(d.jour, liste);
+      jourDuBon(d.jour).modules.push({ code: module, prix: module === 'pilotage' ? c.prix_pilotage : c.prix_site });
+    }
+
+    const acces = await accesFacturables(ctx.db, c.tenant_id);
+    if (regulier && acces > c.acces_inclus) {
+      // L'instant où le bon périodique a COMPTÉ les accès : son émission (il ne bouge plus) ; pour un brouillon, le début de la période (il suit
+      // le contrat jusque-là, puis le traitement ne le recalcule plus) ou sa création si elle est plus tardive (premier bon de rattrapage).
+      const reference = regulier.statut === 'emise' && regulier.emis_le ? regulier.emis_le : regulier.cree_le > `${periode.debut}T00:00:00.000Z` ? regulier.cree_le : `${periode.debut}T00:00:00.000Z`;
+      // Les accès facturables actuels, avec l'instant où chacun l'est devenu : sa création, sa dernière réactivation, ou son passage à un
+      // rôle facturable (le journal des rôles). Un accès sans événement vaut sa création (colonne `cree_le`).
+      const { results: actifs } = await ctx.db
+        .prepare(
+          `SELECT u.id, u.cree_le,
+                  (SELECT MAX(e.cree_le) FROM evenement e
+                    WHERE e.tenant_id = u.tenant_id AND e.cible_type = 'acces' AND e.cible_id = u.id
+                      AND (e.type = 'acces_reactive'
+                           OR (e.type = 'acces_role' AND json_extract(e.detail, '$.vers') IN (${enSql(ACCES_FACTURABLES)}) AND json_extract(e.detail, '$.de') NOT IN (${enSql(ACCES_FACTURABLES)})))) AS depuis
+             FROM utilisateur u WHERE u.tenant_id = ? AND u.actif = 1 AND u.role IN (${enSql(ACCES_FACTURABLES)})`,
+        )
+        .bind(c.tenant_id)
+        .all<{ id: string; cree_le: string; depuis: string | null }>();
+      const arrivees = actifs
+        .map((u) => ({ id: u.id, instant: u.depuis && u.depuis > u.cree_le ? u.depuis : u.cree_le }))
+        .filter((u) => u.instant > reference && u.instant.slice(0, 10) < ctx.jour && u.instant.slice(0, 10) < periode.fin)
+        .sort((x, y) => (x.instant < y.instant ? -1 : x.instant > y.instant ? 1 : x.id < y.id ? -1 : 1));
+      const a_facturer = arrivees.slice(Math.max(0, arrivees.length - (acces - c.acces_inclus)));
+      for (const u of a_facturer) {
+        // Un accès arrivé le jour même du début de période partage la clé du bon périodique : il est daté du lendemain.
+        const jour = u.instant.slice(0, 10) > periode.debut ? u.instant.slice(0, 10) : plusJours(periode.debut, 1);
+        jourDuBon(jour).acces++;
+      }
     }
     if (parJour.size === 0) continue;
 
-    const acces = await accesFacturables(ctx.db, c.tenant_id);
     const valides = await parrainagesValides(ctx.db, c.tenant_id);
     const taux = tauxRemise(tauxParrainage(valides), c.remise_commerciale_taux);
     const motif = motifRemise({ parrainages_valides: valides, remise_commerciale_taux: c.remise_commerciale_taux, motif_commercial: c.remise_motif });
-    for (const [activation, modules] of parJour) {
-      const brut = calculerComplementaire({ periodicite: c.periodicite, modules, activation, anniversaire: periode.fin, remise_taux: taux });
+    for (const [activation, { modules, acces: nouveaux }] of parJour) {
+      const brut = calculerComplementaire({
+        periodicite: c.periodicite, modules, acces_sup: nouveaux > 0 ? { quantite: nouveaux, prix: c.prix_acces_sup } : undefined,
+        activation, anniversaire: periode.fin, remise_taux: taux,
+      });
       if (!brut) continue;
       const calc: Calcul = { ...brut, remise_motif: motif };
       if ((await poserBon(ctx.db, c, 'complementaire', { debut: activation, fin: periode.fin }, calc, acces)) === 'cree') crees++;
     }
   }
   return crees;
+}
+
+/**
+ * Le bon périodique de la période en cours est-il ÉMIS ? Si oui, un accès ajouté aujourd'hui donne un bon complémentaire ; sinon (brouillon, ou
+ * pas encore posé) le bon périodique le compte lui-même. Sert à la phrase de la création d'un accès (depassement.ts).
+ */
+export async function bonDeLaPeriodeEstEmis(db: Base, c: Contrat, jour: string): Promise<boolean> {
+  if (!c.debut_le) return false;
+  const periode = periodeAu(c.debut_le, c.periodicite, jour);
+  if (!periode) return false;
+  const r = await db
+    .prepare("SELECT 1 AS ok FROM bon_a_facturer WHERE contrat_id = ? AND tenant_id = ? AND periode_debut = ? AND type = 'periode' AND statut = 'emise'")
+    .bind(c.id, c.tenant_id, periode.debut)
+    .first();
+  return !!r;
 }
 
 /**
@@ -494,13 +614,18 @@ export async function annulerBon(db: Base, tenantId: string, bonId: string, acte
   if (avant.statut === 'annulee') return { ok: false, code: 'deja_annule' };
   const detail = { bon_id: bonId, periode_debut: avant.periode_debut, periode_fin: avant.periode_fin, total_ht: avant.total_ht, ...(motif ? { motif } : {}) };
   const resultats = await db.batch([
+    // Un BROUILLON qui s'annule rend les crédits de prorata qu'il portait : ils retournent en attente, pour le bon suivant. Avant le changement
+    // de statut (un bon annulé est figé, ses remises avec lui). Un bon ÉMIS annulé garde les siens : ils sont consommés.
+    db
+      .prepare("UPDATE remise_ponctuelle SET bon_id = NULL, etat = 'en_attente' WHERE bon_id = ? AND tenant_id = ? AND origine <> 'manuelle' AND etat = 'appliquee' AND ? = 'brouillon'")
+      .bind(bonId, tenantId, avant.statut),
     db
       .prepare(`UPDATE bon_a_facturer SET statut = 'annulee', annule_le = ${INSTANT} WHERE id = ? AND tenant_id = ? AND statut = ?`)
       .bind(bonId, tenantId, avant.statut),
     requeteEvenement(db, { tenantId, type: EVENEMENT.BON_ANNULE, acteur, cible: { type: 'contrat', id: avant.contrat_id }, detail }, true),
   ]);
   // Annulé entre-temps par un autre appel : le nôtre n'a rien écrit (ni événement).
-  if (lignesModifiees(resultats[0]) === 0) return { ok: false, code: 'deja_annule' };
+  if (lignesModifiees(resultats[1]) === 0) return { ok: false, code: 'deja_annule' };
   const apres = await bonDe(db, tenantId, bonId);
   if (!apres || apres.statut !== 'annulee') return { ok: false, code: 'pas_annulable' };
   return { ok: true, bon: apres };
@@ -510,6 +635,16 @@ export async function annulerBon(db: Base, tenantId: string, bonId: string, acte
 
 export interface LigneBonComplet extends LigneBon {
   libelle: string;
+}
+
+/** Une remise ponctuelle telle que le bon l'affiche : `montant` est ce que la remise retient réellement sur sa ligne. */
+export interface RemisePonctuelleBon {
+  id: string;
+  code_ligne: LigneBon['code'];
+  libelle: string;
+  montant: number;
+  motif: string;
+  origine: 'manuelle' | 'acces' | 'module';
 }
 
 /** Les libellés des postes, tels que le bon et la page d'abonnement les écrivent. */
@@ -541,6 +676,9 @@ export interface BonComplet {
   remise_taux: number;
   remise_montant: number;
   remise_motif: string | null;
+  /** Les remises ponctuelles du bon, et leur somme (déjà déduite du total). */
+  remises_ponctuelles: RemisePonctuelleBon[];
+  remise_ponctuelle_montant: number;
   total_ht: number;
   tva_taux: number;
   tva_montant: number;
@@ -554,7 +692,7 @@ interface LigneSql {
   id: string; tenant_id: string; contrat_id: string; type: 'periode' | 'complementaire' | 'installation'; statut: 'brouillon' | 'emise' | 'annulee';
   numero: string | null; emis_le: string | null; annule_le: string | null; periode_debut: string; periode_fin: string; periodicite: string;
   facture_cle: string | null; acces_facturables: number; lignes: string; recurrent_ht: number; remise_taux: number; remise_montant: number;
-  remise_motif: string | null; total_ht: number; tva_taux: number;
+  remise_motif: string | null; remise_ponctuelle_montant: number; total_ht: number; tva_taux: number;
   raison_sociale: string; siren: string | null; adresse_facturation: string | null; contact_facturation: string | null;
 }
 
@@ -563,7 +701,7 @@ export async function bonComplet(db: Base, bonId: string): Promise<BonComplet | 
   const r = await db
     .prepare(
       `SELECT b.id, b.tenant_id, b.contrat_id, b.type, b.statut, b.numero, b.emis_le, b.annule_le, b.periode_debut, b.periode_fin,
-              c.periodicite, b.facture_cle, b.acces_facturables, b.lignes, b.recurrent_ht, b.remise_taux, b.remise_montant, b.remise_motif,
+              c.periodicite, b.facture_cle, b.acces_facturables, b.lignes, b.recurrent_ht, b.remise_taux, b.remise_montant, b.remise_motif, b.remise_ponctuelle_montant,
               b.total_ht, b.tva_taux, t.nom AS raison_sociale, t.siren, t.adresse_facturation, t.contact_facturation
          FROM bon_a_facturer b
          JOIN contrat c ON c.id = b.contrat_id AND c.tenant_id = b.tenant_id
@@ -576,12 +714,18 @@ export async function bonComplet(db: Base, bonId: string): Promise<BonComplet | 
   const identite: IdentiteFacturation = {
     raison_sociale: r.raison_sociale, siren: r.siren, adresse_facturation: r.adresse_facturation, contact_facturation: r.contact_facturation,
   };
-  const lignes = (JSON.parse(r.lignes) as LigneBon[]).map((l) => ({ ...l, libelle: LIBELLES_LIGNE[l.code] ?? l.code }));
+  const brutes = JSON.parse(r.lignes) as LigneBon[];
+  const portees = await remisesDuBon(db, r.tenant_id, r.id);
+  const retenues = retenirRemises(brutes, enRemises(portees));
+  const lignes: LigneBonComplet[] = brutes.map((l) => ({ ...l, libelle: LIBELLES_LIGNE[l.code] ?? l.code }));
+  const remises_ponctuelles: RemisePonctuelleBon[] = portees.map((x, i) => ({
+    id: x.id, code_ligne: x.code_ligne, libelle: LIBELLES_LIGNE[x.code_ligne] ?? x.code_ligne, montant: retenues[i], motif: x.motif, origine: x.origine,
+  }));
   return {
     id: r.id, tenant_id: r.tenant_id, contrat_id: r.contrat_id, type: r.type, statut: r.statut, numero: r.numero, emis_le: r.emis_le,
     annule_le: r.annule_le, periode_debut: r.periode_debut, periode_fin: r.periode_fin, periodicite: r.periodicite, facture_cle: r.facture_cle,
     acces_facturables: r.acces_facturables, lignes, recurrent_ht: r.recurrent_ht, remise_taux: r.remise_taux, remise_montant: r.remise_montant,
-    remise_motif: r.remise_motif, total_ht: r.total_ht, ...calculerTva(r.total_ht, r.tva_taux), identite, manque: identiteManquante(identite),
+    remise_motif: r.remise_motif, remises_ponctuelles, remise_ponctuelle_montant: r.remise_ponctuelle_montant, total_ht: r.total_ht, ...calculerTva(r.total_ht, r.tva_taux), identite, manque: identiteManquante(identite),
   };
 }
 

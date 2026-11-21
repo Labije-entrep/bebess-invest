@@ -10,10 +10,14 @@ const ANNUEL: ContratDepassement = { periodicite: 'annuelle', debut_le: '2026-03
 test('la confirmation dit d\'abord le dépassement, puis son effet, avec la date anniversaire', () => {
   assert.deepEqual(phraseCreationAcces(ANNUEL, 4, '2026-11-20'), {
     constat: 'Vous dépassez les 3 accès inclus dans votre contrat : 4 accès facturables.',
-    effet: "Ce 4ᵉ accès est offert jusqu'au 14/03/2027, puis facturé 25 € HT par mois.",
+    effet: "Ce 4ᵉ accès est facturé 25 € HT par mois à compter d'aujourd'hui : 100 € HT jusqu'au 14/03/2027.",
   });
   const p = phraseCreationAcces(ANNUEL, 4, '2026-11-20')!;
-  assert.doesNotMatch(p.constat + p.effet, /gratuit/);
+  assert.doesNotMatch(p.constat + p.effet, /gratuit|offert/);
+  // Mois entiers restants arrondis au supérieur, comme un module : le 02/03/2027, un mois (25 €).
+  assert.equal(phraseCreationAcces(ANNUEL, 4, '2027-03-02')?.effet, "Ce 4ᵉ accès est facturé 25 € HT par mois à compter d'aujourd'hui : 25 € HT jusqu'au 14/03/2027.");
+  // Bon de la période pas encore émis : il compte l'accès lui-même, aucun second montant.
+  assert.equal(phraseCreationAcces(ANNUEL, 4, '2026-11-20', { suit_le_contrat: true })?.effet, "Ce 4ᵉ accès est facturé 25 € HT par mois : il entre dans le bon de la période en cours, qui n'est pas encore émis.");
 });
 
 test('la date est la prochaine date anniversaire, jamais une date passée', () => {
@@ -29,9 +33,9 @@ test('un contrat en essai, sans début, donne la fin de son essai ; sans aucune 
 });
 
 test('un contrat mensuel paie ses accès au prix mensuel (25 € → 29 €) ; le constat suit les accès inclus et le décompte', () => {
-  assert.match(phraseCreationAcces({ ...ANNUEL, periodicite: 'mensuelle' }, 4, '2026-11-20')?.effet ?? '', /facturé 29 € HT par mois\.$/);
+  assert.equal(phraseCreationAcces({ ...ANNUEL, periodicite: 'mensuelle' }, 4, '2026-11-20')?.effet, 'Ce 4ᵉ accès est facturé 29 € HT par mois à partir du prochain bon.');
   assert.equal(phraseCreationAcces({ ...ANNUEL, acces_inclus: 5 }, 6, '2026-11-20')?.constat, 'Vous dépassez les 5 accès inclus dans votre contrat : 6 accès facturables.');
-  assert.match(phraseCreationAcces({ ...ANNUEL, acces_inclus: 5 }, 7, '2026-11-20')?.effet ?? '', /^Ce 7ᵉ accès est offert/);
+  assert.match(phraseCreationAcces({ ...ANNUEL, acces_inclus: 5 }, 7, '2026-11-20')?.effet ?? '', /^Ce 7ᵉ accès est facturé/);
 });
 
 test('la phrase de la page n’existe que si les accès facturables dépassent les inclus', () => {

@@ -10,6 +10,7 @@ import { ONGLETS_REGLAGES } from '../../lib/onglets-reglages';
 import { accesDuCabinet, compterAcces, creerAcces, suspendreAcces, type CodeAcces } from '../../lib/acces';
 import { contratEnCours } from '../../lib/contrat';
 import { phraseCreationAcces, type PhraseDepassement } from '../../lib/depassement';
+import { bonDeLaPeriodeEstEmis } from '../../lib/facturation';
 import type { Role } from '../../lib/db';
 import { ACCES_CABINET, ACCES_FACTURABLES } from '../../lib/roles';
 import { marqueursDeLaListe } from '../../lib/marqueurs';
@@ -105,7 +106,10 @@ if (Astro.request.method === 'POST') {
         const contrat = await contratEnCours(db, tenant.id);
         const { facturables } = await compterAcces(db, tenant.id);
         const depasse = !!contrat && ACCES_FACTURABLES.includes(role) && facturables > contrat.acces_inclus;
-        confirmation = { nom: saisieAcces.nom, role, phrase: depasse ? phraseCreationAcces(contrat, facturables, new Date().toISOString().slice(0, 10)) : null };
+        const aujourdhui = new Date().toISOString().slice(0, 10);
+        // Bon de la période déjà émis : l'accès est facturé tout de suite par un bon complémentaire. Sinon le bon le compte lui-même.
+        const suit_le_contrat = depasse && !(await bonDeLaPeriodeEstEmis(db, contrat, aujourdhui));
+        confirmation = { nom: saisieAcces.nom, role, phrase: depasse ? phraseCreationAcces(contrat, facturables, aujourdhui, { suit_le_contrat }) : null };
         valeurs = {};
       }
     }

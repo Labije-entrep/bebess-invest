@@ -3,8 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ajouterMois, calculerBon, calculerComplementaire, compterAccesFacturables, dateEffetPreavis, moisArrondisAuSuperieur, periodeAu, periodesDebutant,
-  prixMensuel, prochainAnniversaire, tauxParrainage, tauxRemise, type EntreeBon,
+  ajouterMois, calculerBon, calculerComplementaire, calculerCreditProrata, compterAccesFacturables, dateEffetPreavis, moisArrondisAuSuperieur, moisEntiersRestants,
+  periodeAu, periodesDebutant, plafondRemise, retenirRemises, totauxDuBon, prixMensuel, prochainAnniversaire, tauxParrainage, tauxRemise, type EntreeBon,
 } from './tarif.ts';
 
 const BASE: EntreeBon = {
@@ -131,4 +131,53 @@ test('résiliation : 30 jours pile suffisent, 29 non ; jamais avant le premier a
   assert.equal(dateEffetPreavis('2026-03-14', '2027-02-13').effet, '2028-03-14'); // 29 jours
   assert.deepEqual(dateEffetPreavis('2026-03-14', '2026-04-01'), { prochain: '2027-03-14', effet: '2027-03-14', reconduit: false });
   assert.equal(prochainAnniversaire('2026-03-14', '2027-03-14'), '2028-03-14');
+});
+
+// ------------------------------------------------------------------ 21/11/2026 : prorata d'un accès, remises ponctuelles, crédit
+
+test('prorata d\'un accès supplémentaire : mêmes mois que le module (arrondis au supérieur), au prix prix_acces_sup', () => {
+  const brut = (activation: string, quantite = 1) =>
+    calculerComplementaire({ periodicite: 'annuelle', modules: [], acces_sup: { quantite, prix: 2500 }, activation, anniversaire: '2027-03-14', remise_taux: 0 });
+  assert.deepEqual(brut('2026-11-20')?.lignes, [{ code: 'acces_sup', quantite: 1, prix_unitaire: 2500, mois: 4, montant: 10000 }]);
+  assert.equal(brut('2027-03-02')?.total_ht, 2500);
+  assert.equal(brut('2026-11-20', 2)?.total_ht, 20000);
+  assert.equal(brut('2027-03-14'), null, 'plus rien à courir');
+  assert.equal(calculerComplementaire({ periodicite: 'mensuelle', modules: [], acces_sup: { quantite: 1, prix: 2500 }, activation: '2026-11-20', anniversaire: '2026-12-14', remise_taux: 0 }), null);
+  // Un module et un accès le même jour : un seul bon, la remise en % sur le tout.
+  const les_deux = calculerComplementaire({ periodicite: 'annuelle', modules: [{ code: 'pilotage', prix: 4900 }], acces_sup: { quantite: 1, prix: 2500 }, activation: '2026-11-20', anniversaire: '2027-03-14', remise_taux: 1000 });
+  assert.deepEqual([les_deux?.recurrent_ht, les_deux?.remise_montant, les_deux?.total_ht], [29600, 2960, 26640]);
+});
+
+test('mois entiers restants arrondis à l\'inférieur (le crédit) ; le crédit de prorata : prix × mois non entamés, jamais en mensuel', () => {
+  assert.equal(moisEntiersRestants('2026-11-20', '2027-03-14'), 3);
+  assert.equal(moisEntiersRestants('2026-11-14', '2027-03-14'), 4, 'quatre mois pleins');
+  assert.equal(moisEntiersRestants('2027-03-02', '2027-03-14'), 0);
+  assert.equal(moisEntiersRestants('2027-03-14', '2027-03-14'), 0);
+  assert.deepEqual(calculerCreditProrata({ periodicite: 'annuelle', prix_acces_sup: 2500, jour: '2026-11-20', anniversaire: '2027-03-14' }), { mois: 3, montant: 7500 });
+  assert.equal(calculerCreditProrata({ periodicite: 'annuelle', prix_acces_sup: 2500, jour: '2027-03-02', anniversaire: '2027-03-14' }), null, 'aucun mois entier : pas de crédit');
+  assert.equal(calculerCreditProrata({ periodicite: 'mensuelle', prix_acces_sup: 2500, jour: '2026-11-20', anniversaire: '2026-12-14' }), null);
+});
+
+test('remises ponctuelles : retenues dans la limite de leur ligne, dans l\'ordre ; le surplus d\'un crédit se replie sur le récurrent', () => {
+  const lignes = [
+    { code: 'socle' as const, quantite: 1, prix_unitaire: 7900, mois: 12, montant: 94800 },
+    { code: 'pilotage' as const, quantite: 1, prix_unitaire: 4900, mois: 12, montant: 58800 },
+  ];
+  assert.deepEqual(retenirRemises(lignes, [{ code: 'socle', montant: 100000 }, { code: 'socle', montant: 5 }, { code: 'site', montant: 500 }]), [94800, 0, 0]);
+  assert.deepEqual(retenirRemises(lignes, [{ code: 'acces_sup', montant: 7500, repli: true }]), [7500], 'pas de ligne d\'accès : imputé sur le récurrent');
+  assert.equal(plafondRemise(lignes, [{ code: 'socle', montant: 800 }], 'socle'), 94000);
+});
+
+test('totaux d\'un bon : remises ponctuelles d\'abord, remise en % sur le reste, au centime sans flottant, jamais négatif', () => {
+  const lignes = [
+    { code: 'socle' as const, quantite: 1, prix_unitaire: 7900, mois: 12, montant: 94800 },
+    { code: 'acces_sup' as const, quantite: 1, prix_unitaire: 2500, mois: 12, montant: 30000 },
+  ];
+  assert.deepEqual(totauxDuBon(lignes, 0), { recurrent_ht: 124800, remise_ponctuelle_montant: 0, remise_montant: 0, total_ht: 124800 });
+  // (124 800 − 3 333) × 12,5 % = 15 183,375 → 15 183 ; total 106 284
+  assert.deepEqual(totauxDuBon(lignes, 1250, [{ code: 'acces_sup', montant: 3333 }]), { recurrent_ht: 124800, remise_ponctuelle_montant: 3333, remise_montant: 15183, total_ht: 106284 });
+  assert.equal(totauxDuBon(lignes, 5000, [{ code: 'socle', montant: 94800 }, { code: 'acces_sup', montant: 30000 }]).total_ht, 0);
+  // Bon d'installation : une ligne, sans remise en pourcentage.
+  const inst = [{ code: 'installation' as const, quantite: 1, prix_unitaire: 90000, mois: 1, montant: 90000 }];
+  assert.deepEqual(totauxDuBon(inst, 0, [{ code: 'installation', montant: 10000 }]), { recurrent_ht: 0, remise_ponctuelle_montant: 10000, remise_montant: 0, total_ht: 80000 });
 });

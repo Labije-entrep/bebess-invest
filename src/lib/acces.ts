@@ -5,9 +5,11 @@
 import type { Base, Requete, Role } from './db';
 import { ACCES_CABINET, ACCES_FACTURABLES, COMPTES_EDITEUR, aLeRole, enSql, roleCreable } from './roles';
 import { EVENEMENT, requeteEvenement, type Acteur } from './journal';
+import { annulerCreditsReactivation, requetesCreditRetrait } from './remises';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const maintenant = (): string => new Date().toISOString();
+const aujourdhui = (): string => maintenant().slice(0, 10);
 
 export type CodeAcces = 'nom' | 'email' | 'role' | 'pris' | 'inconnu' | 'interdit' | 'utilise' | 'inchange';
 export type ResultatAcces = { ok: true; id: string } | { ok: false; code: CodeAcces };
@@ -118,17 +120,20 @@ export async function creerAcces(
  * Supprime un accès. Ses sessions et liens de connexion partent avec lui. S'il a déjà écrit au nom du cabinet (un import), la
  * base refuse la suppression : on le suspend plutôt. L'événement garde son adresse et son rôle.
  */
-export async function supprimerAcces(db: Base, tenantId: string, id: string, acteur: Acteur | null): Promise<ResultatAcces> {
+export async function supprimerAcces(db: Base, tenantId: string, id: string, acteur: Acteur | null, jour: string = aujourdhui()): Promise<ResultatAcces> {
   const g = await cibleGerable(db, tenantId, id, acteur);
   if (!g.cible) return { ok: false, code: g.code };
   if (g.cible.role === 'viewer' || g.cible.role === 'editeur') return { ok: false, code: 'interdit' };
   const { id: cibleId, email, role } = g.cible;
+  // Un accès facturable ACTIF facturé au-delà des inclus donne un crédit de prorata sur le bon suivant (remises.ts) ; dans la même transaction.
+  const credit = await creditDeRetrait(db, tenantId, g.cible, 'supprime', acteur, jour);
   try {
     await db.batch([
       db.prepare('DELETE FROM session WHERE utilisateur_id = ?').bind(cibleId),
       db.prepare('DELETE FROM jeton_connexion WHERE utilisateur_id = ?').bind(cibleId),
       db.prepare('DELETE FROM utilisateur WHERE id = ? AND tenant_id = ?').bind(cibleId, tenantId),
       requeteEvenement(db, { tenantId, type: EVENEMENT.ACCES_SUPPRIME, acteur, cible: { type: 'acces', id: cibleId }, detail: { email, role } }, true),
+      ...credit,
     ]);
   } catch {
     return { ok: false, code: 'utilise' };
@@ -136,12 +141,20 @@ export async function supprimerAcces(db: Base, tenantId: string, id: string, act
   return { ok: true, id: cibleId };
 }
 
+/** Le crédit de prorata dû quand cet accès est retiré (suppression ou suspension), ou []. Seul un accès facturable ET actif en donne un. */
+async function creditDeRetrait(db: Base, tenantId: string, cible: { id: string; role: Role; actif: number }, cause: 'supprime' | 'suspendu', acteur: Acteur | null, jour: string) {
+  if (cible.actif !== 1 || !ACCES_FACTURABLES.includes(cible.role)) return [];
+  const { facturables } = await compterAcces(db, tenantId);
+  return requetesCreditRetrait(db, tenantId, cible.id, cause, facturables, acteur, jour);
+}
+
 /** Suspend (actif = 0) ou rétablit un accès. Rien n'est effacé. L'événement d'un viewer ne porte pas son adresse. */
-export async function suspendreAcces(db: Base, tenantId: string, id: string, actif: boolean, acteur: Acteur | null): Promise<ResultatAcces> {
+export async function suspendreAcces(db: Base, tenantId: string, id: string, actif: boolean, acteur: Acteur | null, jour: string = aujourdhui()): Promise<ResultatAcces> {
   const g = await cibleGerable(db, tenantId, id, acteur);
   if (!g.cible) return { ok: false, code: g.code };
   if (g.cible.role === 'editeur') return { ok: false, code: 'interdit' };
   if ((g.cible.actif === 1) === actif) return { ok: false, code: 'inchange' };
+  const credit = actif ? [] : await creditDeRetrait(db, tenantId, g.cible, 'suspendu', acteur, jour);
   await db.batch([
     db.prepare('UPDATE utilisateur SET actif = ? WHERE id = ? AND tenant_id = ?').bind(actif ? 1 : 0, g.cible.id, tenantId),
     requeteEvenement(
@@ -155,7 +168,10 @@ export async function suspendreAcces(db: Base, tenantId: string, id: string, act
       },
       true,
     ),
+    ...credit,
   ]);
+  // Réactivé avant que le crédit n'ait été consommé par un bon émis : le crédit est annulé.
+  if (actif) await annulerCreditsReactivation(db, tenantId, g.cible.id, acteur);
   return { ok: true, id: g.cible.id };
 }
 
