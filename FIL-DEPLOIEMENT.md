@@ -54,7 +54,7 @@ base de recette quand elle ne sert plus (RECETTE.md §6).
 ### A2. Préparer le poste 🧑 + 💻
 ```bash
 cd ~/Dev/Bebess-invest
-git checkout main && git pull
+git checkout develop && git pull
 npm install
 npx wrangler login
 npm run check
@@ -184,6 +184,8 @@ n'est pas du code.
 ## Partie C : le déploiement en production
 
 À ne faire que si A7 et toute la partie B sont cochées.
+
+**Branches.** `develop` est la branche d'intégration (cible de toutes les PR, source de la recette). `master` est la branche de production : elle ne reçoit que des fusions de `develop`, par PR, une fois la recette validée, et elle est protégée (pas de poussée directe, ni de suppression). On déploie la production depuis `master` à jour, jamais depuis une branche de travail.
 
 ### C1. Créer les ressources de prod 💻
 ```bash

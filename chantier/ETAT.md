@@ -6,7 +6,7 @@ Mis à jour par l'agent à la fin de chaque session. Une ligne par lot.
 
 Un lot dont le prérequis n'est pas coché ne démarre pas.
 
-- [x] **P1** — `main` est à jour : `git checkout main && git merge --ff-only claude/work-rules-product-charter-509832`
+- [x] **P1** — `main` (depuis le 2026-11-21 : `develop`) est à jour : `git checkout main && git merge --ff-only claude/work-rules-product-charter-509832`
 - [ ] **P2** — Scaleway TEM configuré, domaine vérifié, SPF, DKIM, DMARC posés, un lien de connexion reçu sur une adresse Outlook professionnelle
 - [ ] **P3** — Jeton d'API Cloudflare en secret du Worker (nécessaire au lot 10 pour les domaines personnalisés)
 - [ ] **P4** — Worker `bebess-traitement` déployé avec son Cron Trigger (`wrangler.cron.toml`, voir `DEPLOIEMENT.md`) : nécessaire pour que le lot 12 tourne en production
