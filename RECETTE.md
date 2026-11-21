@@ -16,7 +16,7 @@ Tout ce qui suit porte le suffixe `-recette`. Rien n'y touche à la production.
 
 - Node 22.18 ou plus récent — le banc de vérification utilise `node:sqlite` — et
   `npx wrangler login` fait sur le bon compte.
-- Le dépôt à jour sur `main`.
+- Le dépôt à jour sur `develop` (la branche d'intégration ; la production se déploie depuis `master`, une fois la recette validée).
 - Pour les courriels : soit le pilote `console` (suffisant pour presque tout), soit
   un domaine d'envoi Scaleway distinct de celui de production.
 
