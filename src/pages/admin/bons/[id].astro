@@ -25,7 +25,7 @@ const acteur = { id: g.utilisateur.id, role: g.utilisateur.role };
 
 const RETOURS: Record<string, string> = {
   ...MESSAGES_BON, ...MESSAGES_REFUS,
-  emis: 'Bon émis : son numéro est attribué.', annule: 'Bon annulé.', pdf: 'PDF de la facture enregistré.',
+  emis: 'Bon émis : son numéro est attribué.', annule: 'Bon de commande annulé : son numéro reste attribué, il ne sera pas réutilisé.', pdf: 'PDF de la facture enregistré.',
 };
 
 if (Astro.request.method === 'POST') {
@@ -52,7 +52,7 @@ if (Astro.request.method === 'POST') {
 
 const code = Astro.url.searchParams.get('r') as CodeBon | null;
 const retour = code && Object.hasOwn(RETOURS, code) ? { texte: RETOURS[code], bon: Astro.url.searchParams.get('ok') === '1' } : null;
-const STATUTS: Record<string, string> = { brouillon: 'Brouillon : à émettre', emise: 'Émis', annulee: 'Annulé' };
+const STATUTS: Record<string, string> = { brouillon: 'Brouillon : à émettre', emise: 'Émis', annulee: 'Bon de commande annulé' };
 const manque = (c: (typeof bon.manque)[number]) => bon.manque.includes(c);
 const periodicite = bon.periodicite === 'mensuelle' ? 'mensuelle' : 'annuelle';
 ---
@@ -70,7 +70,7 @@ const periodicite = bon.periodicite === 'mensuelle' ? 'mensuelle' : 'annuelle';
     <header class="bon-tete">
       <div>
         <h1 id="bon-titre">{bon.type === 'complementaire' ? 'Bon à facturer complémentaire' : bon.type === 'installation' ? 'Bon à facturer : frais d’installation' : 'Bon à facturer'}</h1>
-        <p class="aide">{STATUTS[bon.statut]}{bon.emis_le && ` le ${dateCourte(bon.emis_le)}`}{bon.annule_le && ` · annulé le ${dateCourte(bon.annule_le)}`}</p>
+        <p class="aide">{STATUTS[bon.statut]}{bon.emis_le && (bon.statut === 'annulee' ? ` · émis le ${dateCourte(bon.emis_le)}` : ` le ${dateCourte(bon.emis_le)}`)}{bon.annule_le && ` · annulé le ${dateCourte(bon.annule_le)}`}</p>
       </div>
       <p class="bon-numero">{bon.numero ?? <span class="aide">Numéro attribué à l’émission</span>}</p>
     </header>
@@ -126,7 +126,7 @@ const periodicite = bon.periodicite === 'mensuelle' ? 'mensuelle' : 'annuelle';
         )}
         <button class="btn-plein" type="submit">Émettre le bon et lui attribuer son numéro</button>
       </div>
-      <p class="aide">Le numéro FACT-AAAA-NNNN est attribué par le produit, une seule fois ; le bon ne bouge plus ensuite.</p>
+      <p class="aide">Le numéro BC-AAAA-NNNN (bon de commande) est attribué par le produit, une seule fois ; le bon ne bouge plus ensuite.</p>
     </form>
   )}
   {bon.statut === 'emise' && (
@@ -140,7 +140,7 @@ const periodicite = bon.periodicite === 'mensuelle' ? 'mensuelle' : 'annuelle';
   {bon.statut !== 'annulee' && (
     <form method="post" class="ne-pas-imprimer actions">
       <input type="hidden" name="action" value="annuler" />
-      <button class="btn" type="submit">{bon.statut === 'emise' ? 'Annuler le bon (un avoir est émis)' : 'Annuler le brouillon'}</button>
+      <button class="btn" type="submit">{bon.statut === 'emise' ? 'Annuler le bon' : 'Annuler le brouillon'}</button>
     </form>
   )}
 
