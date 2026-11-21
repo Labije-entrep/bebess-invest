@@ -2,9 +2,10 @@
 export const prerender = false;
 import Gestion from '../../../layouts/Gestion.astro';
 import { accesCabinet, gardeAdmin } from '../../../lib/admin';
-import { annulerBon, bonComplet, deposerFacture, emettreBon, MESSAGES_BON, type CodeBon } from '../../../lib/facturation';
+import { annulerBon, bonComplet, deposerFacture, emettreBon, MESSAGES_BON } from '../../../lib/facturation';
 import { corpsTropGros, lireDepot, MESSAGES_REFUS } from '../../../lib/fichiers';
 import { LIBELLES_IDENTITE } from '../../../lib/identite';
+import { eurosEnCentimes, MESSAGES_REMISE, modifierRemise, poserRemise, supprimerRemise } from '../../../lib/remises';
 import { afficherSiren } from '../../../lib/siren';
 import { dateCourte, eurosPrecis } from '../../../lib/format';
 import { tauxEnTexte } from '../../../lib/tarif';
@@ -25,6 +26,8 @@ const acteur = { id: g.utilisateur.id, role: g.utilisateur.role };
 
 const RETOURS: Record<string, string> = {
   ...MESSAGES_BON, ...MESSAGES_REFUS,
+  ...Object.fromEntries(Object.entries(MESSAGES_REMISE).map(([k, v]) => [`remise_${k}`, v])),
+  remise_posee: 'Remise ponctuelle posée sur la ligne.', remise_modifiee: 'Remise ponctuelle modifiée.', remise_supprimee: 'Remise ponctuelle supprimée.',
   emis: 'Bon émis : son numéro est attribué.', annule: 'Bon de commande annulé : son numéro reste attribué, il ne sera pas réutilisé.', pdf: 'PDF de la facture enregistré.',
 };
 
@@ -41,6 +44,19 @@ if (Astro.request.method === 'POST') {
     const r = await annulerBon(g.db, bon.tenant_id, bon.id, acteur);
     return r.ok ? aller('annule', true) : aller(r.code, false);
   }
+  // Les remises ponctuelles (éditeur seulement, bon brouillon seulement : le refus vient de remises.ts, pas de l'écran).
+  if (action === 'remise_poser' || action === 'remise_modifier' || action === 'remise_supprimer') {
+    const montant = eurosEnCentimes(String(f.get('montant') ?? ''));
+    const motif = String(f.get('motif') ?? '');
+    const rid = String(f.get('remise_id') ?? '');
+    const r = action === 'remise_poser'
+      ? await poserRemise(g.db, bon.tenant_id, bon.id, { code_ligne: String(f.get('code_ligne') ?? ''), montant: montant ?? 0, motif }, acteur)
+      : action === 'remise_modifier'
+        ? await modifierRemise(g.db, bon.tenant_id, rid, { montant: montant ?? 0, motif }, acteur)
+        : await supprimerRemise(g.db, bon.tenant_id, rid, acteur);
+    const ok = { remise_poser: 'remise_posee', remise_modifier: 'remise_modifiee', remise_supprimer: 'remise_supprimee' }[action];
+    return r.ok ? aller(ok, true) : aller(`remise_${r.code}`, false);
+  }
   if (action === 'pdf') {
     const depot = await lireDepot(f.get('fichier'), 'pdf');
     if (typeof depot === 'string') return aller(depot, false);
@@ -50,13 +66,13 @@ if (Astro.request.method === 'POST') {
   return new Response('Action inconnue.', { status: 400 });
 }
 
-const code = Astro.url.searchParams.get('r') as CodeBon | null;
+const code = Astro.url.searchParams.get('r');
 const retour = code && Object.hasOwn(RETOURS, code) ? { texte: RETOURS[code], bon: Astro.url.searchParams.get('ok') === '1' } : null;
 const STATUTS: Record<string, string> = { brouillon: 'Brouillon : à émettre', emise: 'Émis', annulee: 'Bon de commande annulé' };
 const manque = (c: (typeof bon.manque)[number]) => bon.manque.includes(c);
 const periodicite = bon.periodicite === 'mensuelle' ? 'mensuelle' : 'annuelle';
 ---
-<Gestion titre={bon.numero ?? 'Bon à facturer'} espace="admin">
+<Gestion titre={bon.numero ?? 'Bon de commande'} espace="admin">
   <p class="aide ne-pas-imprimer"><a href="/admin/facturation">← Facturation</a> · <a href={`/admin/cabinets/${encodeURIComponent(bon.tenant_id)}`}>{bon.identite.raison_sociale}</a></p>
   {retour && <p class={retour.bon ? 'info ne-pas-imprimer' : 'info alerte ne-pas-imprimer'} role="status">{retour.texte}</p>}
   {bon.manque.length > 0 && bon.statut !== 'annulee' && (
@@ -69,7 +85,7 @@ const periodicite = bon.periodicite === 'mensuelle' ? 'mensuelle' : 'annuelle';
   <article class="bon" aria-labelledby="bon-titre">
     <header class="bon-tete">
       <div>
-        <h1 id="bon-titre">{bon.type === 'complementaire' ? 'Bon à facturer complémentaire' : bon.type === 'installation' ? 'Bon à facturer : frais d’installation' : 'Bon à facturer'}</h1>
+        <h1 id="bon-titre">{bon.type === 'complementaire' ? 'Bon de commande complémentaire' : bon.type === 'installation' ? 'Bon de commande : frais d’installation' : 'Bon de commande'}</h1>
         <p class="aide">{STATUTS[bon.statut]}{bon.emis_le && (bon.statut === 'annulee' ? ` · émis le ${dateCourte(bon.emis_le)}` : ` le ${dateCourte(bon.emis_le)}`)}{bon.annule_le && ` · annulé le ${dateCourte(bon.annule_le)}`}</p>
       </div>
       <p class="bon-numero">{bon.numero ?? <span class="aide">Numéro attribué à l’émission</span>}</p>
@@ -95,12 +111,20 @@ const periodicite = bon.periodicite === 'mensuelle' ? 'mensuelle' : 'annuelle';
         <thead><tr><th>Poste</th><th class="num">Quantité</th><th class="num">Prix unitaire HT</th><th class="num">Mois</th><th class="num">Montant HT</th></tr></thead>
         <tbody>
           {bon.lignes.map((l) => (
-            <tr><td>{l.libelle}</td><td class="num">{l.quantite}</td><td class="num">{eurosPrecis(l.prix_unitaire)}</td><td class="num">{bon.type === 'installation' ? '—' : l.mois}</td><td class="num">{eurosPrecis(l.montant)}</td></tr>
+            <>
+              <tr><td>{l.libelle}</td><td class="num">{l.quantite}</td><td class="num">{eurosPrecis(l.prix_unitaire)}</td><td class="num">{bon.type === 'installation' ? '—' : l.mois}</td><td class="num">{eurosPrecis(l.montant)}</td></tr>
+              {bon.remises_ponctuelles.filter((x) => x.code_ligne === l.code).map((x) => (
+                <tr class="bon-remise-ligne"><td colspan="4">{x.origine === 'manuelle' ? 'Remise ponctuelle' : 'Crédit de prorata'} · {x.libelle}<br /><span class="aide">{x.motif}</span></td><td class="num">{eurosPrecis(-x.montant)}</td></tr>
+              ))}
+            </>
           ))}
-          {bon.type !== 'installation' && <tr><td colspan="4">Sous-total HT</td><td class="num">{eurosPrecis(bon.recurrent_ht)}</td></tr>}
+          {bon.remises_ponctuelles.filter((x) => !bon.lignes.some((l) => l.code === x.code_ligne)).map((x) => (
+            <tr class="bon-remise-ligne"><td colspan="4">Crédit de prorata (imputé sur le récurrent : le bon n’a plus de ligne « {x.libelle} »)<br /><span class="aide">{x.motif}</span></td><td class="num">{eurosPrecis(-x.montant)}</td></tr>
+          ))}
+          {bon.type !== 'installation' && <tr><td colspan="4">Sous-total HT{bon.remise_ponctuelle_montant > 0 && ' (avant remises ponctuelles)'}</td><td class="num">{eurosPrecis(bon.recurrent_ht)}</td></tr>}
           {bon.remise_taux > 0 && (
             <tr>
-              <td colspan="4">Remise {tauxEnTexte(bon.remise_taux)}{bon.remise_motif && <><br /><span class="aide">{bon.remise_motif}</span></>}</td>
+              <td colspan="4">Remise {tauxEnTexte(bon.remise_taux)}{bon.remise_ponctuelle_montant > 0 && ' (sur le récurrent après remises ponctuelles)'}{bon.remise_motif && <><br /><span class="aide">{bon.remise_motif}</span></>}</td>
               <td class="num">{eurosPrecis(-bon.remise_montant)}</td>
             </tr>
           )}
@@ -117,6 +141,42 @@ const periodicite = bon.periodicite === 'mensuelle' ? 'mensuelle' : 'annuelle';
     {bon.statut === 'emise' && bon.facture_cle && <a class="btn" href={`${base}/facture`} download>Télécharger le PDF de la facture</a>}
   </div>
 
+  {bon.statut === 'brouillon' && (
+    <section class="ne-pas-imprimer bon-remises" aria-labelledby="remises-titre">
+      <h2 id="remises-titre">Remises ponctuelles</h2>
+      <p class="aide">Une remise en euros HT sur une ligne précise de ce bon, avec son motif. Elle ne peut pas dépasser le montant de la ligne. Distincte de la remise commerciale en pourcentage de la fiche du contrat ; elle reste attachée à ce bon quand le traitement le recalcule, et se fige à l’émission.</p>
+      {bon.remises_ponctuelles.map((x) => (
+        <form method="post" class="actions bon-remise-form">
+          <input type="hidden" name="remise_id" value={x.id} />
+          <span class="etiquette">{x.libelle}{x.origine !== 'manuelle' && ' · crédit de prorata'}</span>
+          {x.origine === 'manuelle' ? (
+            <>
+              <label class="etiquette" for={`m-${x.id}`}>Montant HT (€)</label>
+              <input id={`m-${x.id}`} name="montant" inputmode="decimal" value={String(x.montant / 100).replace('.', ',')} required />
+              <label class="etiquette" for={`o-${x.id}`}>Motif</label>
+              <input id={`o-${x.id}`} name="motif" value={x.motif} maxlength="200" required />
+              <button class="btn" type="submit" name="action" value="remise_modifier">Modifier</button>
+              <button class="btn" type="submit" name="action" value="remise_supprimer">Supprimer</button>
+            </>
+          ) : (
+            <span>{eurosPrecis(x.montant)} · {x.motif} <span class="aide">(calculé par le produit ; il s’annule si l’accès est réactivé)</span></span>
+          )}
+        </form>
+      ))}
+      <form method="post" class="actions bon-remise-form">
+        <input type="hidden" name="action" value="remise_poser" />
+        <label class="etiquette" for="rem-ligne">Ligne</label>
+        <select id="rem-ligne" name="code_ligne" required>
+          {bon.lignes.map((l) => <option value={l.code}>{l.libelle}</option>)}
+        </select>
+        <label class="etiquette" for="rem-montant">Montant HT (€)</label>
+        <input id="rem-montant" name="montant" inputmode="decimal" placeholder="0,00" required />
+        <label class="etiquette" for="rem-motif">Motif</label>
+        <input id="rem-motif" name="motif" maxlength="200" required />
+        <button class="btn" type="submit">Poser la remise</button>
+      </form>
+    </section>
+  )}
   {bon.statut === 'brouillon' && (
     <form method="post" class="ne-pas-imprimer" style="max-width: 36rem">
       <input type="hidden" name="action" value="emettre" />

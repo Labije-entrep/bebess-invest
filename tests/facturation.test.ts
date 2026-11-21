@@ -391,12 +391,12 @@ test('numérotation : la base refuse un numéro modifié, un bon effacé, un mon
   assert.throws(() => db.exec('DELETE FROM evenement'), /écriture seule/);
 });
 
-// ------------------------------------------------------------------ un accès créé en cours de période (retour du 21/11/2026, à arbitrer)
+// ------------------------------------------------------------------ un accès créé en cours de période (retour du 21/11/2026, arbitré)
 //
-// DOCUMENTE le comportement ACTUEL, sans le juger. `genererBons` compte les accès facturables AU MOMENT où il pose le bon
-// (accesFacturables ne regarde pas la date de création des comptes) et le premier bon d'un contrat est celui de la période EN COURS
-// (rattrapage). Le bon d'une période déjà ÉMISE ne bouge plus. Voir le compte rendu de la session : deux lectures possibles de la règle
-// « un accès en plus est offert jusqu'à la date anniversaire » (depassement.ts).
+// Décision de l'utilisateur : un accès facturable ajouté en cours de période d'un contrat annuel est facturé TOUT DE SUITE au prorata (bon
+// complémentaire, comme un module) ; il n'est plus « offert jusqu'à l'anniversaire ». Le premier bon d'un contrat (rattrapage) compte les
+// accès de ce moment-là, sans complémentaire. Les cas d'un bon émis, du prorata, de l'idempotence et du contrat mensuel sont dans
+// remises.test.ts (dates fixées, bons émis posés directement).
 test('accès créé en cours de période : sans bon émis pour la période en cours, le premier bon (rattrapage) le facture sur les 12 mois', async () => {
   const db = baseNeuve();
   const env = environnement(db);
@@ -409,25 +409,6 @@ test('accès créé en cours de période : sans bon émis pour la période en co
   assert.deepEqual([b.periode_debut, b.periode_fin], ['2026-03-14', '2027-03-14']);
   assert.equal(b.acces_facturables, 4);
   const sup = lignes(b).find((l) => l.code === 'acces_sup');
-  assert.deepEqual([sup?.quantite, sup?.mois, sup?.montant], [1, 12, 30000], 'le 4ᵉ accès est facturé 12 mois (300 € HT), bien que créé 4 mois avant la fin de la période');
-});
-
-test('accès créé en cours de période : après l\'émission du bon de la période, il est offert jusqu\'à l\'anniversaire et facturé dès la période suivante', async () => {
-  const db = baseNeuve();
-  const env = environnement(db);
-  const c = cabinet(db, { periodicite: 'annuelle', debut_le: '2026-03-14', acces_inclus: 3 }, { associes: 3 });
-  await passe(env, '2026-11-19');
-  const [courant] = bons(db, c.id);
-  assert.equal(lignes(courant).some((l) => l.code === 'acces_sup'), false);
-  assert.equal((await emettreBon(db, c.id, courant.id, EDITEUR)).ok, true);
-  const avant = db.un<{ total_ht: number }>('SELECT total_ht FROM bon_a_facturer WHERE id = ?', courant.id)!.total_ht;
-
-  nouveauCompte(db, c.id, 'collaborateur', 'quatrieme@x.test');
-  await passe(env, '2026-11-21');
-  assert.equal(bons(db, c.id).length, 1, 'rien de nouveau avant J-30');
-  assert.equal(db.un<{ total_ht: number }>('SELECT total_ht FROM bon_a_facturer WHERE id = ?', courant.id)!.total_ht, avant, 'le bon émis de la période en cours ne bouge pas : le 4ᵉ accès y est offert');
-
-  await passe(env, '2027-02-12');
-  const suivant = bons(db, c.id).find((b) => b.periode_debut === '2027-03-14')!;
-  assert.equal(montants(suivant).acces_sup, 30000, 'le bon de la période qui commence à l\'anniversaire le facture 12 mois');
+  assert.deepEqual([sup?.quantite, sup?.mois, sup?.montant], [1, 12, 30000], 'le premier bon compte le 4ᵉ accès sur 12 mois : le premier bon est celui de la période entière');
+  assert.equal(bons(db, c.id).filter((x) => x.type === 'complementaire').length, 0, 'pas de double facturation');
 });

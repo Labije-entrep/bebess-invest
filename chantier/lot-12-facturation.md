@@ -22,6 +22,8 @@ Dans `src/lib/tarif.ts`, fonction pure et testée :
   d'activation à la date anniversaire, arrondis au supérieur, sur un bon
   complémentaire.
 
+Un accès supplémentaire ajouté en cours de période d'un contrat annuel suit la même règle (retour de recette du 21/11/2026) : bon complémentaire au prorata, au prix `prix_acces_sup`, seulement si le bon périodique de la période est émis. Retiré (supprimé ou suspendu) alors qu'il était facturé, il donne un crédit de prorata (mois entiers non entamés, arrondis à l'inférieur) sur le bon suivant ; voir `ETAT.md`.
+
 Cas de test obligatoires, anniversaire au 14/03/2027 :
 activation le 20/11/2026 → 4 mois → 196 € ; le 02/03/2027 → 1 mois → 49 €.
 
