@@ -232,11 +232,13 @@ export async function supprimerRemise(db: Base, tenantId: string, remiseId: stri
 
 // ---------------------------------------------------------------- le crédit de prorata d'un accès retiré
 
-export type CauseRetrait = 'supprime' | 'suspendu';
+export type CauseRetrait = 'supprime' | 'suspendu' | 'role';
 
 /** « Accès supprimé le 20/11/2026 : 3 mois non effectués ». Le motif est écrit par un gabarit fixe, jamais par un modèle. */
-export const motifCredit = (cause: CauseRetrait, jour: string, mois: number): string =>
-  `Accès ${cause === 'supprime' ? 'supprimé' : 'suspendu'} le ${dateCourte(jour)} : ${mois} mois non effectué${mois > 1 ? 's' : ''}`;
+export const motifCredit = (cause: CauseRetrait, jour: string, mois: number, vers?: string): string => {
+  const quoi = cause === 'supprime' ? 'supprimé' : cause === 'suspendu' ? 'suspendu' : vers === 'lecture' ? 'passé en lecture' : 'sorti du périmètre facturable';
+  return `Accès ${quoi} le ${dateCourte(jour)} : ${mois} mois non effectué${mois > 1 ? 's' : ''}`;
+};
 
 /** Ce que les bons ÉMIS d'une période ont facturé en accès supplémentaires (bon périodique et bons complémentaires). */
 async function accesSupFactures(db: Base, tenantId: string, contratId: string, debut: string, fin: string): Promise<number> {
@@ -248,7 +250,7 @@ async function accesSupFactures(db: Base, tenantId: string, contratId: string, d
 }
 
 /**
- * Les requêtes à joindre au `batch` qui SUPPRIME ou SUSPEND un accès : le crédit de prorata, s'il est dû. `facturablesAvant` est le nombre
+ * Les requêtes à joindre au `batch` qui SUPPRIME, SUSPEND ou fait SORTIR du périmètre facturable (passage en lecture…) un accès : le crédit de prorata, s'il est dû. `facturablesAvant` est le nombre
  * d'accès facturables AVANT le retrait. Un crédit n'est dû que si TOUT cela est vrai :
  *   - le contrat est actif, annuel, avec une période en cours, et aucune résiliation n'y est enregistrée (arrêt complet : pas de crédit) ;
  *   - l'accès retiré faisait partie de ceux qui dépassaient les accès inclus (`facturablesAvant > acces_inclus`) ;
@@ -265,6 +267,7 @@ export async function requetesCreditRetrait(
   facturablesAvant: number,
   acteur: Acteur | null,
   jour: string,
+  vers?: string,
 ): Promise<Requete[]> {
   const c: Contrat | null = await contratEnCours(db, tenantId);
   if (!c || c.statut !== 'actif' || c.periodicite !== 'annuelle' || !c.debut_le || c.resiliation_effet_le !== null) return [];
@@ -288,7 +291,7 @@ export async function requetesCreditRetrait(
          VALUES (?, ?, ?, NULL, 'acces_sup', ?, ?, 'acces', ?, 'en_attente', ?, ?, ?)
          ON CONFLICT DO NOTHING`,
       )
-      .bind(id, tenantId, c.id, credit.montant, motifCredit(cause, jour, credit.mois), accesId, periode.fin, now, now),
+      .bind(id, tenantId, c.id, credit.montant, motifCredit(cause, jour, credit.mois, vers), accesId, periode.fin, now, now),
     requeteEvenement(
       db,
       { tenantId, type: EVENEMENT.CREDIT_PRORATA_CREE, acteur, cible: { type: 'contrat', id: c.id }, detail: { remise_id: id, acces_id: accesId, cause, mois: credit.mois, montant: credit.montant } },

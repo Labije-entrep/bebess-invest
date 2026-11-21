@@ -10,7 +10,7 @@ import { nouveauCompte, poserContrat, poserTenant, type Contrat } from './suppor
 import { environnement } from './support/serveur.ts';
 import { traitementQuotidien } from '../src/lib/traitement';
 import { annulerBon, bonComplet, emettreBon } from '../src/lib/facturation';
-import { creerAcces, supprimerAcces, suspendreAcces } from '../src/lib/acces';
+import { changerRole, creerAcces, supprimerAcces, suspendreAcces } from '../src/lib/acces';
 import { enregistrerPreavis } from '../src/lib/contrat';
 import { eurosEnCentimes, modifierRemise, poserRemise, supprimerRemise } from '../src/lib/remises';
 import { calculerTva, type LigneBon } from '../src/lib/tarif';
@@ -487,4 +487,62 @@ test('migration 0017 rejouée sur le schéma 0016 : bons émis, brouillons et an
   assert.throws(() => ins(100, 'm', 'acces', null), /CHECK/);
   assert.throws(() => ins(100, 'm', 'manuelle', '2027-03-14'), /CHECK/);
   assert.doesNotThrow(() => ins(100, 'm', 'acces', '2027-03-14'));
+});
+
+// ------------------------------------------------------------------ le changement de rôle d'un accès
+
+test('associé ou collaborateur passé en lecture : crédit de prorata (3 mois × 25 €), motif adapté, rejoué sans doublon', async () => {
+  const { db, cab, u } = cabinetAvecQuatrieme();
+  assert.equal((await changerRole(db, cab.id, u.id, 'lecture', EDITEUR, '2026-11-20')).ok, true);
+  assert.deepEqual(credits(db, cab.id).map((x) => [x.montant, x.motif, x.etat]), [[7500, 'Accès passé en lecture le 20/11/2026 : 3 mois non effectués', 'en_attente']]);
+  assert.deepEqual(await changerRole(db, cab.id, u.id, 'lecture', EDITEUR, '2026-11-20'), { ok: false, code: 'inchange' });
+  assert.equal(credits(db, cab.id).length, 1);
+  // Lecture → lecture d'un autre accès (jamais facturé) : rien.
+  const l = accesApres(db, cab, 'l@x.test', '2026-06-01T09:00:00.000Z', 'lecture');
+  await changerRole(db, cab.id, l.id, 'associe', EDITEUR, '2026-11-20'); // devient facturable : 4 → 4 facturables (le premier est sorti)
+  assert.equal(credits(db, cab.id).length, 1);
+});
+
+test('rôle : retour à un rôle facturable avant consommation, le crédit est annulé ; après un bon émis, il reste', async () => {
+  const { db, cab, u, env } = cabinetAvecQuatrieme();
+  await changerRole(db, cab.id, u.id, 'lecture', EDITEUR, '2026-11-20');
+  await changerRole(db, cab.id, u.id, 'collaborateur', EDITEUR, '2026-11-21');
+  assert.deepEqual(credits(db, cab.id).map((x) => x.etat), ['annulee']);
+  // Consommé : sortie, bon suivant émis, retour.
+  await changerRole(db, cab.id, u.id, 'lecture', EDITEUR, '2026-12-01');
+  await passe(env, '2027-02-12');
+  const suivant = bons(db, cab.id).find((b) => b.periode_debut === '2027-03-14')!;
+  await emettreBon(db, cab.id, suivant.id, EDITEUR);
+  await changerRole(db, cab.id, u.id, 'collaborateur', EDITEUR);
+  assert.deepEqual(credits(db, cab.id).map((x) => x.etat), ['annulee', 'appliquee']);
+});
+
+test('lecture → collaborateur après l\'émission : bon complémentaire au prorata, une seule fois', async () => {
+  const db = baseNeuve();
+  const env = environnement(db);
+  const c = cabinet(db, { periodicite: 'annuelle', debut_le: '2026-03-14' });
+  const l = accesApres(db, c, 'lecture@x.test', '2026-02-01T09:00:00.000Z', 'lecture');
+  bonEmis(db, c, '2026-03-14', '2027-03-14', 3, '2026-02-20T10:00:00.000Z');
+  await changerRole(db, c.id, l.id, 'collaborateur', EDITEUR, '2026-11-20');
+  // Le journal est en écriture seule : l'événement porte l'instant réel, la passe se fait le lendemain (tant que la période court).
+  const demain = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+  if (demain >= '2027-03-14') return;
+  for (let i = 0; i < 3; i++) await passe(env, demain);
+  const compl = complementaires(db, c.id);
+  assert.equal(compl.length, 1);
+  assert.deepEqual(lignes(compl[0]).map((l) => [l.code, l.quantite]), [['acces_sup', 1]]);
+});
+
+test('rôle : sous les accès inclus et en contrat mensuel, aucun crédit', async () => {
+  const a = baseNeuve();
+  const ca = cabinet(a, { periodicite: 'annuelle', debut_le: '2026-03-14' }, 3);
+  bonEmis(a, ca, '2026-03-14', '2027-03-14', 3, '2026-11-19T10:00:00.000Z');
+  const ua = a.un<{ id: string }>('SELECT id FROM utilisateur WHERE tenant_id = ? LIMIT 1', ca.id)!;
+  await changerRole(a, ca.id, ua.id, 'lecture', EDITEUR, '2026-11-20');
+  assert.equal(a.compte('remise_ponctuelle'), 0);
+  const m = baseNeuve();
+  const cm = cabinet(m, { periodicite: 'mensuelle', debut_le: '2026-03-14' });
+  const um = accesApres(m, cm, 'q@x.test', '2026-06-01T09:00:00.000Z');
+  await changerRole(m, cm.id, um.id, 'lecture', EDITEUR, '2026-11-20');
+  assert.equal(m.compte('remise_ponctuelle'), 0);
 });

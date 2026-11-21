@@ -142,10 +142,10 @@ export async function supprimerAcces(db: Base, tenantId: string, id: string, act
 }
 
 /** Le crédit de prorata dû quand cet accès est retiré (suppression ou suspension), ou []. Seul un accès facturable ET actif en donne un. */
-async function creditDeRetrait(db: Base, tenantId: string, cible: { id: string; role: Role; actif: number }, cause: 'supprime' | 'suspendu', acteur: Acteur | null, jour: string) {
+async function creditDeRetrait(db: Base, tenantId: string, cible: { id: string; role: Role; actif: number }, cause: 'supprime' | 'suspendu' | 'role', acteur: Acteur | null, jour: string, vers?: string) {
   if (cible.actif !== 1 || !ACCES_FACTURABLES.includes(cible.role)) return [];
   const { facturables } = await compterAcces(db, tenantId);
-  return requetesCreditRetrait(db, tenantId, cible.id, cause, facturables, acteur, jour);
+  return requetesCreditRetrait(db, tenantId, cible.id, cause, facturables, acteur, jour, vers);
 }
 
 /** Suspend (actif = 0) ou rétablit un accès. Rien n'est effacé. L'événement d'un viewer ne porte pas son adresse. */
@@ -171,18 +171,23 @@ export async function suspendreAcces(db: Base, tenantId: string, id: string, act
     ...credit,
   ]);
   // Réactivé avant que le crédit n'ait été consommé par un bon émis : le crédit est annulé.
-  if (actif) await annulerCreditsReactivation(db, tenantId, g.cible.id, acteur);
+  if (actif && ACCES_FACTURABLES.includes(g.cible.role)) await annulerCreditsReactivation(db, tenantId, g.cible.id, acteur);
   return { ok: true, id: g.cible.id };
 }
 
 /** Change le rôle d'un accès du cabinet. Un viewer ne devient jamais du personnel, ni l'inverse : ce n'est pas le même compte. */
-export async function changerRole(db: Base, tenantId: string, id: string, role: Role, acteur: Acteur | null): Promise<ResultatAcces> {
+export async function changerRole(db: Base, tenantId: string, id: string, role: Role, acteur: Acteur | null, jour: string = aujourdhui()): Promise<ResultatAcces> {
   const g = await cibleGerable(db, tenantId, id, acteur);
   if (!g.cible) return { ok: false, code: g.code };
   const avant = g.cible.role;
   if (avant === 'viewer' || avant === 'editeur' || role === 'viewer' || role === 'editeur') return { ok: false, code: 'interdit' };
   if (!roleCreable(acteur, role)) return { ok: false, code: 'role' };
   if (avant === role) return { ok: false, code: 'inchange' };
+  // Un accès facturable ACTIF qui sort du périmètre facturable se traite comme une suspension (crédit de prorata) ; celui qui y entre se
+  // facture comme une création (bon complémentaire du traitement quotidien, daté par l'événement `acces_role`).
+  const sort = ACCES_FACTURABLES.includes(avant) && !ACCES_FACTURABLES.includes(role);
+  const entre = !ACCES_FACTURABLES.includes(avant) && ACCES_FACTURABLES.includes(role);
+  const credit = sort ? await creditDeRetrait(db, tenantId, { id: g.cible.id, role: avant, actif: g.cible.actif }, 'role', acteur, jour, role) : [];
   await db.batch([
     db.prepare('UPDATE utilisateur SET role = ? WHERE id = ? AND tenant_id = ?').bind(role, g.cible.id, tenantId),
     requeteEvenement(
@@ -190,7 +195,10 @@ export async function changerRole(db: Base, tenantId: string, id: string, role: 
       { tenantId, type: EVENEMENT.ACCES_ROLE, acteur, cible: { type: 'acces', id: g.cible.id }, detail: { email: g.cible.email, de: avant, vers: role } },
       true,
     ),
+    ...credit,
   ]);
+  // Redevenu facturable avant que le crédit n'ait été consommé par un bon émis : le crédit est annulé.
+  if (entre) await annulerCreditsReactivation(db, tenantId, g.cible.id, acteur);
   return { ok: true, id: g.cible.id };
 }
 
