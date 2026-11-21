@@ -177,7 +177,7 @@ export async function sessionCourante(db: Base, cookies: AstroCookies): Promise<
   if (!secret || !HEX_64.test(secret)) return null;
   return db
     .prepare(
-      `SELECT u.id, u.tenant_id, u.email, u.nom, u.role, u.actif, u.cree_le, u.statut
+      `SELECT u.id, u.tenant_id, u.email, u.nom, u.role, u.actif, u.cree_le, u.statut, u.theme
          FROM session s
          JOIN utilisateur u ON u.id = s.utilisateur_id
         WHERE s.id = ? AND s.expire_le > ? AND u.actif = 1 AND ${ACCES_OUVERT}`,
