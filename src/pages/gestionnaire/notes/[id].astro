@@ -1,7 +1,7 @@
 ---
 import Gestion from '../../../layouts/Gestion.astro';
 import { envDe } from '../../../lib/mail';
-import { enregistrerNote, noteParId, slugifier, slugPris } from '../../../lib/site';
+import { ACTIONS_NOTE, enregistrerNote, libelleEtatNote, noteParId, publieeApres, slugifier, slugPris, type ActionNote } from '../../../lib/site';
 
 const { DB } = envDe(Astro.locals);
 const tenant = Astro.locals.tenant!;
@@ -32,7 +32,10 @@ if (Astro.request.method === 'POST') {
   v.chapeau = lire('chapeau').replace(/\r\n/g, '\n');
   v.corps_md = String(f.get('corps_md') ?? '').replace(/\r\n/g, '\n');
   v.date = lire('date');
-  v.publiee = f.get('publiee') === 'oui';
+  // Plus de case à cocher : trois boutons. Une action inconnue n'est jamais devinée comme « publier » : on enregistre sans changer l'état.
+  const brut = String(f.get('action') ?? '');
+  const action: ActionNote = (ACTIONS_NOTE as string[]).includes(brut) ? (brut as ActionNote) : 'enregistrer';
+  v.publiee = publieeApres(action, existante ? existante.publiee === 1 : false);
 
   if (!v.titre) erreurs.titre = 'Le titre est obligatoire.';
   if (!v.slug) erreurs.slug = "L'adresse de la note est vide.";
@@ -48,15 +51,17 @@ if (Astro.request.method === 'POST') {
       date: v.date,
       publiee: v.publiee,
     });
-    return Astro.redirect(`/gestionnaire/notes/${nid}?ok=1`, 303);
+    return Astro.redirect(`/gestionnaire/notes/${nid}?ok=${action === 'publier' ? 'publie' : action === 'brouillon' ? 'brouillon' : '1'}`, 303);
   }
 }
-const ok = Astro.url.searchParams.get('ok') === '1';
+const ok = Astro.url.searchParams.get('ok');
+const MESSAGES_OK: Record<string, string> = { '1': 'Enregistré.', publie: 'Note publiée : elle est visible sur le site.', brouillon: 'Note repassée en brouillon : elle n’est plus visible sur le site.' };
 ---
 <Gestion titre={nouvelle ? 'Nouvelle note' : 'Modifier la note'}>
   <span class="etiquette"><a href="/gestionnaire/notes">Notes de marché</a></span>
   <h1>{nouvelle ? 'Nouvelle note' : v.titre || 'Note'}</h1>
-  {ok && <p class="info">Enregistré.</p>}
+  {ok && MESSAGES_OK[ok] && <p class="info" role="status">{MESSAGES_OK[ok]}</p>}
+  {!nouvelle && <p class="aide" data-etat-note>État : <strong>{libelleEtatNote(existante!.publiee)}</strong></p>}
   {existante?.publiee === 1 && <p class="aide"><a href={`/notes/${existante.slug}`}>Voir la note publiée</a></p>}
   <form method="post">
     <div class="groupe">
@@ -84,11 +89,12 @@ const ok = Astro.url.searchParams.get('ok') === '1';
       <label class="etiquette" for="corps_md">Corps (Markdown)</label>
       <textarea class="champ" id="corps_md" name="corps_md" rows="18">{v.corps_md}</textarea>
     </div>
-    <div class="groupe">
-      <label><input type="checkbox" name="publiee" value="oui" checked={v.publiee} /> Publiée</label>
-    </div>
     <div class="actions">
-      <button class="btn-plein" type="submit">Enregistrer</button>
+      <button class="btn-plein" type="submit" name="action" value="enregistrer">Enregistrer</button>
+      {existante?.publiee === 1
+        ? <button class="btn" type="submit" name="action" value="brouillon">Repasser en brouillon</button>
+        : <button class="btn" type="submit" name="action" value="publier">Publier</button>}
     </div>
+    <p class="aide">Enregistrer ne change pas l’état de la note. {existante?.publiee === 1 ? 'Une note publiée est visible sur le site ; les chiffres de sa fiche d’actu ne bougent plus.' : 'Une note en brouillon n’est pas visible sur le site.'}</p>
   </form>
 </Gestion>

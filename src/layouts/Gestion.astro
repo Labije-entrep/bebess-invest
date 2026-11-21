@@ -115,6 +115,9 @@ const ici = Astro.url.pathname.replace(/\/$/, '');
   .erreur { color: var(--alerte); font-size: 0.8125rem; margin: 0 0 var(--espace-xs); }
   .aide { color: var(--texte-2); font-size: 0.8125rem; margin: var(--espace-xs) 0 0; }
   .info { border-left: 1px solid var(--accent); padding-left: var(--espace-m); margin: 0 0 var(--espace); color: var(--accent-clair); }
+  .encadre-depassement { border: 1px solid var(--accent); border-left-width: 4px; background: var(--champ-fond); padding: var(--espace-s) var(--espace-m); margin: 0 0 var(--espace); color: var(--texte); }
+  .encadre-depassement p { margin: 0; }
+  .encadre-depassement p + p { margin-top: 0.25rem; }
   .info.alerte { border-left-color: var(--alerte); color: var(--alerte); }
   .perime { color: var(--alerte); }
   .pos { color: var(--positif); }
