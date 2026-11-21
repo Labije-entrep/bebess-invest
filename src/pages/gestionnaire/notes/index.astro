@@ -2,7 +2,7 @@
 import Gestion from '../../../layouts/Gestion.astro';
 import { envDe } from '../../../lib/mail';
 import { dateCourte } from '../../../lib/format';
-import { toutesLesNotes } from '../../../lib/site';
+import { libelleEtatNote, toutesLesNotes } from '../../../lib/site';
 
 const { DB } = envDe(Astro.locals);
 const notes = await toutesLesNotes(DB, Astro.locals.tenant!.id);
@@ -22,7 +22,7 @@ const notes = await toutesLesNotes(DB, Astro.locals.tenant!.id);
             <tr>
               <td>{dateCourte(n.date)}</td>
               <td>{n.titre}</td>
-              <td class={n.publiee ? undefined : 'perime'}>{n.publiee ? 'Publiée' : 'Brouillon'}</td>
+              <td class={n.publiee ? undefined : 'perime'}>{libelleEtatNote(n.publiee)}</td>
               <td class="num">
                 <a href={`/gestionnaire/notes/${n.id}`}>Modifier</a>
                 {n.publiee ? <> · <a href={`/notes/${n.slug}`}>Aperçu</a></> : null}

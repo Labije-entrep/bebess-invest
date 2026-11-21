@@ -310,7 +310,7 @@ function brouillons(db: BaseTest, k: number): { tenant: string; bon: string }[] 
 }
 const numeros = (db: BaseTest): string[] => db.tous<{ numero: string }>("SELECT numero FROM bon_a_facturer WHERE numero IS NOT NULL ORDER BY seq").map((r) => r.numero);
 
-test('numérotation : 17 émissions simultanées plus des doublons → FACT-AAAA-0001 à 0017, sans trou ni collision', async () => {
+test('numérotation : 17 émissions simultanées plus des doublons → BC-AAAA-0001 à 0017, sans trou ni collision', async () => {
   const db = baseNeuve();
   const lot = brouillons(db, 17);
   const annee = new Date().getUTCFullYear();
@@ -320,7 +320,7 @@ test('numérotation : 17 émissions simultanées plus des doublons → FACT-AAAA
   const refus = resultats.filter((r) => !r.ok);
   assert.equal(refus.length, 17);
   assert.ok(refus.every((r) => !r.ok && r.code === 'pas_brouillon'), 'le doublon est refusé comme « plus un brouillon »');
-  assert.deepEqual(numeros(db), Array.from({ length: 17 }, (_, i) => `FACT-${annee}-${String(i + 1).padStart(4, '0')}`));
+  assert.deepEqual(numeros(db), Array.from({ length: 17 }, (_, i) => `BC-${annee}-${String(i + 1).padStart(4, '0')}`));
   assert.equal(db.compte('evenement', "type = 'bon_emis'"), 17, 'un événement par émission réelle, aucun pour les doublons');
 });
 
@@ -340,26 +340,29 @@ test('numérotation : réservée à l\'éditeur ; l\'identité incomplète se co
   const detail = db.un<{ detail: string }>("SELECT detail FROM evenement WHERE type = 'bon_emis' AND tenant_id = ?", a.tenant)!.detail;
   assert.match(detail, /identite_incomplete/, 'l\'événement garde ce qui manquait');
 
-  // Annuler un émis : avoir de sa propre séquence ; le bon garde son numéro ; le suivant reçoit le numéro suivant, jamais un numéro rendu.
+  // Annuler un émis : aucun avoir (la table n'existe plus) ; le bon garde son numéro BC-… ; le suivant reçoit le numéro suivant, jamais un numéro rendu.
   const an = await annulerBon(db, a.tenant, a.bon, EDITEUR);
-  assert.equal(an.ok && an.avoir?.numero.endsWith('-0001'), true);
-  assert.match((an.ok && an.avoir?.numero) || '', /^AVOIR-\d{4}-0001$/);
+  assert.equal(an.ok, true);
+  assert.equal(an.ok && 'avoir' in an, false, 'le résultat ne porte plus d\'avoir');
+  assert.match(db.un<{ numero: string }>('SELECT numero FROM bon_a_facturer WHERE id = ?', a.bon)!.numero, /^BC-\d{4}-0001$/);
+  assert.equal(db.un('SELECT name FROM sqlite_master WHERE name = \'avoir\''), null, 'la table avoir est supprimée');
+  assert.equal(db.compte('evenement', "type = 'bon_annule' AND tenant_id = ?", a.tenant), 1);
+  assert.doesNotMatch(db.un<{ detail: string }>("SELECT detail FROM evenement WHERE type = 'bon_annule' AND tenant_id = ?", a.tenant)!.detail, /avoir/);
   assert.equal(db.un<{ numero: string; statut: string }>('SELECT numero, statut FROM bon_a_facturer WHERE id = ?', a.bon)?.statut, 'annulee');
   assert.ok(db.un<{ numero: string }>('SELECT numero FROM bon_a_facturer WHERE id = ?', a.bon)?.numero?.endsWith('-0001'));
   assert.deepEqual(await annulerBon(db, a.tenant, a.bon, EDITEUR), { ok: false, code: 'deja_annule' });
   const suite = await emettreBon(db, b.tenant, b.bon, EDITEUR);
   assert.equal(suite.ok && suite.bon.numero?.endsWith('-0002'), true, 'pas de trou, pas de réemploi');
-  // Un brouillon s'annule sans trace comptable : ni numéro, ni avoir.
+  // Un brouillon s'annule sans numéro.
   const brouillon = await annulerBon(db, c.tenant, c.bon, EDITEUR);
-  assert.equal(brouillon.ok && brouillon.avoir, undefined);
-  assert.equal(db.compte('avoir'), 1);
+  assert.equal(brouillon.ok, true);
   assert.equal(db.un<{ numero: string | null }>('SELECT numero FROM bon_a_facturer WHERE id = ?', c.bon)?.numero, null);
-  // Une annulation simultanée de deux demandes n'écrit qu'un avoir.
+  // Une annulation simultanée de deux demandes n'écrit qu'un événement.
   const [d] = brouillons(db, 1);
   await emettreBon(db, d.tenant, d.bon, EDITEUR);
   const deux = await Promise.all([annulerBon(db, d.tenant, d.bon, EDITEUR), annulerBon(db, d.tenant, d.bon, EDITEUR)]);
   assert.equal(deux.filter((r) => r.ok).length, 1);
-  assert.equal(db.compte('avoir', 'bon_id = ?', d.bon), 1);
+  assert.equal(db.compte('evenement', "type = 'bon_annule' AND tenant_id = ?", d.tenant), 1);
 });
 
 test('numérotation : la base refuse un numéro modifié, un bon effacé, un montant changé, un brouillon numéroté, une collision', async () => {
@@ -373,18 +376,58 @@ test('numérotation : la base refuse un numéro modifié, un bon effacé, un mon
   assert.throws(() => db.exec('UPDATE bon_a_facturer SET total_ht = 1 WHERE id = ?', a.bon), /figé/);
   assert.throws(() => db.exec("UPDATE bon_a_facturer SET statut = 'brouillon' WHERE id = ?", a.bon), /transition de statut interdite/);
   const [c] = brouillons(db, 1);
-  assert.throws(() => db.exec("UPDATE bon_a_facturer SET numero = 'FACT-2026-0003' WHERE id = ?", c.bon), /CHECK/, 'un brouillon ne porte pas de numéro');
+  assert.throws(() => db.exec("UPDATE bon_a_facturer SET numero = 'BC-2026-0003' WHERE id = ?", c.bon), /CHECK/, 'un brouillon ne porte pas de numéro');
   // Collision (annee, seq) : l'index unique la refuse.
   const pris = db.un<{ annee: number; seq: number }>('SELECT annee, seq FROM bon_a_facturer WHERE id = ?', a.bon)!;
   assert.throws(
-    () => db.exec("UPDATE bon_a_facturer SET statut = 'emise', annee = ?, seq = ?, numero = 'FACT-2026-7777', emis_le = '2026-11-19' WHERE id = ?", pris.annee, pris.seq, c.bon),
+    () => db.exec("UPDATE bon_a_facturer SET statut = 'emise', annee = ?, seq = ?, numero = 'BC-2026-7777', emis_le = '2026-11-19' WHERE id = ?", pris.annee, pris.seq, c.bon),
     /UNIQUE/,
   );
-  // Un avoir ne se modifie ni ne s'efface.
+  // Un bon annulé garde son numéro, et le numéro n'est pas réattribué.
   await annulerBon(db, a.tenant, a.bon, EDITEUR);
-  assert.throws(() => db.exec('UPDATE avoir SET montant_ht = 1'), /ne se modifie pas/);
-  assert.throws(() => db.exec('DELETE FROM avoir'), /ne s'efface pas/);
+  assert.throws(() => db.exec("UPDATE bon_a_facturer SET numero = 'BC-2026-0999' WHERE id = ?", a.bon), /numéro d'un bon émis ne change pas/);
   // Le journal est en écriture seule.
   assert.throws(() => db.exec("UPDATE evenement SET type = 'x'"), /écriture seule/);
   assert.throws(() => db.exec('DELETE FROM evenement'), /écriture seule/);
+});
+
+// ------------------------------------------------------------------ un accès créé en cours de période (retour du 21/11/2026, à arbitrer)
+//
+// DOCUMENTE le comportement ACTUEL, sans le juger. `genererBons` compte les accès facturables AU MOMENT où il pose le bon
+// (accesFacturables ne regarde pas la date de création des comptes) et le premier bon d'un contrat est celui de la période EN COURS
+// (rattrapage). Le bon d'une période déjà ÉMISE ne bouge plus. Voir le compte rendu de la session : deux lectures possibles de la règle
+// « un accès en plus est offert jusqu'à la date anniversaire » (depassement.ts).
+test('accès créé en cours de période : sans bon émis pour la période en cours, le premier bon (rattrapage) le facture sur les 12 mois', async () => {
+  const db = baseNeuve();
+  const env = environnement(db);
+  // Contrat commencé le 14/03/2026, aucun bon antérieur, trois accès inclus ; un 4ᵉ accès créé « aujourd'hui » (20/11/2026).
+  const c = cabinet(db, { periodicite: 'annuelle', debut_le: '2026-03-14', acces_inclus: 3 }, { associes: 3 });
+  nouveauCompte(db, c.id, 'collaborateur', 'quatrieme@x.test');
+  db.exec("UPDATE utilisateur SET cree_le = '2026-11-20T09:00:00Z' WHERE tenant_id = ? AND email = 'quatrieme@x.test'", c.id);
+  await passe(env, '2026-11-21');
+  const [b] = bons(db, c.id);
+  assert.deepEqual([b.periode_debut, b.periode_fin], ['2026-03-14', '2027-03-14']);
+  assert.equal(b.acces_facturables, 4);
+  const sup = lignes(b).find((l) => l.code === 'acces_sup');
+  assert.deepEqual([sup?.quantite, sup?.mois, sup?.montant], [1, 12, 30000], 'le 4ᵉ accès est facturé 12 mois (300 € HT), bien que créé 4 mois avant la fin de la période');
+});
+
+test('accès créé en cours de période : après l\'émission du bon de la période, il est offert jusqu\'à l\'anniversaire et facturé dès la période suivante', async () => {
+  const db = baseNeuve();
+  const env = environnement(db);
+  const c = cabinet(db, { periodicite: 'annuelle', debut_le: '2026-03-14', acces_inclus: 3 }, { associes: 3 });
+  await passe(env, '2026-11-19');
+  const [courant] = bons(db, c.id);
+  assert.equal(lignes(courant).some((l) => l.code === 'acces_sup'), false);
+  assert.equal((await emettreBon(db, c.id, courant.id, EDITEUR)).ok, true);
+  const avant = db.un<{ total_ht: number }>('SELECT total_ht FROM bon_a_facturer WHERE id = ?', courant.id)!.total_ht;
+
+  nouveauCompte(db, c.id, 'collaborateur', 'quatrieme@x.test');
+  await passe(env, '2026-11-21');
+  assert.equal(bons(db, c.id).length, 1, 'rien de nouveau avant J-30');
+  assert.equal(db.un<{ total_ht: number }>('SELECT total_ht FROM bon_a_facturer WHERE id = ?', courant.id)!.total_ht, avant, 'le bon émis de la période en cours ne bouge pas : le 4ᵉ accès y est offert');
+
+  await passe(env, '2027-02-12');
+  const suivant = bons(db, c.id).find((b) => b.periode_debut === '2027-03-14')!;
+  assert.equal(montants(suivant).acces_sup, 30000, 'le bon de la période qui commence à l\'anniversaire le facture 12 mois');
 });

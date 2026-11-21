@@ -297,16 +297,16 @@ export async function apercuComplementaire(db: Base, c: Contrat, module: 'pilota
 export interface BonsApresEffet {
   /** Brouillons annulés (chacun avec son événement `bon_annule`, motif `preavis_resiliation`). */
   annules: number;
-  /** Bons déjà émis : intouchés, un incident par bon, l'avoir est à faire. */
+  /** Bons déjà émis : intouchés, un incident par bon, à annuler à la main si l'éditeur le décide. */
   emis: number;
 }
 
 /**
  * Un préavis enregistré alors que le bon de la période suivante (début à la date d'effet ou après) est déjà posé : le bon est généré à J-30
  * de la date anniversaire et le préavis est recevable jusqu'à J-30, les deux tombent donc le même jour.
- *  - BROUILLON : annulé tout de suite, avec son événement. Il n'a aucune conséquence comptable (ni numéro, ni avoir) ; l'attente d'un geste
- *    manuel risquerait l'émission d'une facture pour une année résiliée.
- *  - ÉMIS : rien n'est touché. Un numéro attribué ne se libère jamais. Un incident, par bon, nomme la facture et rappelle l'avoir.
+ *  - BROUILLON : annulé tout de suite, avec son événement. Il n'a aucune conséquence (ni numéro) ; l'attente d'un geste
+ *    manuel risquerait l'émission d'un bon pour une année résiliée.
+ *  - ÉMIS : rien n'est touché. Un numéro attribué ne se libère jamais. Un incident, par bon, nomme le bon de commande émis.
  * Appelé après l'écriture du préavis ; rejoué, il ne retrouve plus de brouillon et ne redit rien de plus (les incidents d'un bon émis
  * ne sont notés qu'à l'enregistrement du préavis, qui n'a lieu qu'une fois).
  */
@@ -331,7 +331,7 @@ export async function traiterBonsApresEffet(db: Base, tenantId: string, contratI
     rapport.emis++;
     await noterIncident(
       db, tenantId, 'bon_apres_resiliation',
-      `Facture ${bon.numero} (période du ${bon.periode_debut} au ${bon.periode_fin}, ${eur(bon.total_ht)} HT) déjà émise : la résiliation prend effet le ${effet}, cette période n'aura pas lieu. Elle reste en l'état ; un avoir est à faire (le numéro ne se libère pas).`,
+      `Bon de commande ${bon.numero} (période du ${bon.periode_debut} au ${bon.periode_fin}, ${eur(bon.total_ht)} HT) déjà émis : la résiliation prend effet le ${effet}, cette période n'aura pas lieu. Il reste en l'état ; l'annuler si besoin (le numéro ne se libère pas).`,
     );
   }
   return rapport;
@@ -415,7 +415,7 @@ export function bonDe(db: Base, tenantId: string, bonId: string): Promise<Bon | 
 }
 
 export type CodeBon = 'interdit' | 'introuvable' | 'pas_brouillon' | 'deja_annule' | 'pas_annulable' | 'identite_incomplete' | 'pas_emis';
-export type ResultatBon = { ok: true; bon: Bon; avoir?: { numero: string; montant_ht: number } } | { ok: false; code: CodeBon };
+export type ResultatBon = { ok: true; bon: Bon } | { ok: false; code: CodeBon };
 export const MESSAGES_BON: Record<CodeBon, string> = {
   interdit: 'Seul l’éditeur émet ou annule un bon.',
   introuvable: 'Bon introuvable.',
@@ -432,7 +432,7 @@ const ANNEE = "CAST(strftime('%Y', 'now') AS INTEGER)";
 const INSTANT = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
 /**
- * Fait passer un brouillon à `emise` ET lui donne son numéro FACT-AAAA-NNNN, dans UNE instruction (donc une transaction) :
+ * Fait passer un brouillon à `emise` ET lui donne son numéro BC-AAAA-NNNN, dans UNE instruction (donc une transaction) :
  * l'attribution et l'écriture du numéro ne sont pas séparables. NNNN est le plus grand numéro de l'année + 1, lu pendant l'écriture ;
  * D1 exécute les écritures l'une après l'autre, et l'index unique (annee, seq) fait échouer toute collision au lieu de la laisser
  * passer. Un bon qui n'est pas un brouillon ne consomme aucun numéro : pas de trou. Le numéro n'est jamais un paramètre.
@@ -458,7 +458,7 @@ export async function emettreBon(
       .prepare(
         `UPDATE bon_a_facturer
             SET statut = 'emise', annee = ${ANNEE}, seq = ${suivant},
-                numero = 'FACT-' || strftime('%Y', 'now') || '-' || printf('%04d', ${suivant}),
+                numero = 'BC-' || strftime('%Y', 'now') || '-' || printf('%04d', ${suivant}),
                 emis_le = ${INSTANT}
           WHERE id = ? AND tenant_id = ? AND statut = 'brouillon'`,
       )
@@ -483,39 +483,27 @@ export async function emettreBon(
 }
 
 /**
- * Annule un bon. Un brouillon s'annule sans trace comptable (il n'a jamais eu de numéro). Un bon ÉMIS garde son numéro et reçoit un
- * AVOIR, de sa propre séquence AVOIR-AAAA-NNNN, du montant du bon : les deux écritures et l'événement partent ensemble.
+ * Annule un bon : il passe à `annulee` (l'écran dit « annulé »), avec sa date et son événement `bon_annule`. Un brouillon s'annule sans
+ * trace (il n'a jamais eu de numéro). Un bon ÉMIS garde son numéro BC-… à jamais : il n'est jamais réattribué. Aucune autre écriture
+ * (la notion d'avoir n'existe pas dans le produit).
  */
 export async function annulerBon(db: Base, tenantId: string, bonId: string, acteur: Acteur, motif?: 'preavis_resiliation'): Promise<ResultatBon> {
   if (acteur.role !== 'editeur') return { ok: false, code: 'interdit' };
   const avant = await bonDe(db, tenantId, bonId);
   if (!avant) return { ok: false, code: 'introuvable' };
   if (avant.statut === 'annulee') return { ok: false, code: 'deja_annule' };
-  const detail = { bon_id: bonId, periode_debut: avant.periode_debut, periode_fin: avant.periode_fin, total_ht: avant.total_ht, avoir: avant.statut === 'emise', ...(motif ? { motif } : {}) };
-  const suivant = `(SELECT COALESCE(MAX(seq), 0) + 1 FROM avoir WHERE annee = ${ANNEE})`;
+  const detail = { bon_id: bonId, periode_debut: avant.periode_debut, periode_fin: avant.periode_fin, total_ht: avant.total_ht, ...(motif ? { motif } : {}) };
   const resultats = await db.batch([
     db
       .prepare(`UPDATE bon_a_facturer SET statut = 'annulee', annule_le = ${INSTANT} WHERE id = ? AND tenant_id = ? AND statut = ?`)
       .bind(bonId, tenantId, avant.statut),
-    ...(avant.statut === 'emise'
-      ? [
-          db
-            .prepare(
-              `INSERT INTO avoir (id, tenant_id, bon_id, numero, annee, seq, montant_ht, emis_le)
-               SELECT ?, b.tenant_id, b.id, 'AVOIR-' || strftime('%Y', 'now') || '-' || printf('%04d', ${suivant}), ${ANNEE}, ${suivant}, b.total_ht, ${INSTANT}
-                 FROM bon_a_facturer b WHERE b.id = ? AND b.tenant_id = ? AND b.statut = 'annulee' AND changes() > 0`,
-            )
-            .bind(crypto.randomUUID(), bonId, tenantId),
-        ]
-      : []),
     requeteEvenement(db, { tenantId, type: EVENEMENT.BON_ANNULE, acteur, cible: { type: 'contrat', id: avant.contrat_id }, detail }, true),
   ]);
-  // Annulé entre-temps par un autre appel : le nôtre n'a rien écrit (ni avoir, ni événement).
+  // Annulé entre-temps par un autre appel : le nôtre n'a rien écrit (ni événement).
   if (lignesModifiees(resultats[0]) === 0) return { ok: false, code: 'deja_annule' };
   const apres = await bonDe(db, tenantId, bonId);
   if (!apres || apres.statut !== 'annulee') return { ok: false, code: 'pas_annulable' };
-  const avoir = await db.prepare('SELECT numero, montant_ht FROM avoir WHERE bon_id = ?').bind(bonId).first<{ numero: string; montant_ht: number }>();
-  return { ok: true, bon: apres, avoir: avoir ?? undefined };
+  return { ok: true, bon: apres };
 }
 
 // ---------------------------------------------------------------- le bon imprimable et la facture (lot 13)

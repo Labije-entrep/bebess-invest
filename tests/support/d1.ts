@@ -3,7 +3,7 @@
 // Fidèle à ce que le code du dépôt en attend :
 //   - requêtes préparées et `bind` seulement ; `first`, `all` (`results`), `run` (`meta.changes`) ;
 //   - `batch` = UNE transaction, tout ou rien, `changes()` lisible d'une instruction à la suivante ;
-//   - clés étrangères actives, déclencheurs et index des vraies migrations (migrations/0001 à 0014, appliquées dans l'ordre) ;
+//   - clés étrangères actives, déclencheurs et index des vraies migrations (migrations/0001 à 0015, appliquées dans l'ordre) ;
 //   - chaque appel est asynchrone : deux appels concurrents s'entrelacent entre leurs `await`, mais un `batch` ne s'entrelace jamais,
 //     comme sur D1 qui sérialise les écritures.
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
@@ -59,10 +59,11 @@ export interface BaseTest extends Base {
   compte(table: string, ou?: string, ...valeurs: Valeur[]): number;
 }
 
-export function baseNeuve(): BaseTest {
+/** `jusqua` : s'arrête APRÈS cette migration (ex. « 0014 »), pour rejouer la suivante sur un ancien schéma. */
+export function baseNeuve(jusqua?: string): BaseTest {
   const brut = new DatabaseSync(':memory:');
   brut.exec('PRAGMA foreign_keys = ON');
-  const fichiers = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort();
+  const fichiers = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql') && (!jusqua || f.slice(0, 4) <= jusqua)).sort();
   for (const f of fichiers) {
     // D1 applique une migration dans une transaction.
     brut.exec('BEGIN');
@@ -100,6 +101,20 @@ export function baseNeuve(): BaseTest {
  * Une copie intégrale du contenu des tables : pour prouver qu'une série de requêtes refusées n'a rien modifié. Les sessions sont
  * écartées : le banc les ouvre lui-même, entre deux empreintes.
  */
+/** Applique UNE migration (D1 : dans une transaction), sur une base construite par `baseNeuve(jusqua)`. */
+export function appliquerMigration(db: BaseTest, numero: string): void {
+  const f = readdirSync(MIGRATIONS).find((x) => x.startsWith(numero) && x.endsWith('.sql'));
+  if (!f) throw new Error(`migration ${numero} introuvable`);
+  db.brut.exec('BEGIN');
+  try {
+    db.brut.exec(readFileSync(MIGRATIONS + f, 'utf8'));
+    db.brut.exec('COMMIT');
+  } catch (e) {
+    db.brut.exec('ROLLBACK');
+    throw e;
+  }
+}
+
 export function empreinte(db: BaseTest, exclure: string[] = []): string {
   exclure = ['session', ...exclure];
   const tables = db.tous<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name");

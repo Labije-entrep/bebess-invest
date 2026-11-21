@@ -1,14 +1,13 @@
 // Les phrases du dépassement d'accès (lot 13). Fonctions PURES : aucune base, aucune horloge (le jour est passé).
 //
 // Les accès facturables (associé, collaborateur) au-delà de ceux que le contrat inclut sont facturés au prix `prix_acces_sup`, À LA
-// PROCHAINE DATE ANNIVERSAIRE : un accès ajouté en cours de période est actif tout de suite et gratuit jusqu'à elle (le bon du lot 12 est
+// PROCHAINE DATE ANNIVERSAIRE : un accès ajouté en cours de période est actif tout de suite et offert jusqu'à elle (le bon du lot 12 est
 // calculé à l'avance, sur les accès de ce moment-là). C'est cette date, celle du contrat, que les phrases donnent.
 //
-// Le texte de la confirmation de création est celui du cahier des charges, mot pour mot, avec les valeurs du CONTRAT à la place des
-// chiffres : un contrat à 25 € HT par mois et trois accès inclus donne exactement
-//   « Cet accès est actif immédiatement et gratuit jusqu'au 14/03/2027. À partir de cette date, les accès au-delà du troisième sont
-//     facturés 25 € HT par mois. »
-// Un contrat mensuel paie ses accès au prix mensuel (tarif.ts, prixMensuel) : la phrase le dit.
+// Le texte de la confirmation de création (retour de recette du 21/11/2026) fait d'abord apparaître le DÉPASSEMENT, puis son effet :
+//   « Vous dépassez les 3 accès inclus dans votre contrat : 4 accès facturables. »
+//   « Ce 4ᵉ accès est offert jusqu'au 14/03/2027, puis facturé 25 € HT par mois. »
+// Les valeurs sont celles du CONTRAT. Un contrat mensuel paie ses accès au prix mensuel (tarif.ts, prixMensuel) : la phrase le dit.
 
 import { dateCourte } from './format.ts';
 import { periodeAu, prixMensuel, type Periodicite } from './tarif.ts';
@@ -20,8 +19,6 @@ export interface ContratDepassement {
   acces_inclus: number;
   prix_acces_sup: number;
 }
-
-const ORDINAUX = ['', 'premier', 'deuxième', 'troisième', 'quatrième', 'cinquième', 'sixième', 'septième', 'huitième', 'neuvième', 'dixième'];
 
 /** « 25 € », « 29,50 € » : sans décimales quand le compte est rond. */
 export const eurosCourts = (centimes: number): string =>
@@ -40,20 +37,25 @@ export function dateAnniversaire(c: Pick<ContratDepassement, 'periodicite' | 'de
   return c.date_fin_essai;
 }
 
-/** « au-delà du troisième » ; « au-delà des 12 inclus » au-delà de dix. */
-const auDela = (inclus: number): string => (inclus >= 1 && inclus < ORDINAUX.length ? `au-delà du ${ORDINAUX[inclus]}` : `au-delà des ${inclus} inclus`);
+/** La confirmation d'un dépassement : le constat d'abord, puis l'effet. Deux phrases, affichées ensemble dans un encadré. */
+export interface PhraseDepassement {
+  constat: string;
+  effet: string;
+}
 
 /**
  * La phrase de la confirmation, affichée UNE SEULE FOIS, à la création de l'accès qui fait passer les accès facturables au-delà de
- * ceux que le contrat inclut. Null s'il n'y a pas de date de contrat à donner : la phrase n'est jamais écrite sans sa date.
+ * ceux que le contrat inclut. D'abord le constat (« Vous dépassez les 3 accès inclus dans votre contrat : 4 accès facturables. »), puis
+ * l'effet (« Ce 4ᵉ accès est offert jusqu'au 14/03/2027, puis facturé 25 € HT par mois. »). `facturables` est le décompte APRÈS la
+ * création (lecture, support et accès suspendus exclus). Null s'il n'y a pas de date de contrat à donner : jamais écrite sans sa date.
  */
-export function phraseCreationAcces(c: ContratDepassement, jour: string): string | null {
+export function phraseCreationAcces(c: ContratDepassement, facturables: number, jour: string): PhraseDepassement | null {
   const date = dateAnniversaire(c, jour);
   if (!date) return null;
-  return (
-    `Cet accès est actif immédiatement et gratuit jusqu'au ${dateCourte(date)}. ` +
-    `À partir de cette date, les accès ${auDela(c.acces_inclus)} sont facturés ${eurosCourts(prixAccesParMois(c))} HT par mois.`
-  );
+  return {
+    constat: `Vous dépassez les ${c.acces_inclus} accès inclus dans votre contrat : ${facturables} accès facturable${facturables > 1 ? 's' : ''}.`,
+    effet: `Ce ${facturables}ᵉ accès est offert jusqu'au ${dateCourte(date)}, puis facturé ${eurosCourts(prixAccesParMois(c))} HT par mois.`,
+  };
 }
 
 /**

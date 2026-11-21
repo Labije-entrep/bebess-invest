@@ -15,7 +15,7 @@ export const LIBELLES_INCIDENT: Record<string, string> = {
   bon_a_emettre: 'Bon à facturer à émettre',
   remise_a_revoir: 'Remise commerciale à revoir',
   purge_bloquee: 'Suppression en attente (J+75 de l’essai, J+30 d’une résiliation)',
-  bon_apres_resiliation: 'Facture émise pour une période résiliée : avoir à faire',
+  bon_apres_resiliation: 'Bon de commande émis pour une période résiliée : à annuler si besoin',
   bon_preavis_annule: 'Bon annulé par un préavis annulé : période à facturer à la main',
   traitement_echec: 'Traitement quotidien en échec',
 };

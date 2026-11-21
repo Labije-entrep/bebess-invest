@@ -9,7 +9,7 @@ import { THEMES } from '../../lib/themes';
 import { ONGLETS_REGLAGES } from '../../lib/onglets-reglages';
 import { accesDuCabinet, compterAcces, creerAcces, suspendreAcces, type CodeAcces } from '../../lib/acces';
 import { contratEnCours } from '../../lib/contrat';
-import { phraseCreationAcces } from '../../lib/depassement';
+import { phraseCreationAcces, type PhraseDepassement } from '../../lib/depassement';
 import type { Role } from '../../lib/db';
 import { ACCES_CABINET, ACCES_FACTURABLES } from '../../lib/roles';
 import { marqueursDeLaListe } from '../../lib/marqueurs';
@@ -43,7 +43,7 @@ let erreurs: Erreurs = {};
 let valeurs: Record<string, string> = {};
 let envoye = false;
 /** La confirmation d'un accès créé : rendue dans la réponse du POST, jamais ailleurs. C'est ce qui fait que la phrase du dépassement ne s'affiche qu'une fois. */
-let confirmation: { nom: string; role: string; phrase: string | null } | null = null;
+let confirmation: { nom: string; role: string; phrase: PhraseDepassement | null } | null = null;
 
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
@@ -105,7 +105,7 @@ if (Astro.request.method === 'POST') {
         const contrat = await contratEnCours(db, tenant.id);
         const { facturables } = await compterAcces(db, tenant.id);
         const depasse = !!contrat && ACCES_FACTURABLES.includes(role) && facturables > contrat.acces_inclus;
-        confirmation = { nom: saisieAcces.nom, role, phrase: depasse ? phraseCreationAcces(contrat, new Date().toISOString().slice(0, 10)) : null };
+        confirmation = { nom: saisieAcces.nom, role, phrase: depasse ? phraseCreationAcces(contrat, facturables, new Date().toISOString().slice(0, 10)) : null };
         valeurs = {};
       }
     }
@@ -339,7 +339,12 @@ const themeActuel = THEMES.some((t) => t.id === identite.theme) ? identite.theme
       {confirmation && (
         <div role="status">
           <p class="info">Accès créé : {confirmation.nom}, {LIBELLES_ROLE[confirmation.role]}. Il demande son lien de connexion depuis la page de connexion du cabinet, avec son adresse e-mail.</p>
-          {confirmation.phrase && <p class="info">{confirmation.phrase}</p>}
+          {confirmation.phrase && (
+            <div class="encadre-depassement">
+              <p><strong>{confirmation.phrase.constat}</strong></p>
+              <p>{confirmation.phrase.effet}</p>
+            </div>
+          )}
         </div>
       )}
       {erreurs.acces && <p class="info alerte" role="alert">{erreurs.acces}</p>}

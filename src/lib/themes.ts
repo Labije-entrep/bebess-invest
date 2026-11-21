@@ -19,4 +19,10 @@ export const THEMES: Theme[] = [
 export const THEME_DEFAUT = 'maison';
 
 /** Un thème connu, ou le thème par défaut : une valeur inconnue en base ne casse jamais une page. */
+/** Le thème d'un NOM connu, ou null : sert à valider un choix venu d'un formulaire (jamais une valeur de couleur). */
+export const themeConnu = (v: unknown): string | null => THEMES.find((t) => t.id === v)?.id ?? null;
+
+/** Le thème de l'espace client : le choix du client s'il est connu, sinon le thème du cabinet, sinon le défaut. */
+export const themeEffectif = (choixClient: unknown, themeCabinet: unknown): string => themeConnu(choixClient) ?? themeValide(themeCabinet);
+
 export const themeValide = (v: unknown): string => THEMES.find((t) => t.id === v)?.id ?? THEME_DEFAUT;

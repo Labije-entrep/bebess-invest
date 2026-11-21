@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { appartient } from '../../../../lib/cloisonnement';
 import { arretesPerimes, ecartsHorsSeuil, panneauPortail } from '../../../../lib/fiche';
-import { garde, introuvable, sujetPourOrigine, texteArrete, texteEcart } from '../../../../lib/passerelle';
+import { garde, introuvable, prefixeEcart, sujetPourOrigine, texteArrete, texteEcart } from '../../../../lib/passerelle';
 import { GESTION_ECRIT } from '../../../../lib/roles';
 
 export const prerender = false;
@@ -34,11 +34,14 @@ export const POST: APIRoute = async (ctx) => {
 
   let origine: string;
   let texte: string;
+  let prefixeDoublon: string | undefined;
   if (type === 'ecart') {
     const e = ecartsHorsSeuil(portail).find((x) => x.classe === cle);
     if (!e || !portail.arrete) return retour('ecart_sous_seuil');
     origine = `ecart:${e.classe}:${portail.arrete}`;
     texte = texteEcart(e, portail.arrete, portail.portefeuilles.length > 1);
+    // Doublure du bouton grisé : un sujet d'écart non clos pour cette classe suffit, quel que soit l'arrêté qui l'a fait naître.
+    prefixeDoublon = prefixeEcart(e.classe);
   } else if (type === 'arrete') {
     const b = arretesPerimes(portail).find((x) => x.id === cle);
     if (!b) return retour('arrete_a_jour');
@@ -48,7 +51,7 @@ export const POST: APIRoute = async (ctx) => {
     return retour('demande_inconnue');
   }
 
-  const r = await sujetPourOrigine(g.db, g.tenant.id, id, origine, texte);
+  const r = await sujetPourOrigine(g.db, g.tenant.id, id, origine, texte, prefixeDoublon);
   if ('refus' in r) return retour('statut_absent');
   return retour(r.cree ? 'sujet_cree' : 'sujet_existant', r.id);
 };

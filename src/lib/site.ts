@@ -421,6 +421,16 @@ export async function slugPris(db: Base, tenantId: string, slug: string, sauf: s
   return r !== null;
 }
 
+/** Les trois gestes de l'écran d'une note : enregistrer sans changer l'état, publier, repasser en brouillon. */
+export type ActionNote = 'enregistrer' | 'publier' | 'brouillon';
+export const ACTIONS_NOTE: ActionNote[] = ['enregistrer', 'publier', 'brouillon'];
+
+/** L'état de la note après l'action : `enregistrer` garde l'état courant (brouillon pour une nouvelle note), les deux autres le posent. */
+export const publieeApres = (action: ActionNote, courante: boolean): boolean => (action === 'publier' ? true : action === 'brouillon' ? false : courante);
+
+/** L'état en clair, sur la liste et sur la fiche. */
+export const libelleEtatNote = (publiee: boolean | number): string => (publiee ? 'Publié' : 'Brouillon');
+
 export interface SaisieNote {
   slug: string;
   titre: string;

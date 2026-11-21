@@ -42,6 +42,8 @@ export interface Utilisateur {
   cree_le: string;
   /** Le dossier client (viewer) : brouillon, publié, archivé. Un viewer archivé n'entre plus (middleware). Sans objet hors d'un viewer. */
   statut: 'brouillon' | 'publie' | 'archive';
+  /** Le thème choisi par le client (un nom de src/lib/themes.ts), ou null : il suit alors le thème de son cabinet. */
+  theme?: string | null;
 }
 
 export interface Fiche {

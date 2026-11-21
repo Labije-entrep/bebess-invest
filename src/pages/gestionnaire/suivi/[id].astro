@@ -3,6 +3,7 @@ export const prerender = false;
 import Gestion from '../../../layouts/Gestion.astro';
 import { envDe } from '../../../lib/mail';
 import { arretesPerimes, ecartsHorsSeuil, panneauPortail } from '../../../lib/fiche';
+import { classesAvecEcartOuvert } from '../../../lib/passerelle';
 import { dateLongue, euros, pourcent } from '../../../lib/format';
 import { signeBp, teinte } from '../../../lib/espace';
 import { CABINET_ECRIT, aLeRole } from '../../../lib/roles';
@@ -35,6 +36,8 @@ const visite = portail?.derniereVisite ? dateLongue(portail.derniereVisite.slice
 // Passerelle (lot 07) : les boutons ne se déclenchent que par un geste ; les routes recalculent ce qu'elles écrivent.
 const estGestionnaire = aLeRole(utilisateur.role, CABINET_ECRIT); // associé, collaborateur, support : pas `lecture`, pas l'éditeur
 const ecarts = portail ? ecartsHorsSeuil(portail) : [];
+// Un sujet d'écart non clos pour la classe : le bouton est grisé (la route le refuse aussi, en doublure) ; clos, il redevient actif.
+const ecartsOuverts = portail ? await classesAvecEcartOuvert(db, tenant.id, contact.id) : new Set<string>();
 const perimes = portail ? arretesPerimes(portail) : [];
 const actionSujet = `/gestionnaire/passerelle/sujet/${encodeURIComponent(contact.id)}`;
 const actionPromotion = `/gestionnaire/passerelle/promotion/${encodeURIComponent(contact.id)}`;
@@ -167,10 +170,17 @@ const retour = MESSAGES[Astro.url.searchParams.get('pm') ?? ''] ?? null;
                   <form method="post" action={actionSujet}>
                     <input type="hidden" name="type" value="ecart" />
                     <input type="hidden" name="cle" value={e.classe} />
-                    <button type="submit" class="btn-plein portail-action">Créer un sujet depuis l’écart{ecarts.length > 1 ? ` · ${e.libelle}` : ''}</button>
+                    {ecartsOuverts.has(e.classe) ? (
+                      <span title="Sujet déjà existant, non clos">
+                        <button type="submit" class="btn-plein portail-action" disabled aria-disabled="true" aria-describedby={`ecart-ouvert-${e.classe}`} title="Sujet déjà existant, non clos" data-ecart-grise>Créer un sujet depuis l’écart{ecarts.length > 1 ? ` · ${e.libelle}` : ''}</button>
+                        <span class="portail-sous portail-aide" id={`ecart-ouvert-${e.classe}`}>Sujet déjà existant, non clos.</span>
+                      </span>
+                    ) : (
+                      <button type="submit" class="btn-plein portail-action">Créer un sujet depuis l’écart{ecarts.length > 1 ? ` · ${e.libelle}` : ''}</button>
+                    )}
                   </form>
                 ))}
-                <p class="portail-sous portail-aide">Crée un sujet sur ce contact, avec la classe, le réel et la cible. Un second clic ouvre le sujet déjà créé tant qu’il n’est pas clos.</p>
+                <p class="portail-sous portail-aide">Crée un sujet sur ce contact, avec la classe, le réel et la cible. Tant qu’un sujet d’écart n’est pas clos pour cette classe, le bouton est grisé ; il redevient actif quand ce sujet est clos.</p>
               </>
             ) : (
               <p class="portail-sous portail-aide">Aucun écart au-delà du seuil de {sansPoints(portail.seuilEcartBp)} points : rien à transformer en sujet.</p>

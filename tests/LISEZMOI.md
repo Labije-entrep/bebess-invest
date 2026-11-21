@@ -12,7 +12,7 @@ Le code du dépôt, tel quel. Rien n'est réécrit pour être testable.
 | Pièce | Rôle |
 | --- | --- |
 | `support/hooks.mjs`, `enregistrer.mjs` | Chargeur Node : résout les imports sans extension (écrits pour Vite), remplace `astro:middleware`, fixe `import.meta.env` comme `wrangler.cron.toml`, et transforme l'**en-tête** d'un fichier `.astro` en fonction (le gabarit HTML n'est pas rendu). |
-| `support/d1.ts` | Une « D1 » : `node:sqlite` en mémoire derrière l'interface `Base`. Les 14 migrations réelles, clés étrangères actives, `batch` indivisible. |
+| `support/d1.ts` | Une « D1 » : `node:sqlite` en mémoire derrière l'interface `Base`. Les 16 migrations réelles, clés étrangères actives, `batch` indivisible. |
 | `support/serveur.ts` | La chaîne d'une requête : Worker (`src/worker.ts`) → contrôle d'origine d'Astro (celui du paquet installé) → `src/middleware.ts` → la route. `fetch` est remplacé : Scaleway et Cloudflare sont enregistrés, tout autre appel sortant fait échouer le test. |
 | `support/monde.ts` | Trois cabinets (A, B, C) avec un exemplaire de chaque ressource, des comptes, des sessions, des contrats. |
 | `support/dom.ts` | Un navigateur de poche, pour faire tourner `src/scripts/suivi.ts` (indicateurs, kanban, parcours). |
