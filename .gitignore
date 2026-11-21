@@ -4,3 +4,6 @@ dist/
 .wrangler/
 .DS_Store
 .dev.vars
+# Configurations de recette : elles portent des identifiants (database_id), jamais dans le dépôt. Les modèles sont *.example.toml.
+wrangler.recette.toml
+wrangler.cron.recette.toml

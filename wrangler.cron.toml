@@ -1,5 +1,6 @@
-# Le traitement quotidien (lot 12) : un Worker à part, avec UN Cron Trigger. Le site, lui, est un projet Pages (wrangler.toml) et Pages
-# n'accepte pas `[triggers]` : wrangler refuse le fichier. Ce Worker lit et écrit la MÊME base D1 et le MÊME bucket R2.
+# Le traitement quotidien (lot 12) : un Worker à part, avec UN Cron Trigger. Le site est un autre Worker (wrangler.toml), servi avec ses
+# fichiers statiques : le traitement reste séparé pour ne pas mêler une tâche planifiée au code qui répond aux visiteurs.
+# Ce Worker lit et écrit la MÊME base D1 et le MÊME bucket R2.
 #
 #   npx wrangler deploy -c wrangler.cron.toml
 #   npx wrangler secret put SCW_SECRET_KEY -c wrangler.cron.toml      # idem SCW_PROJECT_ID, MAIL_FROM, CF_API_TOKEN

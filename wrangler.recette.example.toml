@@ -1,0 +1,27 @@
+# MODÈLE de configuration du site en RECETTE. Ce fichier est versionné et ne contient aucun identifiant.
+# Le copier en `wrangler.recette.toml` (ignoré de vos commits : ne jamais le versionner), puis remplacer `A_REMPLIR`
+# par le database_id renvoyé par `npx wrangler d1 create bebess-recette`. Mode d'emploi : RECETTE.md §2.
+#
+# Le site tourne comme un Worker avec ses fichiers statiques (même modèle que la production, voir wrangler.toml).
+#
+# Pas de bloc R2 ici, volontairement : la recette tourne sans le bucket de fichiers (R2 n'est pas activé sur le compte de recette).
+# Conséquence à connaître : tout ce qui lit ou écrit un fichier échoue faute de liaison `FICHIERS` — dépôt de rapports, logo du
+# cabinet, factures en PDF, purge des fichiers. Ces écrans ne sont pas jouables en recette ; tout le reste l'est.
+# Pour les éprouver, activer R2, créer `bebess-fichiers-recette` (jamais de domaine public ni r2.dev) et ajouter :
+#   [[r2_buckets]]
+#   binding = "FICHIERS"
+#   bucket_name = "bebess-fichiers-recette"
+name = "bebess-recette"
+main = "dist/_worker.js/index.js"
+compatibility_date = "2026-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+# dist/.assetsignore (copié depuis public/.assetsignore par le build) exclut _worker.js des fichiers servis.
+[assets]
+directory = "dist"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bebess-recette"
+database_id = "A_REMPLIR"
