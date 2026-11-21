@@ -1,0 +1,15 @@
+---
+// Parcours guidé « premier arrêté » : de la clarté, aucune logique d'écriture. Chaque étape renvoie à l'onglet qui la porte.
+interface Props { base: string; pf?: string }
+const { base, pf } = Astro.props;
+const suite = pf ? `&pf=${encodeURIComponent(pf)}` : '';
+---
+<section class="info" aria-label="Premier arrêté en trois étapes">
+  <strong>Premier arrêté, en trois étapes</strong>
+  <p class="aide">Ce client n'a pas encore d'enveloppe : son suivi se construit dans cet ordre.</p>
+  <ol>
+    <li><a href={`${base}?onglet=enveloppes${suite}`}>Créer une enveloppe</a> (onglet Enveloppes) : un nom, sa valorisation et sa date d'arrêté.</li>
+    <li><a href={`${base}?onglet=lignes${suite}`}>Ajouter ses lignes</a> (onglet Lignes) : support par support, si vous suivez le détail.</li>
+    <li><a href={`${base}?onglet=arrete${suite}`}>Saisir l'arrêté</a> (onglet Nouvel arrêté) : il enregistre les valeurs et le point d'historique du mois.</li>
+  </ol>
+</section>

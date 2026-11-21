@@ -1,8 +1,17 @@
-# Le site : un projet Cloudflare PAGES. Pages n'accepte pas de Cron Trigger (wrangler refuse `[triggers]` dans ce fichier) : le traitement
-# quotidien du lot 12 a son propre Worker, wrangler.cron.toml, qui partage la même base D1 et le même bucket R2.
+# Le site : un Worker Cloudflare qui sert aussi ses fichiers statiques (« Workers Static Assets »). Cloudflare ne crée plus de projets
+# Pages (« Pages fait désormais partie de Workers ») : on déploie donc avec `wrangler deploy`, après `npm run build`.
+# Le traitement quotidien du lot 12 garde son propre Worker, wrangler.cron.toml (un seul Cron Trigger, tâche distincte du site) :
+# il partage la même base D1 et le même bucket R2.
 name = "bebess"
+main = "dist/_worker.js/index.js"
 compatibility_date = "2026-11-01"
-pages_build_output_dir = "dist"
+compatibility_flags = ["nodejs_compat"]
+
+# Les fichiers statiques du build. Le binding ASSETS est celui que l'adaptateur Astro attend pour les servir.
+# dist/.assetsignore (copié depuis public/.assetsignore par le build) exclut _worker.js : le code du Worker n'est pas un fichier public.
+[assets]
+directory = "dist"
+binding = "ASSETS"
 
 [[d1_databases]]
 binding = "DB"

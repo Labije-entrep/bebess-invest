@@ -3,9 +3,12 @@ export const prerender = false;
 import Gestion from '../../../layouts/Gestion.astro';
 import Champ from '../../../components/gestion/Champ.astro';
 import Cellule from '../../../components/gestion/Cellule.astro';
+import PremierArrete from '../../../components/gestion/PremierArrete.astro';
+import { signeBp, teinte } from '../../../lib/espace';
 import {
   contexte, viewerDuTenant, traiter, optionsDe, texte, ecartAllocation, formEuros, formBp, type Erreurs,
   type Apercu, lireDate, pointAu, pointPrecedent,
+  divergencePointEnveloppes, perfParPoint, perfForte,
 } from '../../../lib/gestion';
 import {
   ficheDuViewer, enveloppesDuViewer, lignesDesEnveloppes, ciblesDuViewer, pointsDuViewer, mouvementsDuViewer, portefeuillesDuViewer,
@@ -100,7 +103,25 @@ const pointExistant = onglet === 'arrete' && pf ? await pointAu(db, pf.id, dateA
 const precedent = onglet === 'arrete' && pf ? await pointPrecedent(db, pf.id, dateArrete) : null;
 const sommeEnveloppes = enveloppes.reduce((s, e) => s + e.valorisation_cents, 0);
 const valeurProposee = formEuros(pointExistant ? pointExistant.valeur_cents : sommeEnveloppes);
-const verseProposee = formEuros(pointExistant ? pointExistant.versements_cumules_cents : precedent?.verseCents);const rowsCibles = [...cibles, null, null];
+const verseProposee = formEuros(pointExistant ? pointExistant.versements_cumules_cents : precedent?.verseCents);
+// Deux saisies distinctes : le point d'historique (onglet Historique) et l'état actuel des enveloppes. On les compare, par
+// portefeuille actif, pour avertir sans jamais les fusionner.
+const ONGLETS_ALERTE = ['fiche', 'arrete', 'historique', 'enveloppes', 'lignes'];
+const divergences: { pf: string; libelle: string; d: NonNullable<ReturnType<typeof divergencePointEnveloppes>> }[] = [];
+let sansEnveloppe = false;
+if (ONGLETS_ALERTE.includes(onglet)) {
+  let nbEnv = 0;
+  for (const x of actifs) {
+    const envs = await enveloppesDuViewer(db, tenant.id, viewer.id, x.id);
+    nbEnv += envs.length;
+    const pts = await pointsDuViewer(db, tenant.id, viewer.id, x.id);
+    const d = divergencePointEnveloppes(pts, envs.length, envs.reduce((s, e) => s + e.valorisation_cents, 0));
+    if (d) divergences.push({ pf: x.id, libelle: x.libelle, d });
+  }
+  sansEnveloppe = nbEnv === 0;
+}
+const perfs = onglet === 'historique' ? perfParPoint(points) : new Map<string, number | null>();
+const rowsCibles = [...cibles, null, null];
 let compteur = 0;
 ---
 <Gestion titre={viewer.nom}>
@@ -120,6 +141,16 @@ let compteur = 0;
   <nav class="onglets" aria-label="Onglets du viewer">
     {ONGLETS.map(([k, nom]) => <a href={lien(k)} aria-current={onglet === k ? 'page' : undefined}>{nom}</a>)}
   </nav>
+
+  {sansEnveloppe && onglet !== 'arrete' && onglet !== 'enveloppes' && actifs.length > 0 && <PremierArrete base={base} pf={pf?.id} />}
+  {divergences.map(({ pf: idPf, libelle, d }) => (
+    <div class="info alerte" role="status">
+      <strong>Le dernier point d'historique ne correspond pas aux enveloppes{actifs.length > 1 ? ` du portefeuille « ${libelle} »` : ''}.</strong>
+      {' '}Point au {dateCourte(d.date)} : {euros(d.pointCents)} ; somme des enveloppes : {euros(d.enveloppesCents)} (écart de {euros(Math.abs(d.ecartCents))}).
+      <p class="aide">Le « point d'historique » est la valeur totale à une date, saisie dans l'onglet Historique : elle sert à la courbe et aux performances. L'« état actuel des enveloppes » est la somme de leurs valorisations : elle fait l'encours du tableau de bord et la répartition. Chaque onglet n'écrit que sa propre saisie, donc rien ne se corrige tout seul.</p>
+      <a class="btn" href={`${base}?onglet=arrete&pf=${encodeURIComponent(idPf)}&date=${encodeURIComponent(d.date)}`}>Saisir le nouvel arrêté au {dateCourte(d.date)}</a>
+    </div>
+  ))}
 
   {parPf && onglet !== 'arrete' && portefeuilles.length > 1 && pf && (
     <nav class="filtres" aria-label="Portefeuille concerné">
@@ -147,7 +178,10 @@ let compteur = 0;
       </form>
       {pointExistant && <p class="info">Un point existe déjà au {dateCourte(dateArrete)} : il est chargé pour modification.</p>}
       {enveloppes.length === 0 ? (
-        <p>Créez d'abord une enveloppe dans l'onglet Enveloppes{portefeuilles.length > 1 && pf ? ` du portefeuille « ${pf.libelle} »` : ''}.</p>
+        <>
+          <PremierArrete base={base} pf={pf?.id} />
+          <p>Créez d'abord une enveloppe dans l'onglet Enveloppes{portefeuilles.length > 1 && pf ? ` du portefeuille « ${pf.libelle} »` : ''}.</p>
+        </>
       ) : (
         <form method="post">
           <input type="hidden" name="action" value="arrete" />
@@ -487,11 +521,14 @@ let compteur = 0;
       <hr class="filet" />
       <div class="defile">
         <table class="table">
-          <thead><tr><th>Date</th><th class="num">Valeur</th><th class="num">Versements cumulés</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th class="num">Valeur</th><th class="num">Versements cumulés</th><th class="num">Performance du mois</th><th></th></tr></thead>
           <tbody>
             {points.map((pt) => (
               <tr>
                 <td>{dateCourte(pt.date)}</td><td class="num">{euros(pt.valeur_cents)}</td><td class="num">{euros(pt.versements_cumules_cents)}</td>
+                <td class={`num ${perfForte(perfs.get(pt.id) ?? null) ? 'perime' : teinte(perfs.get(pt.id) ?? null)}`}>
+                  {perfs.get(pt.id) == null ? '—' : signeBp(perfs.get(pt.id)!)}{perfForte(perfs.get(pt.id) ?? null) ? ' (variation forte)' : ''}
+                </td>
                 <td class="num">
                   <form method="post"><input type="hidden" name="action" value="suppr_point" /><input type="hidden" name="pf" value={pf?.id ?? ''} /><input type="hidden" name="id" value={pt.id} /><button class="btn" type="submit">Supprimer</button></form>
                 </td>
