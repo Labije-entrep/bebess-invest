@@ -1,6 +1,6 @@
 // Cours de marché : le travail « cours » du traitement quotidien (un appel par symbole, tout l'historique rangé), le filet de la vue,
 // et les calculs des courbes. Hors ligne : Alpha Vantage est une réponse factice du banc (`reseau.cours`), tout appel non prévu échoue.
-import { test, beforeEach } from 'node:test';
+import { test, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { baseNeuve, type BaseTest } from './support/d1.ts';
 import { creerCabinet, poserTenant } from './support/monde.ts';
@@ -36,7 +36,12 @@ const reponse = (p: URLSearchParams): Response => {
   return new Response('{}', { status: 404 });
 };
 
+// L'horloge est figée à JOUR : le code horodate avec l'instant présent (`new Date()`), et ces tests simulent le jour du traitement.
+// Sans cela, ils dépendaient de la date réelle d'exécution et échouaient dès le lendemain de leur écriture.
+const heure = (jour: string): number => Date.parse(`${jour}T12:00:00Z`);
+
 beforeEach(() => {
+  mock.timers.enable({ apis: ['Date'], now: heure(JOUR) });
   reseau.vider();
   appels = [];
   reseau.cours = (p) => {
@@ -46,6 +51,10 @@ beforeEach(() => {
   db = baseNeuve();
   env = environnement(db, { COURS_API_KEY: 'cle-de-test', COURS_PAUSE_MS: '0' });
   poserTenant(db, 'tenant-a', 'Cabinet A', 'a.test');
+});
+
+afterEach(() => {
+  mock.timers.reset();
 });
 
 const passe = (jour = JOUR) => traitementQuotidien(env, { maintenant: new Date(`${jour}T03:00:00Z`) });
@@ -84,6 +93,7 @@ test('rejouer le traitement le même jour n\'appelle rien et ne duplique rien', 
 
 test('le lendemain, l\'historique chevauchant est mis à jour sans doublon', async () => {
   await passe();
+  mock.timers.setTime(heure('2026-11-21'));
   await passe('2026-11-21');
   assert.equal(appels.length, 10);
   assert.equal(nbCours(), 25); // mêmes dates, mises à jour
