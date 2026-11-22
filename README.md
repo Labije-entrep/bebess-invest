@@ -1,4 +1,4 @@
-# BeBess'Invest — site vitrine bilingue
+# Labije Cab — site vitrine bilingue (modèle d origine)
 
 Site statique construit avec **Astro**, en français et en anglais. Les contenus
 vivent dans des fichiers versionnés et se modifient de trois façons : à la main

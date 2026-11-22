@@ -1,6 +1,6 @@
-# Essayer le produit sur un PC Windows, accessible à distance
+# Essayer Labije Cab sur un PC Windows, accessible à distance
 
-**Test seulement.** Cette procédure sert à vérifier que le produit tourne hors de Cloudflare et à le montrer à distance pendant quelques heures. Elle ne convient **pas** à un cabinet réel : le PC doit rester allumé, il n'y a pas de sauvegarde automatique, et la machine devient responsable de la sécurité des données. Utilisez uniquement les données **fictives** des jeux de démonstration.
+**Test seulement.** Cette procédure sert à vérifier que Labije Cab tourne hors de Cloudflare et à le montrer à distance pendant quelques heures. Elle ne convient **pas** à un cabinet réel : le PC doit rester allumé, il n'y a pas de sauvegarde automatique, et la machine devient responsable de la sécurité des données. Utilisez uniquement les données **fictives** des jeux de démonstration.
 
 ## Ce qui a été vérifié, et ce qui ne l'a pas été
 

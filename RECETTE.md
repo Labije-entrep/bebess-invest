@@ -1,4 +1,4 @@
-# Environnement de recette
+# Labije Cab : environnement de recette
 
 Un second environnement complet chez Cloudflare, séparé de la production : même
 plateforme, mêmes limites, mêmes comportements. C'est le seul « iso-prod » qui

@@ -9,7 +9,7 @@ interface Props { langue: Lg; etat: EtatContact }
 const { langue, etat } = Astro.props;
 const { page, vals, erreurs, general, envoye } = etat;
 const l = T[langue].contact;
-const nom = Astro.locals.tenant?.nom ?? "BeBess'Invest";
+const nom = Astro.locals.tenant?.nom ?? "Labije Cab";
 const c = page.c;
 const conf = c?.confirmation ?? {};
 const coord = c?.coordonnees ?? {};

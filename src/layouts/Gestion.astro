@@ -49,12 +49,12 @@ const ici = Astro.url.pathname.replace(/\/$/, '');
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>{titre} · {admin ? 'Console de l’éditeur' : 'Espace gestionnaire'}</title>
+    <title>{titre} · {admin ? 'Console Labije Cab' : 'Espace gestionnaire'}</title>
   </head>
   <body class="gest">
     <header class="gest-haut">
       <div class="wrap gest-barre">
-        <a class="gest-marque" href={admin ? '/admin' : '/gestionnaire'}>{admin ? 'Console de l’éditeur' : 'Espace gestionnaire'}</a>
+        <a class="gest-marque" href={admin ? '/admin' : '/gestionnaire'}>{admin ? 'Labije Cab · Console de l’éditeur' : 'Espace gestionnaire'}</a>
         <button class="btn gest-burger" type="button" aria-expanded="false" aria-controls="gest-menu" data-menu>Menu</button>
         <nav id="gest-menu" class="gest-menu" aria-label="Navigation">
           {liens.map(([href, nom]) =>

@@ -99,7 +99,7 @@ interface Gabarit {
 function courriel(avis: Avis, g: Gabarit): { sujet: string; texte: string } {
   const lien = g.lien ? `\n\nL'export complet de vos données, à télécharger une fois connecté en tant qu'associé :\n${g.lien}` : '';
   const entree = `Bonjour ${g.nom},\n\n`;
-  const sortie = "\n\nCordialement,\nBeBess'Invest";
+  const sortie = "\n\nCordialement,\nLabije Cab";
   switch (avis) {
     case 'J38':
       return {

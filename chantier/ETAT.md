@@ -1,3 +1,5 @@
+> **Nom de l'outil (22/11/2026).** L'outil s'appelle **Labije Cab** depuis le 22/11/2026 ; il s'appelait « BeBess'Invest ». Ce journal garde l'ancien nom tel qu'il a été écrit : l'histoire des lots n'est pas réécrite. Les identifiants d'infrastructure (Workers `bebess`, `bebess-recette`, `bebess-traitement`, base D1 `bebess`, bucket `bebess-fichiers`, dépôt GitHub) gardent leur nom jusqu'au déploiement de production.
+
 # État du chantier
 
 Mis à jour par l'agent à la fin de chaque session. Une ligne par lot.

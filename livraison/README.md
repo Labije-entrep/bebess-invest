@@ -1,6 +1,6 @@
-# Kit de livraison
+# Labije Cab : kit de livraison
 
-Ce dossier réunit ce qu'il faut pour **livrer un cabinet** et pour **essayer le produit hors de Cloudflare**. Il est écrit pour être lu par quelqu'un qui n'a pas construit le produit. Chaque document est un premier jet, à ajuster après la recette.
+Ce dossier réunit ce qu'il faut pour **livrer un cabinet** et pour **essayer Labije Cab hors de Cloudflare**. Il est écrit pour être lu par quelqu'un qui n'a pas construit l'outil. Chaque document est un premier jet, à ajuster après la recette.
 
 | Document | Pour qui | À quoi il sert |
 | --- | --- | --- |

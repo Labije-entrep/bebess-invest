@@ -1,4 +1,4 @@
-# Mode d'emploi du gestionnaire
+# Labije Cab : mode d'emploi du gestionnaire
 
 Ce document explique, pas à pas, comment utiliser votre espace. Vous y retrouvez ce que vous faites au quotidien, et ce que vous pouvez changer sur votre site public. Les captures d'écran seront ajoutées plus tard.
 

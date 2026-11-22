@@ -274,7 +274,7 @@ export async function lienPremierGestionnaire(
     await creerMailer(envDe(locals), c.hote).envoyer(
       c.gestionnaire.email,
       'Votre espace gestionnaire est ouvert',
-      `Bonjour ${c.gestionnaire.nom},\n\nLe cabinet « ${c.nom} » vient d'être ouvert sur BeBess'Invest et vous en êtes le gestionnaire.\n\nVoici votre lien de première connexion, valable 15 minutes et utilisable une seule fois :\n\n${lien}\n\nAucun mot de passe n'est nécessaire.`,
+      `Bonjour ${c.gestionnaire.nom},\n\nLe cabinet « ${c.nom} » vient d'être ouvert sur Labije Cab et vous en êtes le gestionnaire.\n\nVoici votre lien de première connexion, valable 15 minutes et utilisable une seule fois :\n\n${lien}\n\nAucun mot de passe n'est nécessaire.`,
     );
     return true;
   } catch (e) {

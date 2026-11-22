@@ -12,7 +12,7 @@ interface Props {
 }
 const { titre, description = '', langue = 'fr' } = Astro.props;
 const l = T[langue];
-const nom = Astro.locals.tenant?.nom ?? "BeBess'Invest";
+const nom = Astro.locals.tenant?.nom ?? "Labije Cab";
 const logo = Astro.locals.tenant ? await urlLogoCabinet(envDe(Astro.locals).DB, Astro.locals.tenant.id) : null;
 const canonique = Astro.url.origin + Astro.url.pathname;
 const liens: [string, string][] = [
