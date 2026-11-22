@@ -1,11 +1,14 @@
 ---
 import '../styles/app.css';
+import PiedMarque from '../components/PiedMarque.astro';
 import { attributsCabinet } from '../lib/personnalisation';
 
 interface Props {
   titre: string;
+  /** Faux sur la page des mentions de la plateforme, qui est elle-même la cible du lien du pied. */
+  pied?: boolean;
 }
-const { titre } = Astro.props;
+const { titre, pied = true } = Astro.props;
 ---
 
 <!doctype html>
@@ -36,6 +39,7 @@ const { titre } = Astro.props;
         </div>
       </section>
     </main>
+    {pied && <PiedMarque />}
   </body>
 </html>
 

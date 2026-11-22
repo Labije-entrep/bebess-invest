@@ -107,6 +107,8 @@ Menu **Réglages**, onglets :
 
 Votre client se connecte avec son adresse e-mail et voit **son** espace : valorisation, performance de l'année, évolution, répartition, mouvements en cours et rapports. Il peut choisir l'apparence de son espace (liste « Apparence » en pied de page) ; par défaut c'est le thème de votre cabinet. Un client ne voit jamais les données d'un autre client ni celles d'un autre cabinet.
 
+**La marque de la plateforme.** Dans votre espace, dans celui de vos clients et sur la page de connexion, une ligne discrète en pied de page indique « Labije Cab, un logiciel de Labije Software » et mène à la page **Mentions de la plateforme** (`/plateforme`, publique, sans connexion) : société éditrice, rôle de sous-traitant pour les données personnelles, et rappel que le conseil est fourni par votre cabinet, pas par l'éditeur du logiciel. Cette ligne ne se masque pas. Votre site public n'affiche rien de la plateforme ; votre nom et votre logo restent toujours au premier plan.
+
 ## 12. Exporter vos données
 
 Sur le tableau de bord, la section **Exports** fournit des fichiers CSV (contacts, sujets, échanges, actus) et, pour l'associé, l'export complet du cabinet. Vos données restent les vôtres.

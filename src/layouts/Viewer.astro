@@ -1,5 +1,6 @@
 ---
 import '../styles/app.css';
+import PiedMarque from '../components/PiedMarque.astro';
 import { attributsCabinet } from '../lib/personnalisation';
 import { envDe } from '../lib/mail';
 import { urlLogoCabinet } from '../lib/fichiers';
@@ -61,6 +62,7 @@ const suite = choix && /^[\w-]{1,64}$/.test(choix) ? `?p=${encodeURIComponent(ch
         <button type="submit" class="btn">Appliquer</button>
       </form>
     </footer>
+    <PiedMarque />
     <script is:inline nonce={Astro.locals.nonce}>
       var b = document.querySelector('[data-menu]'), m = document.getElementById('esp-menu');
       b.addEventListener('click', function () {
