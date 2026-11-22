@@ -70,7 +70,7 @@ npx wrangler d1 execute labije-cab --local --file=seeds/recette-site.sql
 
 Wrangler peut demander s'il peut envoyer des statistiques d'usage : répondez comme vous voulez. Aucune connexion à un compte Cloudflare n'est nécessaire.
 
-**Preuve :** la première commande affiche 17 migrations (0001 à 0017) cochées, les suivantes n'affichent pas d'erreur. La base est dans le dossier `.wrangler\state`.
+**Preuve :** la première commande affiche 18 migrations (0001 à 0018) cochées, les suivantes n'affichent pas d'erreur. La base est dans le dossier `.wrangler\state`.
 
 Ces jeux contiennent **deux cabinets fictifs** et des clients fictifs. Le premier cabinet (`tnt_demo`) est configuré pour l'adresse `localhost`.
 
