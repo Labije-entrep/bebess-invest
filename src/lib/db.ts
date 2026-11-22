@@ -3,6 +3,7 @@
 // dates en chaînes ISO 8601. Les identifiants sont des chaînes.
 
 import { themeValide } from './themes';
+import { lirePersonnalisation, type Personnalisation } from './personnalisation';
 
 // Forme minimale de D1Database, pour ne pas dépendre d'un paquet de types.
 export interface Requete {
@@ -28,6 +29,8 @@ export interface Tenant {
   cree_le: string;
   /** Thème du cabinet (réglage `theme`), toujours un nom connu de src/lib/themes.ts. */
   theme: string;
+  /** Accent, police, taille du texte et forme des éléments du cabinet (personnalisation.ts) : toujours des valeurs sûres, le défaut sinon. */
+  personnalisation?: Personnalisation;
   /** Date de la suspension en cours (lot 10), ou null. Elle ne bloque que les gestionnaires : voir HORS_SUSPENSION (auth.ts). */
   suspendu_le: string | null;
 }
@@ -205,6 +208,10 @@ export async function tenantParHote(db: Base, hote: string): Promise<Tenant | nu
               COALESCE(NULLIF(TRIM((SELECT valeur FROM reglage WHERE tenant_id = t.id AND cle = 'nom_affiche')), ''), t.nom) AS nom,
               t.domaine, t.cree_le,
               (SELECT valeur FROM reglage WHERE tenant_id = t.id AND cle = 'theme') AS theme,
+              (SELECT valeur FROM reglage WHERE tenant_id = t.id AND cle = 'accent') AS perso_accent,
+              (SELECT valeur FROM reglage WHERE tenant_id = t.id AND cle = 'police') AS perso_police,
+              (SELECT valeur FROM reglage WHERE tenant_id = t.id AND cle = 'taille_texte') AS perso_taille,
+              (SELECT valeur FROM reglage WHERE tenant_id = t.id AND cle = 'forme_elements') AS perso_forme,
               (SELECT debut_le FROM suspension WHERE tenant_id = t.id AND fin_le IS NULL) AS suspendu_le
          FROM tenant t
         WHERE t.domaine = ? OR t.id IN (SELECT tenant_id FROM domaine WHERE hote = ? AND valide_le IS NOT NULL)
@@ -212,8 +219,14 @@ export async function tenantParHote(db: Base, hote: string): Promise<Tenant | nu
         LIMIT 1`,
     )
     .bind(sansPort, sansPort, sansPort)
-    .first<Omit<Tenant, 'theme'> & { theme: string | null }>();
-  return t ? { ...t, theme: themeValide(t.theme) } : null;
+    .first<Omit<Tenant, 'theme' | 'personnalisation'> & { theme: string | null; perso_accent: string | null; perso_police: string | null; perso_taille: string | null; perso_forme: string | null }>();
+  if (!t) return null;
+  const { perso_accent, perso_police, perso_taille, perso_forme, ...reste } = t;
+  return {
+    ...reste,
+    theme: themeValide(t.theme),
+    personnalisation: lirePersonnalisation({ accent: perso_accent, police: perso_police, taille_texte: perso_taille, forme_elements: perso_forme }),
+  };
 }
 
 /** Une adresse n'est unique qu'au sein d'un cabinet (lot 11) : on ne la cherche jamais seule, toujours avec son locataire. */

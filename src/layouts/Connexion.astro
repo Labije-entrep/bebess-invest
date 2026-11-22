@@ -1,5 +1,6 @@
 ---
 import '../styles/app.css';
+import { attributsCabinet } from '../lib/personnalisation';
 
 interface Props {
   titre: string;
@@ -8,7 +9,7 @@ const { titre } = Astro.props;
 ---
 
 <!doctype html>
-<html lang="fr" data-cabinet-theme={Astro.locals.tenant?.theme ?? 'maison'}>
+<html lang="fr" data-cabinet-theme={Astro.locals.tenant?.theme ?? 'maison'} {...attributsCabinet(Astro.locals.tenant?.personnalisation, Astro.locals.tenant?.theme ?? 'maison')}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

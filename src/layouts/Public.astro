@@ -1,6 +1,7 @@
 ---
 import '../styles/app.css';
 import '../styles/public.css';
+import { attributsCabinet } from '../lib/personnalisation';
 import { T, chemin, type Lg } from '../lib/publang';
 import { envDe } from '../lib/mail';
 import { urlLogoCabinet } from '../lib/fichiers';
@@ -25,7 +26,7 @@ const liens: [string, string][] = [
 const ici = Astro.url.pathname.replace(/\/$/, '');
 ---
 <!doctype html>
-<html lang={langue} data-cabinet-theme={Astro.locals.tenant?.theme ?? 'maison'}>
+<html lang={langue} data-cabinet-theme={Astro.locals.tenant?.theme ?? 'maison'} {...attributsCabinet(Astro.locals.tenant?.personnalisation, Astro.locals.tenant?.theme ?? 'maison')}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

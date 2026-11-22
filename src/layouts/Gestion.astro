@@ -1,5 +1,6 @@
 ---
 import '../styles/app.css';
+import { attributsCabinet } from '../lib/personnalisation';
 import { CABINET_ECRIT, REGLAGES, aLeRole } from '../lib/roles';
 import { MENU_PILOTAGE, MENU_SITE_CONTENU } from '../lib/modules';
 
@@ -44,7 +45,7 @@ const liens = admin ? liensAdmin : liensGestionnaire.filter(visible);
 const ici = Astro.url.pathname.replace(/\/$/, '');
 ---
 <!doctype html>
-<html lang="fr" data-cabinet-theme={Astro.locals.tenant?.theme ?? 'maison'}>
+<html lang="fr" data-cabinet-theme={Astro.locals.tenant?.theme ?? 'maison'} {...attributsCabinet(Astro.locals.tenant?.personnalisation, Astro.locals.tenant?.theme ?? 'maison')}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

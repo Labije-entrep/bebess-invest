@@ -1,5 +1,6 @@
 ---
 import '../styles/app.css';
+import { attributsCabinet } from '../lib/personnalisation';
 import { envDe } from '../lib/mail';
 import { urlLogoCabinet } from '../lib/fichiers';
 import { THEMES, themeEffectif, themeConnu, themeValide } from '../lib/themes';
@@ -27,7 +28,7 @@ const choix = Astro.url.searchParams.get('p');
 const suite = choix && /^[\w-]{1,64}$/.test(choix) ? `?p=${encodeURIComponent(choix)}` : '';
 ---
 <!doctype html>
-<html lang="fr" data-cabinet-theme={theme}>
+<html lang="fr" data-cabinet-theme={theme} {...attributsCabinet(Astro.locals.tenant?.personnalisation, theme, choixClient === null)}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

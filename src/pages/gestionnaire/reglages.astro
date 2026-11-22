@@ -6,6 +6,7 @@ import OngletsReglages from '../../components/gestion/OngletsReglages.astro';
 import { contexte, texte, type Erreurs } from '../../lib/gestion';
 import { MESSAGES_REFUS, LIMITE_LOGO, urlLogoCabinet } from '../../lib/fichiers';
 import { THEMES } from '../../lib/themes';
+import { FORMES, POLICES, TAILLES, couleurProche, normaliserHex } from '../../lib/personnalisation';
 import { ONGLETS_REGLAGES } from '../../lib/onglets-reglages';
 import { accesDuCabinet, compterAcces, creerAcces, suspendreAcces, type CodeAcces } from '../../lib/acces';
 import { contratEnCours } from '../../lib/contrat';
@@ -20,7 +21,7 @@ import {
 import {
   MENTIONS, PALETTE_MEMBRES, SEUILS, SYMBOLES_MAX, TYPES_SYMBOLE,
   ajouterMembre, enregistrerIdentite, enregistrerMembres, enregistrerMentions, enregistrerSeuils, enregistrerSymboles,
-  formSeuil, identiteDe, membresAdmin, mentionsDe, seuilsSaisis, symbolesParDefaut, symbolesReglage,
+  enregistrerPersonnalisation, formSeuil, identiteDe, membresAdmin, mentionsDe, personnalisationDe, seuilsSaisis, symbolesParDefaut, symbolesReglage,
 } from '../../lib/reglages';
 
 // Réglages du cabinet (lot 09), réservés à l'associé (et au support de l'éditeur, qui se comporte comme lui) : listes, seuils, membres, identité, mentions légales.
@@ -82,6 +83,9 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'identite') {
     onglet = 'identite';
     r = await enregistrerIdentite(db, tenant.id, f);
+  } else if (action === 'personnalisation') {
+    onglet = 'identite';
+    r = await enregistrerPersonnalisation(db, tenant.id, f);
   } else if (action === 'symboles') {
     onglet = 'identite';
     r = await enregistrerSymboles(db, tenant.id, f);
@@ -152,12 +156,16 @@ const nbActives = valeursListe.filter((x) => x.actif === 1).length;
 const saisisSeuils = onglet === 'seuils' ? await seuilsSaisis(db, tenant.id) : {};
 const membres = onglet === 'membres' ? await membresAdmin(db, tenant.id) : [];
 const identite = onglet === 'identite' ? await identiteDe(db, tenant.id) : { nom_affiche: '', theme: '' };
+const perso = onglet === 'identite' ? await personnalisationDe(db, tenant.id) : { accent: null, police: 'classique', taille: 'standard', forme: 'anguleux' };
 const logo = onglet === 'identite' ? await urlLogoCabinet(db, tenant.id) : null;
 const symboles = onglet === 'identite' ? await symbolesReglage(db, tenant.id) : { symboles: [], personnalise: false };
 const mentions = onglet === 'mentions' ? await mentionsDe(db, tenant.id) : {};
 const comptes = onglet === 'acces' ? await accesDuCabinet(db, tenant.id) : [];
 const nbAcces = onglet === 'acces' ? await compterAcces(db, tenant.id) : { actifs: 0, facturables: 0 };
 const lignesSymboles = [...symboles.symboles.map((s) => ({ cle: s.cle, libelle: s.libelle, type: s.type, source: s.source })), ...[0, 1, 2].map(() => ({ cle: '', libelle: '', type: 'cotation', source: '' }))];
+const identiteThemeValide = THEMES.some((t) => t.id === identite.theme) ? identite.theme : 'maison';
+// Après un refus de la couleur : la plus proche acceptable, proposée en un clic (le serveur la recalcule à l'enregistrement).
+const accentProche = erreurs.accent && normaliserHex(v('accent', '')) ? couleurProche(v('accent', ''), identiteThemeValide) : null;
 const themeActuel = THEMES.some((t) => t.id === identite.theme) ? identite.theme : 'maison';
 ---
 <Gestion titre="Réglages">
@@ -411,6 +419,81 @@ const themeActuel = THEMES.some((t) => t.id === identite.theme) ? identite.theme
         </fieldset>
         <div class="actions"><button class="btn-plein" type="submit">Enregistrer l’identité</button></div>
       </form>
+
+      <hr class="filet" />
+      <form method="post" id="perso" style="max-width: 36rem">
+        <input type="hidden" name="action" value="personnalisation" />
+        <h2>Personnalisation du site</h2>
+        <p class="aide">Quatre réglages simples, appliqués au site public, à l’espace client, à ce module et à la page de connexion. Des options prévues seulement : pas de style libre. Chaque réglage a pour défaut le rendu actuel. Le choix se voit tout de suite sur cette page, avant l’enregistrement.</p>
+        <fieldset class="themes">
+          <legend class="etiquette">Couleur d’accent</legend>
+          {erreurs.accent && (
+            <p class="erreur" role="alert">
+              {erreurs.accent}
+              {accentProche && <> <button class="btn" type="submit" name="utiliser_proche" value="1">Utiliser {accentProche}</button></>}
+            </p>
+          )}
+          <div class="actions">
+            <input type="color" id="accent-pick" aria-label="Choisir la couleur d’accent" value={v('accent', perso.accent ?? '#b99455') || '#b99455'} />
+            <label class="etiquette" for="accent-hex">Code #RRGGBB</label>
+            <input class="champ" id="accent-hex" name="accent" value={v('accent', perso.accent ?? '')} maxlength="7" placeholder="vide : celle du thème" pattern="#[0-9a-fA-F]{6}" style="max-width: 10rem" />
+          </div>
+          <p class="aide">Vide : la couleur d’accent du thème. Le serveur mesure le contraste avec le fond du thème « {THEMES.find((t) => t.id === identiteThemeValide)?.libelle} » et avec le texte des boutons pleins (4,5:1 pour du texte, 3:1 pour un élément graphique) et refuse une couleur illisible. Si le client final choisit son propre thème, ce thème passe avant l’accent du cabinet.</p>
+        </fieldset>
+        <fieldset class="themes">
+          <legend class="etiquette">Police</legend>
+          {erreurs.police && <p class="erreur">{erreurs.police}</p>}
+          {POLICES.map((o) => (
+            <label class="choix-theme">
+              <input type="radio" name="police" value={o.id} data-apercu="police" checked={v('police', perso.police) === o.id} />
+              <span><strong>{o.libelle}</strong> — {o.description}</span>
+            </label>
+          ))}
+        </fieldset>
+        <fieldset class="themes">
+          <legend class="etiquette">Taille du texte</legend>
+          {erreurs.taille_texte && <p class="erreur">{erreurs.taille_texte}</p>}
+          {TAILLES.map((o) => (
+            <label class="choix-theme">
+              <input type="radio" name="taille_texte" value={o.id} data-apercu="taille" checked={v('taille_texte', perso.taille) === o.id} />
+              <span><strong>{o.libelle}</strong> — {o.description}</span>
+            </label>
+          ))}
+        </fieldset>
+        <fieldset class="themes">
+          <legend class="etiquette">Forme des boutons et des cartes</legend>
+          {erreurs.forme_elements && <p class="erreur">{erreurs.forme_elements}</p>}
+          {FORMES.map((o) => (
+            <label class="choix-theme">
+              <input type="radio" name="forme_elements" value={o.id} data-apercu="forme" checked={v('forme_elements', perso.forme) === o.id} />
+              <span><strong>{o.libelle}</strong> — {o.description}</span>
+            </label>
+          ))}
+        </fieldset>
+        <div class="actions"><button class="btn-plein" type="submit">Enregistrer la personnalisation</button></div>
+      </form>
+      <script is:inline nonce={Astro.locals.nonce}>
+        (function () {
+          var racine = document.documentElement;
+          // Aperçu avant enregistrement : les attributs sont ceux que le serveur posera ; rien n'est envoyé tant qu'on n'enregistre pas.
+          // Valeur par défaut = attribut retiré. Seules les valeurs des boutons radio du formulaire (liste fermée) sont posées.
+          var defauts = { police: 'classique', taille: 'standard', forme: 'anguleux' };
+          document.querySelectorAll('#perso input[data-apercu]').forEach(function (r) {
+            r.addEventListener('change', function () {
+              var nom = 'data-cabinet-' + r.getAttribute('data-apercu');
+              if (r.value === defauts[r.getAttribute('data-apercu')]) racine.removeAttribute(nom); else racine.setAttribute(nom, r.value);
+            });
+          });
+          // Le sélecteur de couleur et le code hexadécimal se suivent ; l'aperçu de la couleur est approximatif (la lisibilité est vérifiée à l'enregistrement).
+          var pick = document.getElementById('accent-pick'), hex = document.getElementById('accent-hex');
+          if (pick && hex) {
+            pick.addEventListener('input', function () { hex.value = pick.value; racine.style.setProperty('--accent', pick.value); });
+            hex.addEventListener('input', function () {
+              if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) { pick.value = hex.value; racine.style.setProperty('--accent', hex.value); }
+            });
+          }
+        })();
+      </script>
 
       <hr class="filet" />
       <span class="etiquette">Logo du cabinet</span>
