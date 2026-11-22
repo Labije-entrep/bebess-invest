@@ -205,7 +205,7 @@ npx wrangler r2 bucket create bebess-fichiers  # jamais de domaine public ni r2.
 
 ### C3. Schéma, jamais de seed 💻
 ```bash
-npx wrangler d1 migrations apply bebess --remote
+npx wrangler d1 migrations apply labije-cab --remote
 ```
 ⚠ Ne **jamais** lancer `seeds/demo.sql` sur la prod.
 - **Preuve** : migrations 0001 à 0014 appliquées.

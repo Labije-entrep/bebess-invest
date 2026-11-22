@@ -38,11 +38,13 @@ cloudflared --version
 
 ## 2. Récupérer le code
 
+On essaie la version de **production** : la branche `master`. (`develop` est la branche d'intégration, qui peut contenir des évolutions pas encore validées.)
+
 ```powershell
 cd $HOME
 git clone https://github.com/Labije-entrep/labije-cab.git
 cd labije-cab
-git checkout develop
+git checkout master
 npm install
 ```
 
@@ -59,11 +61,11 @@ npm run build
 ## 4. Créer la base de test et la remplir
 
 ```powershell
-npx wrangler d1 migrations apply bebess --local
-npx wrangler d1 execute bebess --local --file=seeds/demo.sql
-npx wrangler d1 execute bebess --local --file=seeds/recette-suivi.sql
-npx wrangler d1 execute bebess --local --file=seeds/recette-cours.sql
-npx wrangler d1 execute bebess --local --file=seeds/recette-site.sql
+npx wrangler d1 migrations apply labije-cab --local
+npx wrangler d1 execute labije-cab --local --file=seeds/demo.sql
+npx wrangler d1 execute labije-cab --local --file=seeds/recette-suivi.sql
+npx wrangler d1 execute labije-cab --local --file=seeds/recette-cours.sql
+npx wrangler d1 execute labije-cab --local --file=seeds/recette-site.sql
 ```
 
 Wrangler peut demander s'il peut envoyer des statistiques d'usage : répondez comme vous voulez. Aucune connexion à un compte Cloudflare n'est nécessaire.
@@ -111,7 +113,7 @@ cloudflared tunnel --url http://localhost:8787
 
 ```powershell
 cd $HOME\labije-cab
-npx wrangler d1 execute bebess --local --command "UPDATE tenant SET domaine = 'mots-au-hasard.trycloudflare.com' WHERE id = 'tnt_demo'"
+npx wrangler d1 execute labije-cab --local --command "UPDATE tenant SET domaine = 'mots-au-hasard.trycloudflare.com' WHERE id = 'tnt_demo'"
 ```
 
 (remplacez par votre adresse notée). **Cette adresse change à chaque démarrage du tunnel : refaites cette commande à chaque fois.** Pour revenir à l'essai local, remettez `localhost` à la place.
@@ -150,7 +152,7 @@ Si vous voulez quand même essayer :
 3. **Autoriser le port dans Windows**, dans PowerShell lancé « en tant qu'administrateur » :
 
 ```powershell
-New-NetFirewallRule -DisplayName "bebess test 8787" -Direction Inbound -Protocol TCP -LocalPort 8787 -Action Allow
+New-NetFirewallRule -DisplayName "labije-cab test 8787" -Direction Inbound -Protocol TCP -LocalPort 8787 -Action Allow
 ```
 
 4. **Lancer le serveur en https**, en écoutant sur toutes les interfaces :
@@ -162,7 +164,7 @@ npx wrangler dev --ip 0.0.0.0 --port 8787 --local-protocol https
 5. **Dire au produit que votre adresse IP publique est celle du cabinet** :
 
 ```powershell
-npx wrangler d1 execute bebess --local --command "UPDATE tenant SET domaine = '203.0.113.7' WHERE id = 'tnt_demo'"
+npx wrangler d1 execute labije-cab --local --command "UPDATE tenant SET domaine = '203.0.113.7' WHERE id = 'tnt_demo'"
 ```
 
 (remplacez par votre adresse IP publique, sans le port).
@@ -172,7 +174,7 @@ npx wrangler d1 execute bebess --local --command "UPDATE tenant SET domaine = '2
 **Après le test :** supprimez la redirection de port dans la box, et la règle Windows :
 
 ```powershell
-Remove-NetFirewallRule -DisplayName "bebess test 8787"
+Remove-NetFirewallRule -DisplayName "labije-cab test 8787"
 ```
 
 ## 8. Garder le PC éveillé pendant un test
@@ -198,7 +200,7 @@ Remettez ensuite la valeur habituelle (par exemple `powercfg /change standby-tim
 | `node` n'est pas reconnu | PowerShell n'a pas été rouvert après l'installation | Fermer et rouvrir PowerShell. |
 | `npm install` échoue | Version de Node trop ancienne, ou réseau | Vérifier `node -v` (22.18 ou plus). |
 | La page d'accueil renvoie « 404 » ou ramène à la connexion | Le nom d'hôte ne correspond à aucun cabinet | Refaire la commande `UPDATE tenant SET domaine = ...` avec l'adresse exacte utilisée dans le navigateur. |
-| Les pages du site public répondent 404 | Le module Site vitrine n'est pas actif | `npx wrangler d1 execute bebess --local --command "UPDATE contrat SET module_site = 1 WHERE tenant_id = 'tnt_demo'"` |
+| Les pages du site public répondent 404 | Le module Site vitrine n'est pas actif | `npx wrangler d1 execute labije-cab --local --command "UPDATE contrat SET module_site = 1 WHERE tenant_id = 'tnt_demo'"` |
 | Connexion impossible à distance | Courriel non configuré | Utiliser le script `session-de-test.mjs`, ou configurer Scaleway (section 6). |
 | Le cookie est refusé | Adresse en `http://` | Utiliser le tunnel (option A) ou le `https` (option B). |
 | Le téléchargement d'un rapport PDF ne marche pas | Aucun fichier n'a été déposé dans la base de test | Normal : aucun PDF n'existe dans les jeux de démonstration. Un dépôt marche en local. |

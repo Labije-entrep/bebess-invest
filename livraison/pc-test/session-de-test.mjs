@@ -20,13 +20,13 @@ const option = (nom) => {
   const i = args.indexOf(nom);
   return i >= 0 ? args[i + 1] : undefined;
 };
-const base = option('--base') ?? 'bebess';
+const base = option('--base') ?? 'labije-cab';
 const persist = option('--persist-to');
 const lister = args.includes('--lister');
 const utilisateur = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--base' && args[i - 1] !== '--persist-to');
 
 if (!lister && !utilisateur) {
-  console.error('Usage : node livraison/pc-test/session-de-test.mjs <identifiant_utilisateur> [--base bebess] [--persist-to dossier]');
+  console.error('Usage : node livraison/pc-test/session-de-test.mjs <identifiant_utilisateur> [--base labije-cab] [--persist-to dossier]');
   console.error('        node livraison/pc-test/session-de-test.mjs --lister');
   process.exit(1);
 }
