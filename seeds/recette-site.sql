@@ -74,3 +74,6 @@ Les capitaux désignés par la clause bénéficiaire sortent de la succession au
 - que le contrat est cohérent avec le reste de votre organisation patrimoniale.
 
 > Cette note est un commentaire général et ne constitue pas un conseil personnalisé : la fiscalité dépend de chaque situation.', '2026-08-31', 1);
+
+-- Le site public n'existe que si le module Site vitrine est actif : le jeu de démonstration l'avait désactivé.
+UPDATE contrat SET module_site = 1 WHERE tenant_id = 'tnt_demo';
