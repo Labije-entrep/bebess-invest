@@ -40,8 +40,8 @@ cloudflared --version
 
 ```powershell
 cd $HOME
-git clone https://github.com/Labije-entrep/bebess-invest.git
-cd bebess-invest
+git clone https://github.com/Labije-entrep/labije-cab.git
+cd labije-cab
 git checkout develop
 npm install
 ```
@@ -89,7 +89,7 @@ Pour vous connecter à un compte, deux possibilités :
 - **Par une session de test** (marche aussi à distance, voir plus bas). Ouvrez une **seconde** fenêtre PowerShell :
 
 ```powershell
-cd $HOME\bebess-invest
+cd $HOME\labije-cab
 node livraison\pc-test\session-de-test.mjs --lister
 node livraison\pc-test\session-de-test.mjs usr_gestionnaire
 ```
@@ -110,7 +110,7 @@ cloudflared tunnel --url http://localhost:8787
 3. Le produit reconnaît le cabinet par le nom d'hôte de la requête : il faut donc lui dire que votre tunnel est l'adresse du cabinet de démonstration. Dans une **troisième** fenêtre :
 
 ```powershell
-cd $HOME\bebess-invest
+cd $HOME\labije-cab
 npx wrangler d1 execute bebess --local --command "UPDATE tenant SET domaine = 'mots-au-hasard.trycloudflare.com' WHERE id = 'tnt_demo'"
 ```
 
