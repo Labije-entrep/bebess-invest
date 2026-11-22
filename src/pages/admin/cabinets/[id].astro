@@ -2,6 +2,7 @@
 export const prerender = false;
 import Gestion from '../../../layouts/Gestion.astro';
 import { accesCabinet, cabinetDe, configCloudflare, domainesDe, gardeAdmin, MESSAGES_ACTION, suspensionsDe, type CodeAction } from '../../../lib/admin';
+import { adressesDe, reparerAdresses } from '../../../lib/adresses';
 import { accesDuCabinet } from '../../../lib/acces';
 import { incidents, libelleIncident } from '../../../lib/incidents';
 import { dateCourte } from '../../../lib/format';
@@ -20,7 +21,10 @@ const cabinet = await cabinetDe(g.db, id);
 if (!cabinet) return new Response('Introuvable.', { status: 404 });
 await accesCabinet(g, cabinet.id, `GET ${Astro.url.pathname}`);
 
-const [domaines, acces, suspensions, recents, identite, contrat, fondateurs, valides, resilie] = await Promise.all([
+// Un choix d'adresse dont l'hôte n'est plus valide est effacé (retour à l'hôte d'origine) et signalé par un incident, avant l'affichage.
+await reparerAdresses(g.db, cabinet.id);
+const [adresses, domaines, acces, suspensions, recents, identite, contrat, fondateurs, valides, resilie] = await Promise.all([
+  adressesDe(g.db, cabinet.id),
   domainesDe(g.db, cabinet.id),
   accesDuCabinet(g.db, cabinet.id),
   suspensionsDe(g.db, cabinet.id),
@@ -173,6 +177,41 @@ const horodate = (iso: string) => `${dateCourte(iso)} à ${iso.slice(11, 16)} UT
     <input class="champ" id="nouvel-hote" name="hote" required maxlength="253" style="max-width: 24rem" placeholder="patrimoine.cabinet.fr" />
     <button class="btn" type="submit">Déclarer</button>
   </form>
+
+  <h3>Adresses du cabinet</h3>
+  <p class="info" role="status">
+    Site public : <strong>{adresses.site.effectif ?? '—'}</strong>{!adresses.site.choix && ' (par défaut)'} ·
+    Connexion et espace : <strong>{adresses.espace.effectif ?? '—'}</strong>{!adresses.espace.choix && ' (par défaut)'}
+  </p>
+  <p class="aide">
+    Par défaut, tout est servi à l’hôte d’origine, sans redirection. Une fois un choix posé, les autres adresses du cabinet redirigent vers
+    l’adresse choisie (301 pour le site public, 302 pour la connexion et l’espace) ; l’hôte d’origine continue de fonctionner. Seuls l’hôte d’origine
+    et les hôtes validés sont proposés.
+  </p>
+  <form method="post" action={`${base}/domaines`} class="actions" data-adresses>
+    <input type="hidden" name="action" value="adresses" />
+    <label class="etiquette" for="adresse-site">Adresse du site public</label>
+    <select class="champ" id="adresse-site" name="site" style="max-width: 24rem">
+      <option value="" selected={!adresses.site.choix}>Par défaut : hôte d’origine, sans redirection</option>
+      {adresses.choisissables.map((h) => <option value={h} selected={adresses.site.choix === h}>{h}</option>)}
+    </select>
+    <label class="etiquette" for="adresse-espace">Adresse de connexion et d’espace</label>
+    <select class="champ" id="adresse-espace" name="espace" style="max-width: 24rem" data-espace-avant={adresses.espace.choix ?? ''}>
+      <option value="" selected={!adresses.espace.choix}>Par défaut : hôte d’origine, sans redirection</option>
+      {adresses.choisissables.map((h) => <option value={h} selected={adresses.espace.choix === h}>{h}</option>)}
+    </select>
+    <p class="info alerte" role="note">
+      Changer l’adresse de connexion et d’espace : les clients et gestionnaires connectés devront se reconnecter, car la session est liée à l’adresse.
+      Les liens déjà envoyés par courriel restent valables sur l’ancienne adresse jusqu’à leur expiration (15 minutes) et sont redirigés.
+    </p>
+    <button class="btn" type="submit">Enregistrer les adresses</button>
+  </form>
+  <script is:inline nonce={Astro.locals.nonce}>
+    var f = document.querySelector('[data-adresses]'), e = f && f.querySelector('[data-espace-avant]');
+    if (f && e) f.addEventListener('submit', function (ev) {
+      if (e.value !== e.getAttribute('data-espace-avant') && !confirm('Les clients et gestionnaires connectés devront se reconnecter, car la session est liée à l’adresse. Enregistrer ?')) ev.preventDefault();
+    });
+  </script>
 
   <hr class="filet" />
   <h2>Derniers incidents</h2>

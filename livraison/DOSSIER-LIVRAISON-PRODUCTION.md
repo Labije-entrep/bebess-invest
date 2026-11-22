@@ -77,9 +77,22 @@ Trois montages sont possibles. Ils se combinent.
 
 **Ma recommandation.** Commencer le pilote en **montage 3** (immédiat, sans dépendance chez le cabinet), puis passer au **montage 1 ou 2** quand le cabinet a son nom. L'adresse de A reste toujours valide, même une fois le nom de B branché.
 
-**Deux points à connaître.**
-- **Le contenu en double.** Quand le site de B est joint par deux adresses, ses pages publiques existent aux deux adresses. Pour les moteurs de recherche, il faudrait signaler l'adresse de B comme adresse principale. **Ce n'est pas encore développé** (voir la section 9).
-- **Changer d'adresse déconnecte les clients**, car la session est liée à l'adresse. Choisissez l'adresse de l'espace client une fois pour toutes.
+**Comment le produit applique le montage.** Chaque cabinet a **deux réglages**, posés par l'éditeur dans la console (fiche du cabinet, rubrique « Domaines », bloc « Adresses du cabinet »), chacun choisi parmi l'hôte d'origine et les hôtes **validés** du cabinet :
+- **Adresse du site public** : l'hôte des pages publiques (accueil, approche, parcours, contact, notes, mentions, version anglaise). C'est aussi celui de la balise canonique, du plan du site et de `robots.txt`.
+- **Adresse de connexion et d'espace** : l'hôte de `/connexion`, de l'espace gestionnaire, de l'espace client et des **liens envoyés par courriel**.
+
+Tant que rien n'est choisi, les deux valent l'hôte d'origine : aucune redirection, comportement inchangé (montage 3). Une fois un choix posé, une requête de lecture (GET, HEAD) arrivée sur une autre adresse du cabinet est redirigée vers la bonne, même chemin, mêmes paramètres : **301** pour le site public, **302** pour la connexion et l'espace (le choix reste modifiable). L'adresse de A continue de fonctionner : elle redirige. Ne sont **jamais** redirigés : les envois de formulaire (POST), l'API, les fichiers, le logo, `robots.txt`, le plan du site, les ressources statiques, la console de l'éditeur, `/plateforme`, le développement local. La cible est lue en base, jamais dans la requête.
+
+| Montage | Adresse du site public | Adresse de connexion et d'espace |
+| --- | --- | --- |
+| 3 (pilote) | aucun choix | aucun choix |
+| 2 (transition) | `www.cabinet-b.fr` | aucun choix (ou l'hôte d'origine) |
+| 1 (cible) | `www.cabinet-b.fr` | `www.cabinet-b.fr` |
+
+**Trois points à connaître.**
+- **Le contenu en double** est traité : la balise canonique et le plan du site reprennent l'adresse du site public, et une page publique servie à un autre hôte porte `noindex`. Avec un choix posé, les autres hôtes redirigent de toute façon (301).
+- **Changer l'adresse de connexion et d'espace déconnecte les clients et les gestionnaires**, car la session est liée à l'adresse : ils devront se reconnecter. La console le rappelle avant l'enregistrement. À faire une fois, de préférence avant l'ouverture aux clients.
+- **Un hôte qui cesse d'être valide** (validation perdue, nom retiré) ne peut plus servir : le réglage revient à l'hôte d'origine et la console affiche un incident « Adresse du cabinet : retour à l'hôte d'origine ». Aucune page ne reste sans adresse.
 
 ---
 
@@ -308,8 +321,9 @@ Dérouler la **checklist de livraison d'un cabinet** (document séparé). Pour l
 3. **B** (ou son prestataire) : crée cet enregistrement chez son hébergeur de noms de domaine, et conserve son site actuel sur une autre adresse tant que la bascule n'est pas décidée.
 4. **Cloudflare** vérifie et délivre le certificat. La console passe le nom à **« validé »**.
 5. **A** : vérifie que `www.cabinet-b.fr` affiche bien le site et la connexion de B.
+6. **A** : dans la même rubrique, bloc « Adresses du cabinet », choisir dans les deux listes (hôtes validés seulement) : **montage 2** = « Adresse du site public » : `www.cabinet-b.fr`, l'autre liste inchangée ; **montage 1** = les deux listes sur `www.cabinet-b.fr` (prévenir le cabinet : ses clients et gestionnaires devront se reconnecter). Enregistrer : les redirections s'appliquent aussitôt. Contrôler qu'un lien de connexion reçu par courriel porte la bonne adresse.
 
-**Preuve :** le nom de B est « validé » dans la console, et le site s'ouvre en https à cette adresse.
+**Preuve :** le nom de B est « validé » dans la console, le site s'ouvre en https à cette adresse, et l'ancienne adresse de A redirige vers elle (301 pour une page publique).
 
 **Un nom non validé n'ouvre rien.** Prévoir quelques heures à quelques jours selon le prestataire de B.
 
@@ -368,7 +382,7 @@ npx wrangler deploy -c wrangler.cron.prod.toml
 
 | Sujet | État |
 | --- | --- |
-| **Adresse principale du site de B** : signaler aux moteurs de recherche l'adresse de B comme principale quand son nom propre est validé (balise canonique, ou exclusion de l'adresse de A de l'indexation) | **Non développé.** À faire avant d'ouvrir un site de cabinet au public sous deux adresses. |
+| **Adresses principales du cabinet** (site public, connexion et espace), redirections, canonique, plan du site, `robots.txt`, liens des courriels | **Développé** (voir la section 3 et la marche à suivre à la section 6). Vérifié en local et par les tests ; **jamais essayé en réel** : les redirections entre un nom propre et l'adresse de A attendent la première validation Cloudflare réelle. |
 | **Noms de domaine de cabinets** (Cloudflare for SaaS) | Code écrit selon la documentation, **jamais essayé en réel**. |
 | **Route joker** pour les sous-domaines de A | Jamais configurée. |
 | **Courriels réels** (Scaleway) | Jamais essayés. |
