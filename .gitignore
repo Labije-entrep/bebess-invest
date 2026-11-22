@@ -7,3 +7,6 @@ dist/
 # Configurations de recette : elles portent des identifiants (database_id), jamais dans le dépôt. Les modèles sont *.example.toml.
 wrangler.recette.toml
 wrangler.cron.recette.toml
+# Configurations de production : elles portent des identifiants (database_id), jamais dans le dépôt. Copier wrangler.toml et wrangler.cron.toml.
+wrangler.prod.toml
+wrangler.cron.prod.toml

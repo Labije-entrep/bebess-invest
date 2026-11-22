@@ -4,6 +4,7 @@ Ce dossier réunit ce qu'il faut pour **livrer un cabinet** et pour **essayer La
 
 | Document | Pour qui | À quoi il sert |
 | --- | --- | --- |
+| [`DOSSIER-LIVRAISON-PRODUCTION.md`](DOSSIER-LIVRAISON-PRODUCTION.md) | L'éditeur | **Le dossier de mise en production** : acteurs, architecture, choix des adresses, prérequis, procédure pas à pas, exploitation, points ouverts. |
 | [`MODE-EMPLOI-GESTIONNAIRE.md`](MODE-EMPLOI-GESTIONNAIRE.md) | Le cabinet (gestionnaire associé) | Le mode d'emploi remis avec l'accès : tableau de bord, clients, suivi, contenus du site public, notes, réglages. |
 | [`CHECKLIST-LIVRAISON-CABINET.md`](CHECKLIST-LIVRAISON-CABINET.md) | L'éditeur | La liste à cocher pour mettre un cabinet en service, du contrat à la remise des accès. |
 | [`pc-test/PROCEDURE-WINDOWS.md`](pc-test/PROCEDURE-WINDOWS.md) | L'éditeur | Essayer le produit sur un PC Windows, accessible à distance. **Test seulement**, jamais pour un cabinet réel. |
