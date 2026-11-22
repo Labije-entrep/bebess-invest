@@ -1,5 +1,7 @@
 # Labije Cab : fil d'étapes, de la recette à la production
 
+> **Pour la mise en production, le document de référence est désormais [`livraison/DOSSIER-LIVRAISON-PRODUCTION.md`](livraison/DOSSIER-LIVRAISON-PRODUCTION.md)** (acteurs, adresses, prérequis, procédure détaillée). Ce fil d'étapes reste utile pour l'historique de la recette.
+
 Ce document se lit de haut en bas. Chaque case se coche une fois la ligne
 « **Preuve** » obtenue. Ne passez pas à l'étape suivante si une preuve manque.
 

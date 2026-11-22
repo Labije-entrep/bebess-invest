@@ -23,10 +23,20 @@
 - [ ] À la fin de l'essai, **« Signer le contrat »** : le contrat devient actif, le bon d'installation est posé s'il y a des frais.
 - [ ] **Preuve** : statut « Actif », date de début de service posée.
 
-## 3. Brancher le nom de domaine
-- [ ] Rubrique « Domaines » de la fiche : déclarer le nom d'hôte.
-- [ ] Le cabinet pose l'enregistrement CNAME indiqué chez son hébergeur DNS.
-- [ ] **Preuve** : le nom d'hôte est « validé » (nécessite le jeton Cloudflare de la plateforme).
+## 3. Choisir et brancher l'adresse du cabinet
+
+Principe : **les visiteurs cherchent le cabinet par son nom**, donc l'adresse du site public doit rappeler le cabinet, pas l'éditeur. L'adresse de l'espace client peut rappeler l'éditeur, qui y est clairement indiqué. Le produit reconnaît le cabinet par le **nom d'hôte** de l'adresse ; un même cabinet peut avoir plusieurs adresses.
+
+- [ ] Choisir le montage avec le cabinet :
+  - **Montage 3, tout chez l'éditeur** : `cabinet.<domaine de l'éditeur>`. Immédiat, sans rien configurer chez le cabinet : c'est le choix du **pilote**.
+  - **Montage 1, tout chez le cabinet** : `www.cabinet.fr` pour le site et la connexion. Cible à terme.
+  - **Montage 2, site chez le cabinet, espace chez l'éditeur** : le site à son nom, ses clients sur l'adresse de l'éditeur.
+- [ ] **Montage 3** : saisir `cabinet.<domaine de l'éditeur>` comme nom d'hôte à la création du cabinet. Rien d'autre.
+- [ ] **Montages 1 et 2** : le sous-domaine de l'éditeur reste l'hôte d'origine ; dans la rubrique « Domaines » de la fiche, déclarer le nom d'hôte du cabinet ; la console affiche l'enregistrement **CNAME** à poser.
+- [ ] Le cabinet (ou son prestataire) pose cet enregistrement CNAME chez son hébergeur de noms de domaine, et garde son site actuel sur une autre adresse tant que la bascule n'est pas décidée.
+- [ ] **Preuve** : le nom d'hôte est « validé » dans la console (nécessite le jeton Cloudflare de la plateforme), et le site s'ouvre en https à cette adresse. Un nom non validé n'ouvre rien.
+- [ ] Prévenir le cabinet : **changer d'adresse déconnecte ses clients**. L'adresse de l'espace client se choisit une fois pour toutes.
+- [ ] Point ouvert : quand le site est joint par deux adresses, ses pages existent aux deux (voir le dossier de livraison en production, section 9).
 
 ## 4. Donner l'accès au gestionnaire
 - [ ] Le gestionnaire ouvre son lien de première connexion (nécessite le service de courriel configuré).

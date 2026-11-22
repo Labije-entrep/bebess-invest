@@ -2,7 +2,7 @@
 # Pages (« Pages fait désormais partie de Workers ») : on déploie donc avec `wrangler deploy`, après `npm run build`.
 # Le traitement quotidien du lot 12 garde son propre Worker, wrangler.cron.toml (un seul Cron Trigger, tâche distincte du site) :
 # il partage la même base D1 et le même bucket R2.
-name = "bebess"
+name = "labije-cab"
 main = "dist/_worker.js/index.js"
 compatibility_date = "2026-11-01"
 compatibility_flags = ["nodejs_compat"]
@@ -15,11 +15,11 @@ binding = "ASSETS"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "bebess"
+database_name = "labije-cab"
 database_id = "A_REMPLIR"
 
 # Fichiers (lot 08) : rapports des viewers, logos. Aucun domaine public ni accès r2.dev sur ce bucket :
 # les objets ne sortent que par les routes du Worker, après contrôle de session, de locataire et de rôle.
 [[r2_buckets]]
 binding = "FICHIERS"
-bucket_name = "bebess-fichiers"
+bucket_name = "labije-cab-fichiers"
