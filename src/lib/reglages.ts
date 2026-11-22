@@ -5,12 +5,23 @@
 // Clés de `reglage` utilisées par le lot : theme, nom_affiche, logo_cle, symboles, seuil_sans_echange, seuil_relance,
 // seuil_arrete, seuil_ecart_bp, et les mentions légales (raison_sociale, orias, statut_reglementaire, association, mediateur,
 // hebergeur, contact_rgpd).
+//
+// Personnalisation du site et de l'espace (22/11/2026, Réglages › Identité, associé seulement) : quatre clés FIXES, validées côté serveur
+// (personnalisation.ts), jamais de style libre. Une valeur par défaut retire la ligne ; une valeur inconnue en base retombe sur le défaut.
+//   accent         : « #rrggbb » (minuscules). Absent : l'accent du thème. Refusé s'il est illisible sur le thème (contraste WCAG, 4,5:1 / 3:1).
+//   police         : « classique » (défaut) | « moderne » | « editoriale ».
+//   taille_texte   : « standard » (défaut) | « confortable » | « grand ».
+//   forme_elements : « anguleux » (défaut) | « arrondi ».
 
 import type { Base, Requete } from './db';
 import { REPLI_ECART_BP } from './fiche';
 import { lireBp, maintenant, nouvelId, texte, type Erreurs } from './gestion';
 import { SYMBOLES_DEFAUT, symbolesDe, type SymboleSuivi, type TypeSymbole } from './cours';
-import { THEMES } from './themes';
+import { THEMES, themeValide } from './themes';
+import {
+  evaluerAccent, formeConnue, lirePersonnalisation, messageRefusAccent, couleurProche, normaliserHex, policeConnue, tailleConnue,
+  FORME_DEFAUT, POLICE_DEFAUT, TAILLE_DEFAUT, type Personnalisation,
+} from './personnalisation';
 import { incrementerVersion } from './version';
 import { REPLI } from './suivi';
 
@@ -159,8 +170,61 @@ export async function enregistrerIdentite(db: Base, tenantId: string, f: FormDat
   // Le thème est un NOM de la liste fermée de themes.ts, jamais une valeur : tout autre choix est refusé.
   const theme = texte(f.get('theme'), 30);
   if (!THEMES.some((t) => t.id === theme)) e.theme = 'Choisissez l’un des thèmes proposés.';
+  // Un accent personnalisé doit rester lisible sur le nouveau thème : sinon, on le dit au lieu de l'abandonner en silence.
+  if (!e.theme) {
+    const { accent } = await personnalisationDe(db, tenantId);
+    if (accent && !evaluerAccent(accent, theme).ok) {
+      e.theme = `Votre couleur d’accent ${accent} n’est pas lisible sur ce thème. Changez ou retirez la couleur d’accent (plus bas), puis choisissez le thème.`;
+    }
+  }
   if (Object.keys(e).length) return e;
   await db.batch([poser(db, tenantId, 'nom_affiche', nom), poser(db, tenantId, 'theme', theme)]);
+  return {};
+}
+
+// ---------------------------------------------------------------- personnalisation (accent, police, taille, forme)
+
+const CLES_PERSONNALISATION = ['accent', 'police', 'taille_texte', 'forme_elements'] as const;
+
+/** La personnalisation du cabinet, toujours sûre : une valeur absente ou inconnue vaut le défaut. */
+export async function personnalisationDe(db: Base, tenantId: string): Promise<Personnalisation> {
+  return lirePersonnalisation(await reglagesDe(db, tenantId, CLES_PERSONNALISATION));
+}
+
+/**
+ * Enregistre les quatre réglages d'un coup (tout ou rien). `f` porte `accent` (vide : l'accent du thème), `police`, `taille_texte`, `forme_elements`.
+ * Un nom hors liste est REFUSÉ (jamais retenu tel quel). L'accent est validé contre le thème EN VIGUEUR du cabinet : un code mal formé ou une couleur
+ * illisible est refusé avec un message chiffré et, quand il y en a une, la couleur acceptable la plus proche ; `utiliser_proche` (bouton du formulaire)
+ * enregistre cette couleur proche. Les valeurs par défaut retirent la ligne (le rendu redevient celui d'origine).
+ */
+export async function enregistrerPersonnalisation(db: Base, tenantId: string, f: FormData): Promise<Erreurs> {
+  const e: Erreurs = {};
+  const theme = themeValide((await reglagesDe(db, tenantId, ['theme'])).theme);
+  let brut = texte(f.get('accent'), 20);
+  if (f.get('utiliser_proche') === '1' && brut !== '') brut = couleurProche(brut, theme) ?? brut;
+  let accent = '';
+  if (brut !== '') {
+    const hex = normaliserHex(brut);
+    if (!hex) e.accent = 'Un code couleur #RRGGBB est attendu (six chiffres hexadécimaux, par exemple #2a6f97).';
+    else {
+      const refus = messageRefusAccent(hex, theme);
+      if (refus) e.accent = refus;
+      else accent = hex;
+    }
+  }
+  const police = policeConnue(texte(f.get('police'), 20));
+  const taille = tailleConnue(texte(f.get('taille_texte'), 20));
+  const forme = formeConnue(texte(f.get('forme_elements'), 20));
+  if (!police) e.police = 'Choisissez l’une des polices proposées.';
+  if (!taille) e.taille_texte = 'Choisissez l’une des tailles proposées.';
+  if (!forme) e.forme_elements = 'Choisissez l’une des formes proposées.';
+  if (Object.keys(e).length) return e;
+  await db.batch([
+    poser(db, tenantId, 'accent', accent),
+    poser(db, tenantId, 'police', police === POLICE_DEFAUT ? '' : (police as string)),
+    poser(db, tenantId, 'taille_texte', taille === TAILLE_DEFAUT ? '' : (taille as string)),
+    poser(db, tenantId, 'forme_elements', forme === FORME_DEFAUT ? '' : (forme as string)),
+  ]);
   return {};
 }
 

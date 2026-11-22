@@ -7,11 +7,17 @@ import { calculerTva, motifRemise, tauxEnTexte } from './tarif.ts';
 
 const ANNUEL: ContratDepassement = { periodicite: 'annuelle', debut_le: '2026-03-14', date_fin_essai: null, acces_inclus: 3, prix_acces_sup: 2500 };
 
-test('la phrase de la confirmation est celle du cahier des charges, mot pour mot', () => {
-  assert.equal(
-    phraseCreationAcces(ANNUEL, '2026-11-20'),
-    "Cet accès est actif immédiatement et gratuit jusqu'au 14/03/2027. À partir de cette date, les accès au-delà du troisième sont facturés 25 € HT par mois.",
-  );
+test('la confirmation dit d\'abord le dépassement, puis son effet, avec la date anniversaire', () => {
+  assert.deepEqual(phraseCreationAcces(ANNUEL, 4, '2026-11-20'), {
+    constat: 'Vous dépassez les 3 accès inclus dans votre contrat : 4 accès facturables.',
+    effet: "Ce 4ᵉ accès est facturé 25 € HT par mois à compter d'aujourd'hui : 100 € HT jusqu'au 14/03/2027.",
+  });
+  const p = phraseCreationAcces(ANNUEL, 4, '2026-11-20')!;
+  assert.doesNotMatch(p.constat + p.effet, /gratuit|offert/);
+  // Mois entiers restants arrondis au supérieur, comme un module : le 02/03/2027, un mois (25 €).
+  assert.equal(phraseCreationAcces(ANNUEL, 4, '2027-03-02')?.effet, "Ce 4ᵉ accès est facturé 25 € HT par mois à compter d'aujourd'hui : 25 € HT jusqu'au 14/03/2027.");
+  // Bon de la période pas encore émis : il compte l'accès lui-même, aucun second montant.
+  assert.equal(phraseCreationAcces(ANNUEL, 4, '2026-11-20', { suit_le_contrat: true })?.effet, "Ce 4ᵉ accès est facturé 25 € HT par mois : il entre dans le bon de la période en cours, qui n'est pas encore émis.");
 });
 
 test('la date est la prochaine date anniversaire, jamais une date passée', () => {
@@ -23,13 +29,13 @@ test('la date est la prochaine date anniversaire, jamais une date passée', () =
 test('un contrat en essai, sans début, donne la fin de son essai ; sans aucune date, pas de phrase', () => {
   const essai = { ...ANNUEL, debut_le: null, date_fin_essai: '2027-01-05' };
   assert.equal(dateAnniversaire(essai, '2026-11-20'), '2027-01-05');
-  assert.equal(phraseCreationAcces({ ...essai, date_fin_essai: null }, '2026-11-20'), null);
+  assert.equal(phraseCreationAcces({ ...essai, date_fin_essai: null }, 4, '2026-11-20'), null);
 });
 
-test('un contrat mensuel paie ses accès au prix mensuel (25 € → 29 €), un autre nombre d’inclus change l’ordinal', () => {
-  assert.match(phraseCreationAcces({ ...ANNUEL, periodicite: 'mensuelle' }, '2026-11-20') ?? '', /facturés 29 € HT par mois\.$/);
-  assert.match(phraseCreationAcces({ ...ANNUEL, acces_inclus: 5 }, '2026-11-20') ?? '', /au-delà du cinquième/);
-  assert.match(phraseCreationAcces({ ...ANNUEL, acces_inclus: 12 }, '2026-11-20') ?? '', /au-delà des 12 inclus/);
+test('un contrat mensuel paie ses accès au prix mensuel (25 € → 29 €) ; le constat suit les accès inclus et le décompte', () => {
+  assert.equal(phraseCreationAcces({ ...ANNUEL, periodicite: 'mensuelle' }, 4, '2026-11-20')?.effet, 'Ce 4ᵉ accès est facturé 29 € HT par mois à partir du prochain bon.');
+  assert.equal(phraseCreationAcces({ ...ANNUEL, acces_inclus: 5 }, 6, '2026-11-20')?.constat, 'Vous dépassez les 5 accès inclus dans votre contrat : 6 accès facturables.');
+  assert.match(phraseCreationAcces({ ...ANNUEL, acces_inclus: 5 }, 7, '2026-11-20')?.effet ?? '', /^Ce 7ᵉ accès est facturé/);
 });
 
 test('la phrase de la page n’existe que si les accès facturables dépassent les inclus', () => {

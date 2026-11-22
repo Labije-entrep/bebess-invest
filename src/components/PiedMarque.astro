@@ -1,0 +1,22 @@
+---
+// Le pied de page « marque » des espaces du cabinet : discret, une seule ligne. Il s'affiche TOUJOURS (pas de marque blanche, aucun réglage pour
+// le masquer) dans l'espace gestionnaire, l'espace client et la page de connexion ; jamais sur le site public du cabinet. Le nom et le logo du
+// cabinet restent au premier plan dans l'en-tête : ce pied ne les remplace pas.
+import MarqueLabije from './MarqueLabije.astro';
+---
+<footer class="pied-marque">
+  <MarqueLabije variante="cab" largeur={112} />
+  <span>Labije Cab, un logiciel de Labije Software</span>
+  <a href="/plateforme">Mentions de la plateforme</a>
+</footer>
+
+<style is:global>
+  .pied-marque {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--espace-xs) var(--espace-m);
+    padding: var(--espace-m) var(--espace); border-top: 1px solid var(--filet);
+    font-size: 0.75rem; color: var(--texte-2);
+  }
+  .pied-marque .marque-labije { flex: none; margin: 0.25rem; }
+  .pied-marque a { color: var(--texte-2); text-decoration: underline; }
+  .pied-marque a:hover { color: var(--texte); }
+</style>

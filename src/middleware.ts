@@ -6,6 +6,7 @@ import { appartient } from './lib/cloisonnement';
 import { COMPTES_EDITEUR, EXPORT_ESSAI_ECHU, GESTION_LIT, REGLAGES, aLeRole } from './lib/roles';
 import { sortieDuCabinet, type GenreSortie } from './lib/essai';
 import { journaliserAccesEditeur } from './lib/journal';
+import { redirectionHote } from './lib/adresses';
 import { estPageSite, estRouteContenu, estRoutePilotage, modulesDuTenant, type Modules } from './lib/modules';
 
 declare global {
@@ -109,6 +110,15 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   const tenant = await tenantParHote(DB, context.url.host);
   context.locals.tenant = tenant;
+  // Un hôte du cabinet qui n'est pas l'adresse choisie pour ce chemin (site public, connexion et espace) : redirection, avant toute autre
+  // lecture. La cible vient de la base ; voir src/lib/adresses.ts pour les exemptions et l'absence de boucle.
+  const ailleurs = redirectionHote(tenant, context.url, context.request.method);
+  if (ailleurs) {
+    const r = new Response(null, { status: ailleurs.statut, headers: { Location: ailleurs.url } });
+    r.headers.set('Cache-Control', ailleurs.statut === 301 ? PUBLIC : PRIVE);
+    r.headers.set('Content-Security-Policy', csp(nouveauNonce()));
+    return r;
+  }
   context.locals.utilisateur = null;
   context.locals.modules = null;
   const nonce = nouveauNonce();

@@ -249,7 +249,7 @@ test('un bon d\'installation s\'émet et se numérote comme les autres ; il port
   const [b] = bons(db, id, 'installation');
   const emis = await emettreBon(db, id, b.id, EDITEUR);
   assert.equal(emis.ok, true);
-  assert.match(emis.ok ? emis.bon.numero ?? '' : '', /^FACT-\d{4}-\d{4}$/);
+  assert.match(emis.ok ? emis.bon.numero ?? '' : '', /^BC-\d{4}-\d{4}$/);
   const complet = await bonComplet(db, b.id);
   assert.equal(complet?.type, 'installation');
   assert.equal(complet?.lignes[0].libelle, 'Frais d’installation');

@@ -72,3 +72,31 @@ test('notes de marché : chapeau et corps sont normalisés à l\'enregistrement,
   assert.equal(n.chapeau, null);
   assert.equal(n.corps_md, 'c\n\nd\n\ne');
 });
+
+test('notes de marché : « Publier » et « Repasser en brouillon » posent l\'état, « Enregistrer » ne le change pas, et les chiffres de l\'actu se figent', async () => {
+  const { publieeApres, libelleEtatNote, ACTIONS_NOTE } = await import('../src/lib/site');
+  const { rafraichirChiffres } = await import('../src/lib/actus');
+  assert.deepEqual(ACTIONS_NOTE, ['enregistrer', 'publier', 'brouillon']);
+  assert.equal(publieeApres('publier', false), true);
+  assert.equal(publieeApres('brouillon', true), false);
+  assert.equal(publieeApres('enregistrer', true), true, 'enregistrer garde une note publiée publiée');
+  assert.equal(publieeApres('enregistrer', false), false, 'une nouvelle note reste un brouillon');
+  assert.equal(libelleEtatNote(1), 'Publié');
+  assert.equal(libelleEtatNote(0), 'Brouillon');
+
+  const db = baseNeuve();
+  poserTenant(db, 't4', 'Cabinet quatre', 'quatre.test');
+  const saisie = { slug: 'n4', titre: 'Note', chapeau: null, corps_md: 'a', date: '2026-11-20' };
+  const id = await enregistrerNote(db, 't4', null, { ...saisie, publiee: publieeApres('enregistrer', false) });
+  const etat = () => db.un<{ publiee: number }>('SELECT publiee FROM note_marche WHERE id = ?', id)!.publiee;
+  assert.equal(etat(), 0);
+  db.exec("INSERT INTO actu (id, tenant_id, date, titre, chiffres_json, note_marche_id, cree_le) VALUES ('a4','t4','2026-11-20','Fiche','[]',?, '2026-11-20')", id);
+  assert.equal(await rafraichirChiffres(db, 't4', '2026-11-20', []), 'ok', 'brouillon : les chiffres se rafraîchissent');
+  await enregistrerNote(db, 't4', id, { ...saisie, publiee: publieeApres('publier', false) });
+  assert.equal(etat(), 1);
+  assert.equal(await rafraichirChiffres(db, 't4', '2026-11-20', []), 'publiee', 'publiée : les chiffres ne bougent plus');
+  await enregistrerNote(db, 't4', id, { ...saisie, publiee: publieeApres('enregistrer', true) });
+  assert.equal(etat(), 1);
+  await enregistrerNote(db, 't4', id, { ...saisie, publiee: publieeApres('brouillon', true) });
+  assert.equal(etat(), 0);
+});

@@ -1,4 +1,6 @@
-# Fil d'étapes : de la recette à la production
+# Labije Cab : fil d'étapes, de la recette à la production
+
+> **Pour la mise en production, le document de référence est désormais [`livraison/DOSSIER-LIVRAISON-PRODUCTION.md`](livraison/DOSSIER-LIVRAISON-PRODUCTION.md)** (acteurs, adresses, prérequis, procédure détaillée). Ce fil d'étapes reste utile pour l'historique de la recette.
 
 Ce document se lit de haut en bas. Chaque case se coche une fois la ligne
 « **Preuve** » obtenue. Ne passez pas à l'étape suivante si une preuve manque.
@@ -27,7 +29,7 @@ déploiement, remise à zéro, grille tarifaire). Mais :
 | Aucune donnée v0 n'est dans le dépôt, et rien n'en décrit le format. | Je ne peux pas confirmer qu'elle s'importe telle quelle. | A5 |
 | L'import CSV existant (`/gestionnaire/import`) ne sait charger que **les lignes de portefeuille** (8 colonnes, 250 lignes max, 500 Ko). Pas les contacts, notes, sujets. | Ce qui n'est pas du portefeuille demande un script de conversion (🤖). | A5 |
 | Il dit de se connecter avec `editeur@demo.local`. Or en recette le pilote de courriel `console` refuse de tourner hors `localhost` : **aucun lien de connexion n'arrive**. | On ne peut pas se connecter au site déployé sans un vrai envoi (Scaleway) ou une session posée à la main. | A3 |
-| Le seed rattache le cabinet de démo à l'hôte `localhost`. Le site déployé répond sur `xxx.pages.dev`. | Le site ne reconnaîtrait aucun cabinet : il faut aligner l'hôte. | A4 |
+| Le seed rattache le cabinet de démo à l'hôte `localhost`. Le site déployé répond sur `xxx.workers.dev`. | Le site ne reconnaîtrait aucun cabinet : il faut aligner l'hôte. | A4 |
 | Aucune étape ne crée le **premier compte éditeur** sur une base vierge (le seed le faisait). | Sans lui, personne n'ouvre `/admin`. | A4 et C4 |
 
 **Le site « déjà codé »** : oui, il est dans le dépôt (`src/pages` : accueil,
@@ -54,7 +56,7 @@ base de recette quand elle ne sert plus (RECETTE.md §6).
 ### A2. Préparer le poste 🧑 + 💻
 ```bash
 cd ~/Dev/Bebess-invest
-git checkout main && git pull
+git checkout develop && git pull
 npm install
 npx wrangler login
 npm run check
@@ -66,9 +68,9 @@ npm test
 1. 💻 `npx wrangler d1 create bebess-recette` → **notez le `database_id`**.
 2. 💻 `npx wrangler r2 bucket create bebess-fichiers-recette` (jamais de domaine
    public ni `r2.dev`).
-3. 🤖 Je crée `wrangler.recette.toml` et `wrangler.cron.recette.toml` comme décrit
-   dans RECETTE.md §2 (je ne touche pas `wrangler.toml` ni `wrangler.cron.toml`, qui
-   portent la prod). Donnez-moi le `database_id`.
+3. 🤖 On crée `wrangler.recette.toml` et `wrangler.cron.recette.toml` en copiant les
+   modèles `*.example.toml`, comme décrit dans RECETTE.md §2 (sans toucher
+   `wrangler.toml` ni `wrangler.cron.toml`, qui portent la prod). Donnez-moi le `database_id`.
 4. **Courriels : choisissez maintenant.** Pour ouvrir une vraie session sur le site
    déployé, il faut recevoir le lien. Donc : pilote `scaleway` avec le domaine de
    test, secrets posés avec 💻 :
@@ -77,7 +79,8 @@ npm test
    npx wrangler secret put SCW_PROJECT_ID -c wrangler.cron.recette.toml
    npx wrangler secret put MAIL_FROM      -c wrangler.cron.recette.toml
    ```
-   (Le site Pages a aussi besoin de ces trois secrets : les poser dans Cloudflare →
+   (Le Worker du site a aussi besoin de ces trois secrets : les poser avec
+   `npx wrangler secret put … -c wrangler.recette.toml`, ou dans Cloudflare →
    Workers & Pages → `bebess-recette` → Settings → Variables and Secrets.)
 5. 💻 Le schéma : `npx wrangler d1 migrations apply bebess-recette --remote -c wrangler.recette.toml`
 - **Preuve** : la commande liste les migrations 0001 à 0014 « applied ».
@@ -86,8 +89,8 @@ npm test
 Pour des données réelles, **n'utilisez pas `seeds/demo.sql`** : il crée des
 cabinets fictifs et l'hôte `localhost`.
 1. 🧑 Déployez une première fois pour connaître l'adresse du site :
-   💻 `npm run build && npx wrangler pages deploy dist --project-name bebess-recette`
-   → relevez l'adresse `https://…pages.dev`.
+   💻 `npm run build && npx wrangler deploy -c wrangler.recette.toml`
+   → relevez l'adresse `https://…workers.dev`.
 2. 🤖 Je vous fournis les deux ordres SQL (cabinet avec **cet hôte**, puis votre compte
    `editeur` avec **votre** adresse), à jouer avec `d1 execute … --remote`.
    Colonnes : `tenant(id, nom, domaine, cree_le)` puis
@@ -185,6 +188,8 @@ n'est pas du code.
 
 À ne faire que si A7 et toute la partie B sont cochées.
 
+**Branches.** `develop` est la branche d'intégration (cible de toutes les PR, source de la recette). `master` est la branche de production : elle ne reçoit que des fusions de `develop`, par PR, une fois la recette validée, et elle est protégée (pas de poussée directe, ni de suppression). On déploie la production depuis `master` à jour, jamais depuis une branche de travail.
+
 ### C1. Créer les ressources de prod 💻
 ```bash
 npx wrangler d1 create bebess                  # → database_id à reporter dans wrangler.toml ET wrangler.cron.toml
@@ -200,7 +205,7 @@ npx wrangler r2 bucket create bebess-fichiers  # jamais de domaine public ni r2.
 
 ### C3. Schéma, jamais de seed 💻
 ```bash
-npx wrangler d1 migrations apply bebess --remote
+npx wrangler d1 migrations apply labije-cab --remote
 ```
 ⚠ Ne **jamais** lancer `seeds/demo.sql` sur la prod.
 - **Preuve** : migrations 0001 à 0014 appliquées.
@@ -213,10 +218,10 @@ prod ; ensuite tout passe par `/admin`.
 ### C5. Déployer 💻
 ```bash
 npm run build
-npx wrangler pages deploy dist --project-name bebess
+npx wrangler deploy                      # le Worker du site (wrangler.toml), avec ses fichiers statiques
 npx wrangler deploy -c wrangler.cron.toml
 ```
-Puis dans Cloudflare : brancher le **domaine du produit** sur le projet Pages ;
+Puis dans Cloudflare : brancher le **domaine du produit** sur le Worker `bebess` (Settings → Domains & Routes → Custom domain) ;
 vérifier, sous `bebess-traitement` → Triggers, que le cron est bien là, et que
 `DB` et `FICHIERS` sont liés.
 

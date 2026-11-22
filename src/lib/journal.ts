@@ -49,6 +49,19 @@ export const EVENEMENT = {
   BON_GENERE: 'bon_genere',
   BON_EMIS: 'bon_emis',
   BON_ANNULE: 'bon_annule',
+  // 21/11/2026 : les remises ponctuelles d'un bon (posées à la main sur un brouillon) et le crédit de prorata d'un accès retiré. Des identifiants,
+  // des codes de ligne et des montants du contrat : jamais le motif (texte libre) ni l'adresse de l'accès.
+  REMISE_PONCTUELLE_POSEE: 'remise_ponctuelle_posee',
+  REMISE_PONCTUELLE_MODIFIEE: 'remise_ponctuelle_modifiee',
+  REMISE_PONCTUELLE_SUPPRIMEE: 'remise_ponctuelle_supprimee',
+  CREDIT_PRORATA_CREE: 'credit_prorata_cree',
+  CREDIT_PRORATA_APPLIQUE: 'credit_prorata_applique',
+  CREDIT_PRORATA_ANNULE: 'credit_prorata_annule',
+  // 22/11/2026 : les lignes libres ponctuelles d'un bon brouillon. Des identifiants, une quantité et des montants : jamais le libellé ni le motif
+  // (textes libres, que l'éditeur peut avoir écrits en pensant à un client).
+  LIGNE_LIBRE_POSEE: 'ligne_libre_posee',
+  LIGNE_LIBRE_MODIFIEE: 'ligne_libre_modifiee',
+  LIGNE_LIBRE_SUPPRIMEE: 'ligne_libre_supprimee',
   PARRAINAGE_VALIDE: 'parrainage_valide',
   ESSAI_NON_CONVERTI: 'essai_non_converti',
   CABINET_PURGE: 'cabinet_purge',
@@ -65,6 +78,8 @@ export const EVENEMENT = {
   EXPORT_COMPLET: 'export_complet',
   CABINET_SUSPENDU: 'cabinet_suspendu',
   CABINET_LEVE: 'cabinet_leve',
+  // 22/11/2026 : les adresses du cabinet (site public, connexion et espace). Des noms d'hôtes avant et après, rien d'autre.
+  ADRESSES_MODIFIEES: 'adresses_modifiees',
 } as const;
 export type TypeEvenement = (typeof EVENEMENT)[keyof typeof EVENEMENT];
 

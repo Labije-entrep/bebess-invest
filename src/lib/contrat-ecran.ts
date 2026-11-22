@@ -40,9 +40,9 @@ export const MESSAGES_SUCCES: Record<CodeSucces, string> = {
     'Contrat signé : il est actif. Le début de service, qui est aussi la date anniversaire, est posé. Un bon d’installation est à émettre (menu Facturation) ; le bon de la première période viendra du traitement quotidien.',
   fondateur_pose: 'Statut fondateur posé : frais d’installation à 0, tarif gelé 24 mois après la signature. Aucun pourcentage de remise.',
   fondateur_retire: 'Statut fondateur retiré. Le gel du tarif déjà posé reste en place : un gel ne se raccourcit jamais.',
-  preavis_enregistre: 'Préavis enregistré : il a été reçu au moins 30 jours avant la date anniversaire, la résiliation prend effet à cette date. Le contrat reste actif jusque-là ; elle s’annule d’ici là.',
+  preavis_enregistre: 'Préavis enregistré : il a été reçu au moins 30 jours avant la date anniversaire, la résiliation prend effet à cette date. Le contrat reste actif jusque-là ; elle s’annule d’ici là. Aucun remboursement ni crédit n’est géré dans l’outil : il se traite par échanges contractuels.',
   preavis_reconduit:
-    'Préavis enregistré, mais reçu MOINS de 30 jours avant la date anniversaire : le contrat est reconduit pour douze mois, la résiliation ne prendra effet qu’à l’anniversaire suivant. Aucun remboursement au prorata. Elle s’annule d’ici là.',
+    'Préavis enregistré, mais reçu MOINS de 30 jours avant la date anniversaire : le contrat est reconduit pour douze mois, la résiliation ne prendra effet qu’à l’anniversaire suivant. Aucun remboursement au prorata, et aucun crédit dans l’outil : un éventuel remboursement se traite par échanges contractuels. Elle s’annule d’ici là.',
   preavis_annule: 'Résiliation annulée : le contrat se poursuit, sans préavis enregistré.',
 };
 

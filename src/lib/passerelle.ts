@@ -128,6 +128,29 @@ export async function statutDeCreation(db: Base, tenantId: string): Promise<stri
   return r?.cle ?? null;
 }
 
+/** Les sujets d'écart ont pour origine `ecart:<classe>:<date de l'arrêté>`. */
+export const prefixeEcart = (classe: string): string => `ecart:${classe}:`;
+
+const NON_CLOS = `archive = 0 AND statut NOT IN (SELECT cle FROM liste_valeur WHERE tenant_id = ? AND liste = 'statut_sujet' AND terminal = 1)`;
+
+/**
+ * Les classes d'actifs qui ont déjà un sujet d'écart non clos (et non archivé) sur ce contact, quelle que soit la date d'arrêté qui l'a
+ * fait naître : c'est ce qui grise le bouton « Créer un sujet depuis l'écart ». Un sujet clos redonne la main.
+ */
+export async function classesAvecEcartOuvert(db: Base, tenantId: string, contactId: string): Promise<Set<string>> {
+  const { results } = await db
+    .prepare(`SELECT origine FROM sujet WHERE tenant_id = ? AND contact_id = ? AND origine LIKE 'ecart:%' AND ${NON_CLOS}`)
+    .bind(tenantId, contactId, tenantId)
+    .all<{ origine: string }>();
+  const classes = new Set<string>();
+  for (const { origine } of results) {
+    const reste = origine.slice('ecart:'.length);
+    const i = reste.lastIndexOf(':');
+    if (i > 0) classes.add(reste.slice(0, i));
+  }
+  return classes;
+}
+
 /**
  * Crée le sujet portant `origine` sur le contact, sauf si un sujet non clos et non archivé la porte déjà : dans ce
  * cas renvoie celui-là. « Non clos » se lit dans la colonne `terminal` de la liste. La vérification et l'insertion
@@ -139,11 +162,13 @@ export async function sujetPourOrigine(
   contactId: string,
   origine: string,
   texte: string,
+  /** Le sujet non clos qui vaut doublon : par défaut celui de la même origine ; pour un écart, toute origine de la même classe. */
+  prefixeDoublon: string = origine,
 ): Promise<{ id: string; cree: boolean } | { refus: 'statut' }> {
   const statut = await statutDeCreation(db, tenantId);
   if (statut === null) return { refus: 'statut' };
 
-  const OUVERT = `tenant_id = ? AND contact_id = ? AND origine = ? AND archive = 0
+  const OUVERT = `tenant_id = ? AND contact_id = ? AND substr(origine, 1, length(?)) = ? AND archive = 0
     AND statut NOT IN (SELECT cle FROM liste_valeur WHERE tenant_id = ? AND liste = 'statut_sujet' AND terminal = 1)`;
   const id = crypto.randomUUID();
   await db
@@ -152,11 +177,11 @@ export async function sujetPourOrigine(
        SELECT ?, ?, ?, ?, ?, NULL, ?, ?, NULL, 0
         WHERE NOT EXISTS (SELECT 1 FROM sujet WHERE ${OUVERT})`,
     )
-    .bind(id, tenantId, contactId, texte, statut, origine, new Date().toISOString(), tenantId, contactId, origine, tenantId)
+    .bind(id, tenantId, contactId, texte, statut, origine, new Date().toISOString(), tenantId, contactId, prefixeDoublon, prefixeDoublon, tenantId)
     .run();
   const ouvert = await db
     .prepare(`SELECT id FROM sujet WHERE ${OUVERT} ORDER BY cree_le, id LIMIT 1`)
-    .bind(tenantId, contactId, origine, tenantId)
+    .bind(tenantId, contactId, prefixeDoublon, prefixeDoublon, tenantId)
     .first<{ id: string }>();
   if (!ouvert) return { refus: 'statut' };
   if (ouvert.id === id) await incrementerVersion(db, tenantId);

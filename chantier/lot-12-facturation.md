@@ -22,15 +22,17 @@ Dans `src/lib/tarif.ts`, fonction pure et testée :
   d'activation à la date anniversaire, arrondis au supérieur, sur un bon
   complémentaire.
 
+Un accès supplémentaire ajouté en cours de période d'un contrat annuel suit la même règle (retour de recette du 21/11/2026) : bon complémentaire au prorata, au prix `prix_acces_sup`, seulement si le bon périodique de la période est émis. Retiré (supprimé ou suspendu) alors qu'il était facturé, il donne un crédit de prorata (mois entiers non entamés, arrondis à l'inférieur) sur le bon suivant ; voir `ETAT.md`.
+
 Cas de test obligatoires, anniversaire au 14/03/2027 :
 activation le 20/11/2026 → 4 mois → 196 € ; le 02/03/2027 → 1 mois → 49 €.
 
 ## Numérotation
 
-Le numéro `FACT-AAAA-NNNN` est attribué par le produit au passage du bon à `emise`,
+Le numéro `BC-AAAA-NNNN` (`FACT-AAAA-NNNN` avant le 21/11/2026) est attribué par le produit au passage du bon à `emise`,
 **dans la même transaction**, jamais avant et jamais saisi à la main. Séquence unique,
 chronologique, sans trou. Un bon annulé après émission garde son numéro :
-l'annulation se fait par un avoir, avec sa propre séquence.
+l'annulation d'un bon émis ne fait que le passer à « annulé » (retour de recette du 21/11/2026 : la notion d'avoir est retirée, migration 0015) ; le numéro, désormais `BC-AAAA-NNNN` pour les nouveaux bons (les anciens `FACT-…` sont conservés), n'est jamais réattribué.
 
 ## Traitement quotidien
 

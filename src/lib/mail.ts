@@ -85,7 +85,7 @@ function pilotScaleway(env: Env): Mailer {
           method: 'POST',
           headers: { 'X-Auth-Token': env.SCW_SECRET_KEY!, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            from: { email: env.MAIL_FROM!, name: "BeBess'Invest" },
+            from: { email: env.MAIL_FROM!, name: "Labije Cab" },
             to: [{ email: destinataire }],
             subject: sujet,
             text: texte,

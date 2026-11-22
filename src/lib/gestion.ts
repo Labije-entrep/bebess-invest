@@ -12,6 +12,7 @@ import { creerMailer, envDe } from './mail';
 import { noterIncident } from './incidents';
 import { cleMarquee, clesMarqueesDe, validateurDe } from './listes';
 import { MARQUEUR } from './marqueurs';
+import { pointsConsolides } from './espace';
 import {
   enveloppesDuViewer,
   portefeuillesDuViewer,
@@ -160,15 +161,24 @@ export interface ViewerResume {
   actif: number;
   encours: number;
   arrete: string | null;
+  /** Nombre d'enveloppes des portefeuilles actifs : zéro, c'est un client qui n'a pas encore de premier arrêté. */
+  nbEnveloppes: number;
+  /** Performance du dernier point contre le précédent (centièmes de point) ; null si non calculable. */
+  perfBp: number | null;
+  /** Valeur du dernier point (consolidé) et date de ce point ; null sans point. */
+  dernierPoint: { date: string; valeurCents: number } | null;
+  /** Renseigné quand le dernier point et la somme des enveloppes ne disent pas la même chose. */
+  divergence: Divergence | null;
 }
 
 /** Portefeuilles actifs du viewer `u`, bornés à son locataire : un portefeuille archivé ne compte pas. */
 const PFS = '(SELECT id FROM portefeuille WHERE viewer_id = u.id AND tenant_id = u.tenant_id AND archive = 0)';
 
 export async function viewersResumes(db: Base, tenantId: string): Promise<ViewerResume[]> {
-  const { results } = await db
+  const { results: brut } = await db
     .prepare(
       `SELECT u.id, u.nom, u.email, u.actif,
+              (SELECT COUNT(*) FROM enveloppe e WHERE e.portefeuille_id IN ${PFS}) AS nb_enveloppes,
               COALESCE((SELECT SUM(e.valorisation_cents) FROM enveloppe e WHERE e.portefeuille_id IN ${PFS}), 0) AS encours,
               -- Fraîcheur réelle : la plus ancienne date parmi les enveloppes, les lignes et le dernier
               -- point de chaque portefeuille du viewer.
@@ -184,8 +194,103 @@ export async function viewersResumes(db: Base, tenantId: string): Promise<Viewer
         ORDER BY u.nom`,
     )
     .bind(tenantId)
-    .all<ViewerResume>();
-  return results;
+    .all<Omit<ViewerResume, 'perfBp' | 'dernierPoint' | 'divergence' | 'nbEnveloppes'> & { nb_enveloppes: number }>();
+  // Points des portefeuilles actifs, bornés au locataire : une seule lecture pour tous les viewers.
+  const { results: pts } = await db
+    .prepare(
+      `SELECT p.id, p.portefeuille_id, pf.viewer_id, p.date, p.valeur_cents, p.versements_cumules_cents
+         FROM point p JOIN portefeuille pf ON pf.id = p.portefeuille_id
+        WHERE pf.tenant_id = ? AND pf.archive = 0
+        ORDER BY p.date`,
+    )
+    .bind(tenantId)
+    .all<Point & { viewer_id: string }>();
+  const parViewer = new Map<string, Point[]>();
+  for (const q of pts) {
+    const l = parViewer.get(q.viewer_id);
+    if (l) l.push(q); else parViewer.set(q.viewer_id, [q]);
+  }
+  return brut.map(({ nb_enveloppes, ...r }) => {
+    const points = pointsConsolides(parViewer.get(r.id) ?? []);
+    const dernier = points.length ? points[points.length - 1] : null;
+    return {
+      ...r,
+      nbEnveloppes: nb_enveloppes,
+      perfBp: perfDernierPoint(points),
+      dernierPoint: dernier ? { date: dernier.date, valeurCents: dernier.valeur_cents } : null,
+      divergence: divergencePointEnveloppes(points, nb_enveloppes, r.encours),
+    };
+  });
+}
+
+/**
+ * Performance du dernier point contre le précédent, avec la règle de l'espace client (perfDuMois) :
+ * tiret (null) sans point antérieur ou si le point précédent est nul. Les points sont triés par date.
+ */
+export function perfDernierPoint(points: Point[]): number | null {
+  if (points.length < 2) return null;
+  const d = points[points.length - 1];
+  const a = points[points.length - 2];
+  return perfDuMois(
+    { date: a.date, valeurCents: a.valeur_cents, verseCents: a.versements_cumules_cents },
+    d.valeur_cents,
+    d.versements_cumules_cents,
+  );
+}
+
+/** Performance du mois de chaque point (clé : id du point), contre le point précédent du même portefeuille. */
+export function perfParPoint(points: Point[]): Map<string, number | null> {
+  const out = new Map<string, number | null>();
+  const parPf = new Map<string, Point[]>();
+  for (const p of points) {
+    const l = parPf.get(p.portefeuille_id);
+    if (l) l.push(p); else parPf.set(p.portefeuille_id, [p]);
+  }
+  for (const l of parPf.values()) {
+    l.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    l.forEach((p, i) =>
+      out.set(
+        p.id,
+        i === 0
+          ? null
+          : perfDuMois(
+              { date: l[i - 1].date, valeurCents: l[i - 1].valeur_cents, verseCents: l[i - 1].versements_cumules_cents },
+              p.valeur_cents,
+              p.versements_cumules_cents,
+            ),
+      ),
+    );
+  }
+  return out;
+}
+
+/** Au-delà de ±20 % en un mois : même seuil que l'aperçu avant confirmation. */
+export function perfForte(perfBp: number | null): boolean {
+  return perfBp !== null && Math.abs(perfBp) > SEUIL_PERF_BP;
+}
+
+export interface Divergence {
+  date: string;
+  pointCents: number;
+  enveloppesCents: number;
+  ecartCents: number;
+}
+
+/**
+ * Le dernier point d'historique et la somme des enveloppes sont deux saisies distinctes. Renvoie leur écart quand elles
+ * diffèrent ; null si elles concordent, s'il n'y a aucun point (rien à comparer) ou aucune enveloppe (c'est alors le
+ * parcours « premier arrêté » qui s'applique, pas une divergence). Les points sont triés par date.
+ */
+export function divergencePointEnveloppes(points: Point[], nbEnveloppes: number, enveloppesCents: number): Divergence | null {
+  if (points.length === 0 || nbEnveloppes === 0) return null;
+  const dernier = points[points.length - 1];
+  if (dernier.valeur_cents === enveloppesCents) return null;
+  return {
+    date: dernier.date,
+    pointCents: dernier.valeur_cents,
+    enveloppesCents,
+    ecartCents: dernier.valeur_cents - enveloppesCents,
+  };
 }
 
 /** Date seuil ISO : un arrêté strictement antérieur est périmé (plus de 45 jours). */

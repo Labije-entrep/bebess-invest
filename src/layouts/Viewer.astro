@@ -1,7 +1,10 @@
 ---
 import '../styles/app.css';
+import PiedMarque from '../components/PiedMarque.astro';
+import { attributsCabinet } from '../lib/personnalisation';
 import { envDe } from '../lib/mail';
 import { urlLogoCabinet } from '../lib/fichiers';
+import { THEMES, themeEffectif, themeConnu, themeValide } from '../lib/themes';
 
 interface Props {
   titre: string;
@@ -15,6 +18,10 @@ const liens: [string, string][] = [
   ['/espace/mouvements', 'Mouvements'],
   ['/espace/rapports', 'Stratégie et rapports'],
 ];
+// Le choix du client d'abord, puis le thème de son cabinet, puis le défaut. Le sélecteur propose « le thème du cabinet » en tête.
+const choixClient = themeConnu(Astro.locals.utilisateur?.theme);
+const theme = themeEffectif(choixClient, Astro.locals.tenant?.theme);
+const themeCabinet = THEMES.find((t) => t.id === themeValide(Astro.locals.tenant?.theme))!;
 const ici = Astro.url.pathname.replace(/\/$/, '');
 // Le choix de portefeuille (?p=) suit le viewer d'une page à l'autre ; la page elle-même
 // ignore un identifiant qui n'est pas l'un des siens.
@@ -22,7 +29,7 @@ const choix = Astro.url.searchParams.get('p');
 const suite = choix && /^[\w-]{1,64}$/.test(choix) ? `?p=${encodeURIComponent(choix)}` : '';
 ---
 <!doctype html>
-<html lang="fr" data-cabinet-theme={Astro.locals.tenant?.theme ?? 'maison'}>
+<html lang="fr" data-cabinet-theme={theme} {...attributsCabinet(Astro.locals.tenant?.personnalisation, theme, choixClient === null)}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -44,6 +51,18 @@ const suite = choix && /^[\w-]{1,64}$/.test(choix) ? `?p=${encodeURIComponent(ch
       </div>
     </header>
     <main class="wrap section"><slot /></main>
+    <footer class="wrap esp-pied">
+      <form method="post" action="/espace/theme" class="esp-theme">
+        <input type="hidden" name="retour" value={`${ici || '/espace'}${suite}`} />
+        <label for="esp-theme-choix">Apparence</label>
+        <select id="esp-theme-choix" name="theme" class="champ">
+          <option value="" selected={choixClient === null}>Thème du cabinet ({themeCabinet.libelle})</option>
+          {THEMES.map((t) => <option value={t.id} selected={choixClient === t.id}>{t.libelle}</option>)}
+        </select>
+        <button type="submit" class="btn">Appliquer</button>
+      </form>
+    </footer>
+    <PiedMarque />
     <script is:inline nonce={Astro.locals.nonce}>
       var b = document.querySelector('[data-menu]'), m = document.getElementById('esp-menu');
       b.addEventListener('click', function () {
@@ -70,6 +89,10 @@ const suite = choix && /^[\w-]{1,64}$/.test(choix) ? `?p=${encodeURIComponent(ch
   .esp-utilisateur form { margin: 0; }
   .esp-sortie { font: inherit; font-size: 0.875rem; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; }
   .esp-sortie:hover { text-decoration: underline; }
+  .esp-pied { padding-top: var(--espace-m); padding-bottom: var(--espace-l); }
+  .esp-theme { display: flex; align-items: center; gap: var(--espace-s); flex-wrap: wrap; margin: 0; font-size: 0.875rem; color: var(--texte-2); }
+  .esp-theme label { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; }
+  .esp-theme select { width: auto; }
   .esp-burger { display: none; }
   @media (max-width: 48rem) {
     .esp-barre { flex-direction: column; align-items: stretch; padding-top: var(--espace-s); padding-bottom: var(--espace-s); }
@@ -101,10 +124,10 @@ const suite = choix && /^[\w-]{1,64}$/.test(choix) ? `?p=${encodeURIComponent(ch
     .kpi:first-child { border-top: 0; }
   }
 
-  .tb { display: grid; grid-template-columns: 2fr 1fr; gap: var(--espace-xl); align-items: start; }
+  .tb { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--espace-xl); align-items: start; }
   .tb-lateral { border-left: 1px solid var(--filet); padding-left: var(--espace-l); }
   @media (max-width: 48rem) {
-    .tb { grid-template-columns: 1fr; gap: var(--espace-l); }
+    .tb { grid-template-columns: minmax(0, 1fr); gap: var(--espace-l); }
     .tb-lateral { border-left: 0; padding-left: 0; border-top: 1px solid var(--filet); padding-top: var(--espace-l); }
   }
   .bloc { margin-bottom: var(--espace-xl); }

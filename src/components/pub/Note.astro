@@ -8,7 +8,7 @@ interface Props { langue: Lg; note: NoteMarche }
 const { langue, note } = Astro.props;
 const corps = await rendreMarkdown(note.corps_md);
 ---
-<Public langue={langue} titre={`${note.titre} · ${Astro.locals.tenant?.nom ?? "BeBess'Invest"}`} description={note.chapeau ?? ''}>
+<Public langue={langue} titre={`${note.titre} · ${Astro.locals.tenant?.nom ?? "Labije Cab"}`} description={note.chapeau ?? ''}>
   <article class="bloc-hero">
     <div class="wrap">
       <span class="etiquette">{dateLongueLg(note.date, langue)}</span>

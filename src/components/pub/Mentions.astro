@@ -7,7 +7,7 @@ import { MENTIONS, mentionsDe } from '../../lib/reglages';
 
 interface Props { langue: Lg; page: PageLue }
 const { langue, page } = Astro.props;
-const nom = Astro.locals.tenant?.nom ?? "BeBess'Invest";
+const nom = Astro.locals.tenant?.nom ?? "Labije Cab";
 const l = T[langue].legal;
 // Les mentions viennent des réglages du cabinet (Réglages, Mentions légales) : raison sociale, ORIAS, statut, association
 // agréée, médiateur, hébergeur, contact RGPD. Les intitulés sont fixes (publang, MENTIONS) ; aucun texte du cabinet n'est dans le code.

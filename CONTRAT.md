@@ -1,4 +1,4 @@
-# Contrat d'interface
+# Labije Cab : contrat d'interface
 
 ```
 == db.ts

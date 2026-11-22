@@ -3,6 +3,7 @@ export const prerender = false;
 import Gestion from '../../layouts/Gestion.astro';
 import Champ from '../../components/gestion/Champ.astro';
 import { adresseSupport, gardeAdmin, poserAdresseSupport } from '../../lib/admin';
+import { CHAMPS_PLATEFORME, identitePlateforme, identitePlateformeManquante, poserIdentitePlateforme } from '../../lib/plateforme';
 
 const g = gardeAdmin(Astro);
 if (g instanceof Response) return g;
@@ -10,15 +11,31 @@ if (g instanceof Response) return g;
 let erreur = '';
 let enregistre = false;
 let saisie = (await adresseSupport(g.db)) ?? '';
+let erreursPf: Record<string, string> = {};
+let pfEnregistre = false;
+let pfSaisie = await identitePlateforme(g.db);
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
-  saisie = String(f.get('adresse_support') ?? '');
-  const r = await poserAdresseSupport(g.db, saisie, { id: g.utilisateur.id, role: g.utilisateur.role });
-  if (r.ok) {
-    saisie = r.adresse ?? '';
-    enregistre = true;
-  } else erreur = 'Adresse e-mail invalide.';
+  if (String(f.get('action') ?? '') === 'plateforme') {
+    // L'identité de la société éditrice (page publique /plateforme) : l'éditeur seul, valeurs bornées, SIREN contrôlé.
+    const r = await poserIdentitePlateforme(g.db, f, { id: g.utilisateur.id, role: g.utilisateur.role });
+    if (r.ok) {
+      pfEnregistre = true;
+      pfSaisie = await identitePlateforme(g.db);
+    } else {
+      if (r.code === 'invalide') erreursPf = r.erreurs;
+      pfSaisie = Object.fromEntries(CHAMPS_PLATEFORME.map((c) => [c.champ, String(f.get(c.champ) ?? '')]));
+    }
+  } else {
+    saisie = String(f.get('adresse_support') ?? '');
+    const r = await poserAdresseSupport(g.db, saisie, { id: g.utilisateur.id, role: g.utilisateur.role });
+    if (r.ok) {
+      saisie = r.adresse ?? '';
+      enregistre = true;
+    } else erreur = 'Adresse e-mail invalide.';
+  }
 }
+const manquants = identitePlateformeManquante(await identitePlateforme(g.db));
 ---
 <Gestion titre="Réglages" espace="admin">
   <h1>Réglages de l’éditeur</h1>
@@ -28,5 +45,18 @@ if (Astro.request.method === 'POST') {
     <Champ nom="adresse_support" label="Adresse du compte de support" valeur={saisie} erreur={erreur} type="email"
       aide="Le compte support_editeur créé dans chaque nouveau cabinet. Vide : aucun compte n’est créé, et l’écran de création le signale." />
     <div class="actions"><button class="btn-plein" type="submit">Enregistrer</button></div>
+  </form>
+
+  <hr class="filet" />
+  <h2>Identité de la plateforme</h2>
+  <p class="aide">La société éditrice de Labije Cab, affichée sur la page publique <a href="/plateforme">/plateforme</a> de chaque cabinet (lien « Mentions de la plateforme » du pied de page). Seules les lignes renseignées s’y affichent.</p>
+  {pfEnregistre && <p class="info" role="status">Identité de la plateforme enregistrée.</p>}
+  {manquants.length > 0 && <p class="info alerte" role="alert">Identité de la plateforme incomplète : {manquants.join(', ')}. À renseigner avant la première livraison à un cabinet.</p>}
+  <form method="post" style="max-width: 32rem">
+    <input type="hidden" name="action" value="plateforme" />
+    {CHAMPS_PLATEFORME.map((c) => (
+      <Champ nom={c.champ} label={c.libelle} valeur={pfSaisie[c.champ] ?? ''} erreur={erreursPf[c.champ]} lignes={c.long ? 3 : undefined} type={c.type === 'email' ? 'email' : 'text'} />
+    ))}
+    <div class="actions"><button class="btn-plein" type="submit">Enregistrer l’identité</button></div>
   </form>
 </Gestion>

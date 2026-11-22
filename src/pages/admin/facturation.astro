@@ -8,17 +8,32 @@ import { identiteManquante, LIBELLES_IDENTITE } from '../../lib/identite';
 import { tarifGele } from '../../lib/contrat';
 import { dateCourte, eurosPrecis } from '../../lib/format';
 import { tauxEnTexte } from '../../lib/tarif';
+import { creerBonPrestation, MESSAGES_LIGNE_LIBRE } from '../../lib/lignes-libres';
+import { STATUTS_EN_COURS } from '../../lib/contrat';
 
 // La console de l'éditeur, côté facturation (lot 13) : les bons à émettre, les contrats, les remises à revoir, les parrainages. Lecture
 // seule ici ; l'émission et l'annulation se font sur le bon lui-même (/admin/bons/<id>).
 const g = gardeAdmin(Astro);
 if (g instanceof Response) return g;
 
+// Un bon ponctuel « prestation » (sans période récurrente) pour un cabinet dont aucun brouillon n'est ouvert : créé ici, ses lignes libres s'ajoutent
+// sur le bon lui-même. Éditeur seulement ; l'accès au cabinet est journalisé comme toute lecture ou écriture de la console.
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  if (String(f.get('action') ?? '') !== 'prestation_creer') return new Response('Action inconnue.', { status: 400 });
+  const tenant = String(f.get('tenant_id') ?? '');
+  await accesCabinets(g, [tenant], `POST ${Astro.url.pathname}`);
+  const r = await creerBonPrestation(g.db, tenant, { id: g.utilisateur.id, role: g.utilisateur.role });
+  return r.ok
+    ? Astro.redirect(`/admin/bons/${encodeURIComponent(r.id)}`, 303)
+    : Astro.redirect(`/admin/facturation?onglet=bons&prestation=${r.code}`, 303);
+}
+
 const ONGLETS: [string, string][] = [['bons', 'Bons'], ['contrats', 'Contrats'], ['remises', 'Remises à revoir'], ['parrainages', 'Parrainages']];
 const p = Astro.url.searchParams;
 const onglet = ONGLETS.some(([k]) => k === p.get('onglet')) ? (p.get('onglet') as string) : 'bons';
 const statut: FiltreBons = FILTRES_BONS.includes(p.get('statut') as FiltreBons) ? (p.get('statut') as FiltreBons) : 'brouillon';
-const NOMS_STATUT: Record<FiltreBons, string> = { brouillon: 'À émettre', emise: 'Émis', annulee: 'Annulés' };
+const NOMS_STATUT: Record<FiltreBons, string> = { brouillon: 'À émettre', emise: 'Émis', annulee: 'Bons annulés' };
 const jour = new Date().toISOString().slice(0, 10);
 
 const bons = onglet === 'bons' ? await bonsParStatut(g.db, statut) : [];
@@ -27,6 +42,10 @@ const remises = onglet === 'remises' ? await remisesARevoir(g.db, jour) : [];
 const parrainages = onglet === 'parrainages' ? await parrainagesDeTous(g.db) : [];
 // Lire les bons, contrats, remises et parrainages d'un cabinet est un accès de l'éditeur à ce cabinet : une ligne du journal de chacun.
 await accesCabinets(g, [...bons.map((b) => b.tenant_id), ...contrats.map((c) => c.tenant_id), ...remises.map((r) => r.tenant_id), ...parrainages.flatMap((x) => [x.parrain_id, x.filleul_id])], `GET ${Astro.url.pathname}`);
+// Les noms des cabinets du menu ne sont pas une lecture de leurs données : seul le bon créé, ou ouvert, journalise l'accès.
+const cabinetsAvecContrat = onglet === 'bons' ? (await contratsDeTous(g.db)).filter((c) => (STATUTS_EN_COURS as readonly string[]).includes(c.statut)) : [];
+const refus = p.get('prestation');
+const retourPrestation = refus && Object.hasOwn(MESSAGES_LIGNE_LIBRE, refus) ? MESSAGES_LIGNE_LIBRE[refus as keyof typeof MESSAGES_LIGNE_LIBRE] : null;
 const cab = (id: string) => `/admin/cabinets/${encodeURIComponent(id)}`;
 const oui = (n: number) => (n ? 'oui' : 'non');
 ---
@@ -41,7 +60,7 @@ const oui = (n: number) => (n ? 'oui' : 'non');
       <nav class="onglets" aria-label="Statut des bons">
         {FILTRES_BONS.map((k) => <a href={`/admin/facturation?onglet=bons&statut=${k}`} aria-current={statut === k ? 'page' : undefined}>{NOMS_STATUT[k]}</a>)}
       </nav>
-      {bons.length === 0 ? <p class="aide">Aucun bon {NOMS_STATUT[statut].toLowerCase()}.</p> : (
+      {bons.length === 0 ? <p class="aide">Aucun bon dans cette liste ({NOMS_STATUT[statut].toLowerCase()}).</p> : (
         <div class="defile">
           <table class="table">
             <thead><tr><th>Date</th><th>Cabinet</th><th>Type</th><th>Période</th><th class="num">Montant HT</th><th>Identité</th><th>Numéro</th><th></th></tr></thead>
@@ -52,8 +71,8 @@ const oui = (n: number) => (n ? 'oui' : 'non');
                   <tr>
                     <td>{dateCourte(b.periode_debut)}</td>
                     <td><a href={cab(b.tenant_id)}>{b.cabinet}</a></td>
-                    <td>{b.type === 'complementaire' ? 'Complémentaire' : b.type === 'installation' ? 'Installation' : 'Périodique'}</td>
-                    <td>{b.type === 'installation' ? `Signature du ${dateCourte(b.periode_debut)}` : `${dateCourte(b.periode_debut)} au ${dateCourte(b.periode_fin)}`}</td>
+                    <td>{b.type === 'complementaire' ? 'Complémentaire' : b.type === 'installation' ? 'Installation' : b.type === 'prestation' ? 'Prestation' : 'Périodique'}</td>
+                    <td>{b.type === 'installation' ? `Signature du ${dateCourte(b.periode_debut)}` : b.type === 'prestation' ? 'Ponctuel' : `${dateCourte(b.periode_debut)} au ${dateCourte(b.periode_fin)}`}</td>
                     <td class="num">{eurosPrecis(b.total_ht)}</td>
                     <td class={manque.length ? 'perime' : undefined}>{manque.length ? `Manque : ${manque.map((m) => LIBELLES_IDENTITE[m]).join(', ')}` : 'Complète'}</td>
                     <td>{b.numero ?? '—'}</td>
@@ -65,6 +84,15 @@ const oui = (n: number) => (n ? 'oui' : 'non');
           </table>
         </div>
       )}
+      {retourPrestation && <p class="info alerte" role="status">{retourPrestation}</p>}
+      <form method="post" class="actions">
+        <input type="hidden" name="action" value="prestation_creer" />
+        <label class="etiquette" for="prest-cabinet">Nouveau bon de prestation (ponctuel, sans période)</label>
+        <select id="prest-cabinet" name="tenant_id" required>
+          {cabinetsAvecContrat.map((c) => <option value={c.tenant_id}>{c.cabinet}</option>)}
+        </select>
+        <button class="btn" type="submit" disabled={cabinetsAvecContrat.length === 0}>Créer le bon</button>
+      </form>
       <p class="aide">Triés par date (début de période). Un bon à émettre est un brouillon : il suit le contrat tant qu’il n’est pas émis, puis ne bouge plus.</p>
     </>
   )}

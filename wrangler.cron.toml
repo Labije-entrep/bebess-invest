@@ -1,12 +1,13 @@
-# Le traitement quotidien (lot 12) : un Worker à part, avec UN Cron Trigger. Le site, lui, est un projet Pages (wrangler.toml) et Pages
-# n'accepte pas `[triggers]` : wrangler refuse le fichier. Ce Worker lit et écrit la MÊME base D1 et le MÊME bucket R2.
+# Le traitement quotidien (lot 12) : un Worker à part, avec UN Cron Trigger. Le site est un autre Worker (wrangler.toml), servi avec ses
+# fichiers statiques : le traitement reste séparé pour ne pas mêler une tâche planifiée au code qui répond aux visiteurs.
+# Ce Worker lit et écrit la MÊME base D1 et le MÊME bucket R2.
 #
 #   npx wrangler deploy -c wrangler.cron.toml
 #   npx wrangler secret put SCW_SECRET_KEY -c wrangler.cron.toml      # idem SCW_PROJECT_ID, MAIL_FROM, CF_API_TOKEN
 #   npx wrangler secret put COURS_API_KEY -c wrangler.cron.toml       # clé Alpha Vantage (gratuite : 25 appels par jour) ; le même secret au site
 #
 # Reporter ici le même database_id que dans wrangler.toml, et CF_ZONE_ID (la zone des « custom hostnames », celle du site).
-name = "bebess-traitement"
+name = "labije-cab-traitement"
 main = "src/cron.ts"
 compatibility_date = "2026-11-01"
 workers_dev = false
@@ -20,12 +21,12 @@ crons = ["0 3 * * *"]
 
 [[d1_databases]]
 binding = "DB"
-database_name = "bebess"
+database_name = "labije-cab"
 database_id = "A_REMPLIR"
 
 [[r2_buckets]]
 binding = "FICHIERS"
-bucket_name = "bebess-fichiers"
+bucket_name = "labije-cab-fichiers"
 
 [vars]
 MAIL_DRIVER = "scaleway"

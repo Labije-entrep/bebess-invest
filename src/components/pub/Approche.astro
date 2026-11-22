@@ -6,7 +6,7 @@ import { chemin, type Lg } from '../../lib/publang';
 
 interface Props { langue: Lg; page: PageLue }
 const { langue, page } = Astro.props;
-const nom = Astro.locals.tenant?.nom ?? "BeBess'Invest";
+const nom = Astro.locals.tenant?.nom ?? "Labije Cab";
 const c = page.c;
 const piliers = liste(c?.piliers);
 const fin = c?.final ?? {};

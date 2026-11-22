@@ -17,7 +17,13 @@ import type { Role } from './db';
 import { ACCES_FACTURABLES } from './roles.ts';
 
 export type Periodicite = 'mensuelle' | 'annuelle';
-export type CodeLigne = 'socle' | 'pilotage' | 'site' | 'acces_sup' | 'installation';
+export type CodeLigne = 'socle' | 'pilotage' | 'site' | 'acces_sup' | 'installation' | 'libre';
+
+/**
+ * Les lignes qui ne sont pas du récurrent : les frais d'installation et les lignes libres ponctuelles (22/11/2026). La remise commerciale
+ * en pourcentage ne s'y applique jamais ; une remise ponctuelle peut les viser, sans dépasser leur montant.
+ */
+export const HORS_RECURRENT: readonly CodeLigne[] = ['installation', 'libre'];
 
 /** Le plafond de la remise, et celui de la remise de parrainage seule : 50 %. */
 export const REMISE_MAX = 5000;
@@ -62,6 +68,8 @@ export interface Bon {
   recurrent_ht: number;
   remise_taux: number;
   remise_montant: number;
+  /** Somme des remises ponctuelles retenues (déjà déduite du total). Toujours 0 sorti de `calculerBon` : elles se posent à l'édition. */
+  remise_ponctuelle_montant: number;
   frais_installation_ht: number;
   total_ht: number;
 }
@@ -155,7 +163,7 @@ export function calculerBon(e: EntreeBon): Bon {
   const remise_taux = tauxRemise(tauxParrainage(e.parrainages_valides), e.remise_commerciale_taux);
   const remise_montant = appliquer(recurrent_ht, remise_taux);
   const frais_installation_ht = e.frais_installation ?? 0;
-  return { lignes, recurrent_ht, remise_taux, remise_montant, frais_installation_ht, total_ht: recurrent_ht - remise_montant + frais_installation_ht };
+  return { lignes, recurrent_ht, remise_taux, remise_montant, remise_ponctuelle_montant: 0, frais_installation_ht, total_ht: recurrent_ht - remise_montant + frais_installation_ht };
 }
 
 /**
@@ -168,6 +176,7 @@ export function calculerBonInstallation(frais: number): Bon {
     recurrent_ht: 0,
     remise_taux: 0,
     remise_montant: 0,
+    remise_ponctuelle_montant: 0,
     frais_installation_ht: frais,
     total_ht: frais,
   };
@@ -203,6 +212,19 @@ export function moisArrondisAuSuperieur(du: string, au: string): number {
   // ISO 8601 : l'ordre des chaînes est celui des dates.
   while (entiers > 0 && ajouterMois(du, entiers) > au) entiers--;
   return ajouterMois(du, entiers) < au ? entiers + 1 : entiers;
+}
+
+/**
+ * Les mois ENTIERS de `du` à `au`, ARRONDIS À L'INFÉRIEUR : seuls comptent les mois complets non entamés. C'est l'arrondi d'un CRÉDIT de
+ * prorata (le client n'est jamais crédité d'un mois commencé). 20/11/2026 → 14/03/2027 : 3 mois (le 4ᵉ, du 20/02 au 14/03, est incomplet).
+ */
+export function moisEntiersRestants(du: string, au: string): number {
+  if (au <= du) return 0;
+  const a = analyser(au);
+  const d = analyser(du);
+  let entiers = (a.y - d.y) * 12 + (a.m - d.m);
+  while (entiers > 0 && ajouterMois(du, entiers) > au) entiers--;
+  return entiers;
 }
 
 export interface Periode {
@@ -276,6 +298,8 @@ export interface EntreeComplementaire {
   periodicite: Periodicite;
   /** Les modules activés ce jour-là, avec leur prix du contrat (au mois, tarif annuel). */
   modules: { code: 'pilotage' | 'site'; prix: number }[];
+  /** Les accès facturables ajoutés ce jour-là AU-DELÀ des accès inclus, avec le prix d'UN accès pour un mois (tarif annuel). */
+  acces_sup?: { quantite: number; prix: number };
   activation: string;
   /** Fin de la période en cours : la date anniversaire. */
   anniversaire: string;
@@ -289,15 +313,136 @@ export interface BonComplementaire extends Omit<Bon, 'frais_installation_ht'> {
 /**
  * Le bon complémentaire : chaque module × les mois entiers (arrondis au supérieur) de l'activation à la date anniversaire, au
  * tarif annuel. Anniversaire au 14/03/2027, Pilotage à 49 € : activé le 20/11/2026 → 4 mois → 196 € ; le 02/03/2027 → 1 mois →
- * 49 €. Null pour un contrat mensuel (le module entre dans le bon du mois suivant) et quand il n'y a plus rien à courir.
+ * 49 €. Un accès supplémentaire suit EXACTEMENT la même règle (mêmes mois, même arrondi), au prix `prix_acces_sup` : 25 € × 4 mois =
+ * 100 €. Null pour un contrat mensuel (le module ou l'accès entre dans le bon du mois suivant) et quand il n'y a plus rien à courir.
  */
 export function calculerComplementaire(e: EntreeComplementaire): BonComplementaire | null {
   if (e.periodicite !== 'annuelle') return null;
   const mois = moisArrondisAuSuperieur(e.activation, e.anniversaire);
-  if (mois === 0 || e.modules.length === 0) return null;
+  const acces = e.acces_sup && e.acces_sup.quantite > 0 ? e.acces_sup : null;
+  if (mois === 0 || (e.modules.length === 0 && !acces)) return null;
   const lignes: LigneBon[] = e.modules.map((m) => ({ code: m.code, quantite: 1, prix_unitaire: m.prix, mois, montant: m.prix * mois }));
+  if (acces) lignes.push({ code: 'acces_sup', quantite: acces.quantite, prix_unitaire: acces.prix, mois, montant: acces.prix * acces.quantite * mois });
   const recurrent_ht = lignes.reduce((s, l) => s + l.montant, 0);
   const remise_taux = Math.min(REMISE_MAX, Math.max(0, e.remise_taux));
   const remise_montant = appliquer(recurrent_ht, remise_taux);
-  return { lignes, recurrent_ht, remise_taux, remise_montant, total_ht: recurrent_ht - remise_montant, mois };
+  return { lignes, recurrent_ht, remise_taux, remise_montant, remise_ponctuelle_montant: 0, total_ht: recurrent_ht - remise_montant, mois };
+}
+
+// ---------------------------------------------------------------- les remises ponctuelles et le crédit de prorata (21/11/2026)
+//
+// Une remise PONCTUELLE est un montant en euros (centimes entiers) ôté d'UNE ligne précise d'un bon. Elle n'est pas la remise commerciale en
+// pourcentage (plafond 50 %, motif, date de revue) : celle-ci reste inchangée. Choix d'ordre, à valider : les remises ponctuelles sont
+// déduites des lignes D'ABORD, la remise en pourcentage s'applique ensuite sur le récurrent RESTANT. Ainsi un crédit de prorata rend ce que
+// le client a réellement payé pour ces mois (prix de la ligne, moins la remise en pourcentage), pas davantage ; et le total ne peut pas devenir
+// négatif.
+
+export interface RemisePonctuelle {
+  code: CodeLigne;
+  montant: number;
+  /**
+   * Un CRÉDIT de prorata (jamais une remise posée à la main) : ce que sa ligne ne peut pas absorber (le bon suivant n'a plus d'accès
+   * supplémentaire, justement parce que l'accès a été retiré) s'impute sur le reste du récurrent, au lieu d'être perdu.
+   */
+  repli?: boolean;
+}
+
+/**
+ * Ce que chaque remise retient réellement : au plus le montant de sa ligne, moins ce que les remises précédentes de la même ligne en ont
+ * déjà ôté (dans l'ordre donné). Une ligne absente du bon ne retient rien. Fonction pure.
+ */
+export function retenirRemises(lignes: LigneBon[], remises: RemisePonctuelle[]): number[] {
+  const reste = new Map<CodeLigne, number>();
+  for (const l of lignes) reste.set(l.code, (reste.get(l.code) ?? 0) + l.montant);
+  const retenues = remises.map((r) => {
+    const retenu = Math.max(0, Math.min(r.montant, reste.get(r.code) ?? 0));
+    reste.set(r.code, (reste.get(r.code) ?? 0) - retenu);
+    return retenu;
+  });
+  // Second passage : le surplus d'un crédit de prorata s'impute sur le récurrent qui reste (jamais sur l'installation).
+  remises.forEach((r, i) => {
+    if (!r.repli || retenues[i] >= r.montant) return;
+    let a_prendre = r.montant - retenues[i];
+    for (const [code, dispo] of reste) {
+      if (a_prendre <= 0) break;
+      if (HORS_RECURRENT.includes(code) || dispo <= 0) continue;
+      const pris = Math.min(a_prendre, dispo);
+      reste.set(code, dispo - pris);
+      retenues[i] += pris;
+      a_prendre -= pris;
+    }
+  });
+  return retenues;
+}
+
+/** Ce qu'il reste à remiser sur une ligne : son montant moins les remises déjà posées. Sert de plafond à une nouvelle remise. */
+export function plafondRemise(lignes: LigneBon[], remises: RemisePonctuelle[], code: CodeLigne): number {
+  const montant = lignes.filter((l) => l.code === code).reduce((s, l) => s + l.montant, 0);
+  const pris = retenirRemises(lignes, remises).reduce((s, r, i) => s + (remises[i].code === code ? r : 0), 0);
+  return montant - pris;
+}
+
+export interface TotauxBon {
+  /** Les lignes de récurrent (tout sauf l'installation), avant toute remise. */
+  recurrent_ht: number;
+  remise_ponctuelle_montant: number;
+  /** La remise en pourcentage, sur le récurrent APRÈS remises ponctuelles. */
+  remise_montant: number;
+  total_ht: number;
+}
+
+/** Le montant d'une ligne libre : quantité × prix unitaire, en centimes entiers (aucun flottant). */
+export const montantLigneLibre = (quantite: number, prix_unitaire: number): number => quantite * prix_unitaire;
+
+/**
+ * Les lignes libres d'un bon, rassemblées en UNE ligne de calcul de code `libre` (nulle si elles n'ont aucun montant) : c'est sous cette
+ * forme que `totauxDuBon` et les remises ponctuelles les voient. Fonction pure.
+ */
+export const ligneLibreAgregee = (libres: { quantite: number; prix_unitaire: number }[]): LigneBon[] => {
+  const montant = libres.reduce((s, l) => s + montantLigneLibre(l.quantite, l.prix_unitaire), 0);
+  return montant > 0 ? [{ code: 'libre', quantite: 1, prix_unitaire: montant, mois: 1, montant }] : [];
+};
+
+/**
+ * Les totaux d'un bon à partir de ses lignes, du taux de la remise en pourcentage et des remises ponctuelles. C'est la SEULE fonction qui
+ * additionne : le bon périodique, le complémentaire et celui d'installation (une ligne, sans remise en pourcentage) passent par elle, au
+ * centime, en entiers (aucun flottant). Les remises ponctuelles sont retenues dans la limite de leur ligne.
+ */
+export function totauxDuBon(lignes: LigneBon[], remise_taux: number, remises: RemisePonctuelle[] = []): TotauxBon {
+  const retenues = retenirRemises(lignes, remises);
+  const recurrent_ht = lignes.filter((l) => !HORS_RECURRENT.includes(l.code)).reduce((s, l) => s + l.montant, 0);
+  const installation = lignes.filter((l) => HORS_RECURRENT.includes(l.code)).reduce((s, l) => s + l.montant, 0);
+  let ponct_rec = 0;
+  let ponct_inst = 0;
+  remises.forEach((r, i) => (HORS_RECURRENT.includes(r.code) ? (ponct_inst += retenues[i]) : (ponct_rec += retenues[i])));
+  const remise_montant = appliquer(recurrent_ht - ponct_rec, remise_taux);
+  return {
+    recurrent_ht,
+    remise_ponctuelle_montant: ponct_rec + ponct_inst,
+    remise_montant,
+    total_ht: recurrent_ht - ponct_rec - remise_montant + (installation - ponct_inst),
+  };
+}
+
+export interface EntreeCredit {
+  periodicite: Periodicite;
+  /** Le prix d'UN accès supplémentaire pour UN mois, tarif annuel du contrat. */
+  prix_acces_sup: number;
+  /** Le jour de la suppression ou de la suspension. */
+  jour: string;
+  /** La date anniversaire qui clôt la période en cours. */
+  anniversaire: string;
+}
+
+/**
+ * Le crédit de prorata d'un accès supplémentaire retiré en cours de période : `prix_acces_sup` × les mois ENTIERS non entamés jusqu'à la date
+ * anniversaire, arrondis à l'INFÉRIEUR (le client n'est pas crédité d'un mois commencé, quand le même arrondi le facture au supérieur à
+ * l'entrée). Anniversaire au 14/03/2027, retrait le 20/11/2026 : 3 mois × 25 € = 75 €. Null pour un contrat mensuel (le bon suivant ne compte
+ * simplement plus l'accès) et quand aucun mois entier ne reste.
+ */
+export function calculerCreditProrata(e: EntreeCredit): { mois: number; montant: number } | null {
+  if (e.periodicite !== 'annuelle') return null;
+  const mois = moisEntiersRestants(e.jour, e.anniversaire);
+  if (mois === 0 || e.prix_acces_sup <= 0) return null;
+  return { mois, montant: e.prix_acces_sup * mois };
 }

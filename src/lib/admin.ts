@@ -15,6 +15,7 @@ import { joursOuRepli, REPLI } from './suivi';
 import { creerMailer, envDe, type Env } from './mail';
 import { requetesListesDefaut } from './listes-defaut';
 import { noterIncident } from './incidents';
+import { adressesDe, CLE_ESPACE, CLE_SITE, reparerAdresses } from './adresses';
 import { lireIdentite, MESSAGE_SIREN_PRIS, sirenPris } from './identite';
 import { THEMES, THEME_DEFAUT } from './themes';
 
@@ -269,12 +270,15 @@ export async function lienPremierGestionnaire(
   try {
     const jeton = await demanderLien(DB, c.id, c.gestionnaire.email);
     if (!jeton) throw new Error('lien non préparé');
-    const port = origineRequete.port ? `:${origineRequete.port}` : '';
-    const lien = `${origineRequete.protocol}//${c.hote}${port}/connexion/${jeton}`;
-    await creerMailer(envDe(locals), c.hote).envoyer(
+    // L'adresse de connexion et d'espace du cabinet (l'hôte d'origine tant que rien n'est choisi). Le port de la requête de l'éditeur ne
+    // suit que pour cet hôte-là : il n'existe qu'en développement.
+    const hoteEspace = (await adressesDe(DB, c.id)).espace.effectif ?? c.hote;
+    const port = origineRequete.port && hoteEspace === c.hote ? `:${origineRequete.port}` : '';
+    const lien = `${origineRequete.protocol}//${hoteEspace}${port}/connexion/${jeton}`;
+    await creerMailer(envDe(locals), hoteEspace).envoyer(
       c.gestionnaire.email,
       'Votre espace gestionnaire est ouvert',
-      `Bonjour ${c.gestionnaire.nom},\n\nLe cabinet « ${c.nom} » vient d'être ouvert sur BeBess'Invest et vous en êtes le gestionnaire.\n\nVoici votre lien de première connexion, valable 15 minutes et utilisable une seule fois :\n\n${lien}\n\nAucun mot de passe n'est nécessaire.`,
+      `Bonjour ${c.gestionnaire.nom},\n\nLe cabinet « ${c.nom} » vient d'être ouvert sur Labije Cab et vous en êtes le gestionnaire.\n\nVoici votre lien de première connexion, valable 15 minutes et utilisable une seule fois :\n\n${lien}\n\nAucun mot de passe n'est nécessaire.`,
     );
     return true;
   } catch (e) {
@@ -382,6 +386,7 @@ export type ResultatAction = { ok: boolean; code: CodeAction };
 export type CodeAction =
   | 'valide' | 'en_cours' | 'declare_sans_jeton' | 'retire' | 'cloudflare' | 'hote_invalide' | 'hote_pris' | 'domaine_inconnu'
   | 'principal' | 'retrait_sans_jeton' | 'suspendu' | 'leve' | 'motif' | 'cabinet_inconnu' | 'editeur' | 'deja_suspendu' | 'pas_suspendu'
+  | 'adresses' | 'adresses_inchangees' | 'adresse_refusee'
   | 'identite' | 'identite_inchangee' | 'siren_invalide' | 'siren_pris';
 
 export const MESSAGES_ACTION: Record<CodeAction, string> = {
@@ -402,6 +407,9 @@ export const MESSAGES_ACTION: Record<CodeAction, string> = {
   editeur: 'Ce cabinet héberge un compte éditeur : il ne se suspend pas.',
   deja_suspendu: 'Ce cabinet est déjà suspendu.',
   pas_suspendu: 'Ce cabinet n’est pas suspendu.',
+  adresses: 'Adresses enregistrées. Les redirections s’appliquent tout de suite.',
+  adresses_inchangees: 'Rien à modifier : les adresses sont déjà celles-ci.',
+  adresse_refusee: 'Adresse refusée : seul l’hôte d’origine ou un hôte validé de ce cabinet peut être choisi. Rien n’a été enregistré.',
   identite: 'Identité de facturation enregistrée.',
   identite_inchangee: 'Rien à modifier : l’identité de facturation est déjà celle-ci.',
   siren_invalide: 'SIREN invalide : neuf chiffres dont le dernier est une clé de contrôle (Luhn). Rien n’a été enregistré.',
@@ -441,6 +449,8 @@ async function synchroniser(db: Base, env: Env, tenantId: string, d: Domaine): P
     .prepare('UPDATE domaine SET cf_id = ?, statut = ?, detail = ?, valide_le = ?, verifie_le = ? WHERE hote = ? AND tenant_id = ?')
     .bind(r.id ?? d.cf_id, etat.statut, etat.detail, etat.statut === 'actif' ? (d.valide_le ?? now) : null, now, d.hote, tenantId)
     .run();
+  // Un hôte qui cesse d'être valide ne peut plus servir d'adresse : retour à l'hôte d'origine, avec un incident.
+  if (etat.statut !== 'actif') await reparerAdresses(db, tenantId);
   return ok(etat.statut === 'actif' ? 'valide' : 'en_cours');
 }
 
@@ -484,6 +494,7 @@ export async function retirerDomaine(db: Base, env: Env, tenantId: string, hote:
     }
   }
   await db.prepare('DELETE FROM domaine WHERE hote = ? AND tenant_id = ? AND principal = 0').bind(hote, tenantId).run();
+  await reparerAdresses(db, tenantId);
   return ok('retire');
 }
 
@@ -559,4 +570,48 @@ export async function leverSuspension(db: Base, tenantId: string, par: Acteur): 
     requeteEvenement(db, { tenantId, type: EVENEMENT.CABINET_LEVE, acteur: par, cible: { type: 'cabinet', id: tenantId } }, true),
   ]);
   return ((r as { meta?: { changes?: number } })?.meta?.changes ?? 0) > 0 ? ok('leve') : ko('pas_suspendu');
+}
+
+// ---------------------------------------------------------------- adresses du cabinet (site public, connexion et espace)
+
+/**
+ * Pose les deux adresses du cabinet : `site` (le site public) et `espace` (la connexion, les espaces, les liens des courriels). Une
+ * chaîne vide = pas de choix (l'hôte d'origine, sans redirection). Un hôte n'est accepté que s'il est l'hôte d'origine de CE cabinet ou
+ * un hôte validé de CE cabinet : un hôte non validé, inconnu ou d'un autre cabinet est refusé, et rien n'est écrit. L'écriture et son
+ * événement partent dans la même transaction ; l'événement ne porte que des noms d'hôtes.
+ */
+export async function enregistrerAdresses(
+  db: Base,
+  tenantId: string,
+  acteur: Acteur,
+  saisie: { site: string; espace: string },
+): Promise<ResultatAction> {
+  const a = await adressesDe(db, tenantId);
+  const lire = (brut: string): string | null | false => {
+    if (brut.trim() === '') return null;
+    const h = normaliserHote(brut);
+    return h && a.choisissables.includes(h) ? h : false;
+  };
+  const site = lire(saisie.site);
+  const espace = lire(saisie.espace);
+  if (site === false || espace === false) return ko('adresse_refusee');
+  if (site === a.site.choix && espace === a.espace.choix) return ko('adresses_inchangees');
+  const poser = (cle: string, valeur: string | null): Requete =>
+    valeur === null
+      ? db.prepare('DELETE FROM reglage WHERE tenant_id = ? AND cle = ?').bind(tenantId, cle)
+      : db
+          .prepare('INSERT INTO reglage (tenant_id, cle, valeur) VALUES (?, ?, ?) ON CONFLICT (tenant_id, cle) DO UPDATE SET valeur = excluded.valeur')
+          .bind(tenantId, cle, valeur);
+  await db.batch([
+    poser(CLE_SITE, site),
+    poser(CLE_ESPACE, espace),
+    requeteEvenement(db, {
+      tenantId,
+      type: EVENEMENT.ADRESSES_MODIFIEES,
+      acteur,
+      cible: { type: 'cabinet', id: tenantId },
+      detail: { site_avant: a.site.choix, site_apres: site, espace_avant: a.espace.choix, espace_apres: espace },
+    }),
+  ]);
+  return ok('adresses');
 }

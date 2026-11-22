@@ -6,7 +6,8 @@
  * connaît le thème, tous ne lisent que des jetons. Chaque thème redéfinit TOUS les jetons de couleur et ses deux
  * jetons de courbe ; seuls les jetons de police, d'échelle et de mise en page (non colorés) restent communs.
  * Un thème est une combinaison déjà validée en contraste (voir chantier/ETAT.md, lot 09) : le cabinet choisit un
- * nom dans une liste, jamais une valeur. Pas de sélecteur de couleur libre, nulle part. */
+ * nom dans une liste, jamais une valeur. Seule exception, encadrée : la couleur d'accent du cabinet (voir « personnalisation » plus bas), dont
+ * le serveur CALCULE le contraste et refuse toute valeur illisible ; le thème choisi par le client final garde la priorité sur elle. */
 
 /* Polices auto-hébergées, sous-ensemble latin, graisses utilisées seulement. */
 @import '@fontsource/newsreader/latin-200.css';
@@ -41,6 +42,9 @@
   /* Courbe de l'espace client : valorisation et cumul des versements */
   --courbe-valeur: #dcbf88;
   --courbe-versements: #7c8aa0;
+  /* Marque Labije (logos en SVG en ligne, composant MarqueLabije) : encre et rouille du pack, versions pour fond sombre */
+  --marque-encre: #f7f5f1;
+  --marque-rouille: #d98a5c;
 
   color-scheme: dark;
 
@@ -82,6 +86,9 @@
   --serie-5: #9b7bd4;
   --courbe-valeur: #dcbf88;
   --courbe-versements: #7c8aa0;
+  /* Marque Labije (logos en SVG en ligne, composant MarqueLabije) : encre et rouille du pack, versions pour fond sombre */
+  --marque-encre: #f7f5f1;
+  --marque-rouille: #d98a5c;
 }
 
 :root[data-cabinet-theme="nuit"] {
@@ -104,6 +111,9 @@
   --serie-5: #a58be0;
   --courbe-valeur: #adc9f3;
   --courbe-versements: #8a97b0;
+  /* Marque Labije (logos en SVG en ligne, composant MarqueLabije) : encre et rouille du pack, versions pour fond sombre */
+  --marque-encre: #f7f5f1;
+  --marque-rouille: #d98a5c;
 }
 
 :root[data-cabinet-theme="foret"] {
@@ -126,6 +136,9 @@
   --serie-5: #b690d6;
   --courbe-valeur: #bfe0a9;
   --courbe-versements: #86a392;
+  /* Marque Labije (logos en SVG en ligne, composant MarqueLabije) : encre et rouille du pack, versions pour fond sombre */
+  --marque-encre: #f7f5f1;
+  --marque-rouille: #d98a5c;
 }
 
 :root[data-cabinet-theme="pierre"] {
@@ -148,6 +161,9 @@
   --serie-5: #a98fd1;
   --courbe-valeur: #e6cba9;
   --courbe-versements: #a39b90;
+  /* Marque Labije (logos en SVG en ligne, composant MarqueLabije) : encre et rouille du pack, versions pour fond sombre */
+  --marque-encre: #f7f5f1;
+  --marque-rouille: #d98a5c;
 }
 
 :root[data-cabinet-theme="clair"] {
@@ -170,12 +186,42 @@
   --serie-5: #6e4fb5;
   --courbe-valeur: #6b4c12;
   --courbe-versements: #5b6b82;
+  /* Marque Labije (logos en SVG en ligne, composant MarqueLabije) : encre et rouille du pack, versions pour fond clair */
+  --marque-encre: #16242f;
+  --marque-rouille: #9e4e2f;
 }
+
+/* ---------------------------------------------------------------- personnalisation du cabinet (22/11/2026)
+ * Quatre réglages simples, posés par le serveur sur <html> (src/lib/personnalisation.ts) : un attribut par réglage, ABSENT à la valeur par défaut
+ * (le rendu d'origine ne change pas d'un pixel). Aucune couleur ici : l'accent personnalisé arrive en jetons (--accent, --accent-clair, --sur-accent,
+ * --filet, --courbe-valeur) dans l'attribut style de <html>, calculés et vérifiés en contraste par le serveur ; il passe donc avant les blocs de thème.
+ * Les trois polices n'utilisent que les familles embarquées ci-dessus : aucun domaine externe. */
+:root { --rayon: 0; }
+
+/* Police « moderne » : sans empattement partout, titres compris. */
+html[data-cabinet-police="moderne"] { --serif: var(--sans); --mono: var(--sans); }
+/* Police « éditoriale » : Newsreader (empattement) pour les titres ET le texte courant ; les étiquettes restent en IBM Plex Mono. */
+html[data-cabinet-police="editoriale"] { --sans: var(--serif); }
+html[data-cabinet-police="editoriale"] body { font-size: 1.0625rem; }
+
+/* Taille du texte : trois crans sur la base (le rem) ; tout ce qui s'exprime en rem suit, la mise en page aussi. */
+html[data-cabinet-taille="confortable"] { font-size: 112.5%; }
+html[data-cabinet-taille="grand"] { font-size: 125%; }
+
+/* Forme des boutons, des champs et des cartes : un seul jeton de rayon. */
+html[data-cabinet-forme="arrondi"] { --rayon: 0.5rem; }
 
 *, *::before, *::after {
   box-sizing: border-box;
   border-radius: 0;
   box-shadow: none;
+}
+
+.btn, .btn-plein, .champ,
+:where(input:not([type='checkbox'], [type='radio'], [type='submit'], [type='button']), select, textarea),
+.bon, .encadre-depassement, .marche-carte, .portail-carte, .portail-vide, .vide-explicite,
+.suivi-colonne, .suivi-kpi, .suivi-dialogue, .fiche-formulaire, .fiche-saisie {
+  border-radius: var(--rayon);
 }
 
 html { background: var(--fond); color: var(--texte); }

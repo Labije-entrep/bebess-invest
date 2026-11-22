@@ -1,4 +1,4 @@
-# Environnement de recette
+# Labije Cab : environnement de recette
 
 Un second environnement complet chez Cloudflare, séparé de la production : même
 plateforme, mêmes limites, mêmes comportements. C'est le seul « iso-prod » qui
@@ -16,7 +16,7 @@ Tout ce qui suit porte le suffixe `-recette`. Rien n'y touche à la production.
 
 - Node 22.18 ou plus récent — le banc de vérification utilise `node:sqlite` — et
   `npx wrangler login` fait sur le bon compte.
-- Le dépôt à jour sur `main`.
+- Le dépôt à jour sur `develop` (la branche d'intégration ; la production se déploie depuis `master`, une fois la recette validée).
 - Pour les courriels : soit le pilote `console` (suffisant pour presque tout), soit
   un domaine d'envoi Scaleway distinct de celui de production.
 
@@ -33,30 +33,30 @@ Ne jamais activer de domaine public ni `r2.dev` sur ce bucket : les objets ne
 sortent que par les routes du Worker, après contrôle de session, de locataire et de
 rôle.
 
-Créer ensuite deux fichiers de configuration, copies des originaux avec les noms de
-recette. **Ne modifiez pas `wrangler.toml` ni `wrangler.cron.toml`** : ils portent la
-production.
+Le site tourne en recette **comme en production : un Worker Cloudflare qui sert ses
+fichiers statiques** (Cloudflare ne crée plus de projet Pages). Deux fichiers de
+configuration, à copier depuis les modèles versionnés — ils ne contiennent aucun
+identifiant :
 
-`wrangler.recette.toml` — copie de `wrangler.toml` avec :
-
-```toml
-name = "bebess-recette"
-database_name = "bebess-recette"
-database_id = "<le database_id noté plus haut>"
-bucket_name = "bebess-fichiers-recette"
+```bash
+cp wrangler.recette.example.toml       wrangler.recette.toml
+cp wrangler.cron.recette.example.toml  wrangler.cron.recette.toml
 ```
 
-`wrangler.cron.recette.toml` — copie de `wrangler.cron.toml` avec :
+Ouvrir chacune des copies et remplacer `A_REMPLIR` par le `database_id` noté plus haut
+(le **même** dans les deux). Les copies sont ignorées par git : elles portent des
+identifiants, le dépôt est public, ne les versionnez jamais. **Ne modifiez pas
+`wrangler.toml` ni `wrangler.cron.toml`** : ils portent la production.
 
-```toml
-name = "bebess-traitement-recette"
-database_name = "bebess-recette"
-database_id = "<le même database_id>"
-bucket_name = "bebess-fichiers-recette"
-```
+Les modèles n'ont **pas de bloc R2**, voulu : la recette tourne sans bucket de
+fichiers. Dépôt de rapports, logo, factures en PDF et purge des fichiers ne sont donc
+pas jouables en recette ; tout le reste l'est. Pour les éprouver, activer R2, créer
+`bebess-fichiers-recette` (ci-dessus) et ajouter le bloc `[[r2_buckets]]` indiqué en
+commentaire dans le modèle.
 
-et, sous `[vars]`, `CF_ZONE_ID` vide tant qu'on n'éprouve pas les domaines
-personnalisés : la console le dira et tout le reste fonctionnera.
+Le Worker du traitement (`wrangler.cron.recette.toml`) garde `CF_ZONE_ID` vide tant
+qu'on n'éprouve pas les domaines personnalisés : la console le dira et tout le reste
+fonctionnera.
 
 ## 3. Le schéma et les données
 
@@ -78,14 +78,19 @@ l'appliquer par accident.
 
 ```bash
 npm run build
-npx wrangler pages deploy dist --project-name bebess-recette
+npx wrangler deploy -c wrangler.recette.toml                 # le site : un Worker avec ses fichiers statiques
 
-npx wrangler deploy -c wrangler.cron.recette.toml
-npx wrangler secret put SCW_SECRET_KEY  -c wrangler.cron.recette.toml   # idem SCW_PROJECT_ID, MAIL_FROM
+npx wrangler deploy -c wrangler.cron.recette.toml            # le traitement quotidien
+npx wrangler secret put SCW_SECRET_KEY  -c wrangler.recette.toml        # secrets du Worker du site ; idem SCW_PROJECT_ID, MAIL_FROM
+npx wrangler secret put SCW_SECRET_KEY  -c wrangler.cron.recette.toml   # et ceux du traitement
 ```
 
+`npx wrangler deploy --dry-run -c wrangler.recette.toml` vérifie la configuration sans
+rien publier. Le build doit avoir écrit `dist/.assetsignore` (il contient `_worker.js`).
+
 Pour lire les liens de connexion sans configurer Scaleway, poser
-`MAIL_DRIVER = "console"` sous `[vars]` du fichier de recette : le pilote refuse de
+`MAIL_DRIVER = "console"` sous `[vars]` du fichier de recette du site (le modèle du
+traitement l'a déjà) : le pilote refuse de
 s'exécuter hors de `localhost`, donc en recette **aucun courriel ne partira** et la
 panne sera visible dans les journaux. C'est le comportement voulu — pour éprouver
 un vrai envoi, il faut un domaine Scaleway de recette.
@@ -99,7 +104,9 @@ npx wrangler dev -c wrangler.cron.recette.toml --test-scheduled
 curl "http://localhost:8787/__scheduled"        # le traitement quotidien, à la main
 ```
 
-Puis, sur le site déployé : se connecter avec `editeur@demo.local`, ouvrir `/admin`,
+Puis, sur le site déployé : se connecter avec `editeur@demo.local` (le pilote
+`console` n'envoie aucun lien hors `localhost` : sans courriel réel, poser une session
+à la main, voir `chantier/RECETTE-E2E.md` étape 4), ouvrir `/admin`,
 vérifier que les deux cabinets du seed apparaissent avec leurs encours et leur date
 d'arrêté.
 

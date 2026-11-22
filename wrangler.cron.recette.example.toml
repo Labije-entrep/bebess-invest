@@ -1,0 +1,30 @@
+# MODÈLE de configuration du traitement quotidien en RECETTE. Versionné, sans identifiant.
+# Le copier en `wrangler.cron.recette.toml` (jamais versionné), puis remplacer `A_REMPLIR` par le MÊME database_id que le site de
+# recette. Mode d'emploi : RECETTE.md §2.
+#
+# Pas de bloc R2, comme pour le site de recette (voir wrangler.recette.example.toml) : sans liaison `FICHIERS`, les travaux qui
+# écrivent des fichiers (factures en PDF) ou qui purgent le bucket n'aboutissent pas ; les autres travaux du traitement tournent.
+name = "bebess-traitement-recette"
+main = "src/cron.ts"
+compatibility_date = "2026-11-01"
+workers_dev = false
+
+# 03:00 UTC, tous les jours. En recette on le déclenche surtout à la main (--test-scheduled).
+[triggers]
+crons = ["0 3 * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bebess-recette"
+database_id = "A_REMPLIR"
+
+# Pilote de courriel : « console » n'envoie rien (il refuse de tourner hors localhost). Pour éprouver un vrai envoi, passer à
+# « scaleway » et poser les secrets du Worker. CF_ZONE_ID reste vide tant qu'on n'éprouve pas les domaines personnalisés.
+[vars]
+MAIL_DRIVER = "console"
+CF_ZONE_ID = ""
+
+# Le code partagé lit `import.meta.env` (Vite, côté site) : ici il n'y a pas de Vite.
+[define]
+"import.meta.env.DEV" = "false"
+"import.meta.env.PROD" = "true"

@@ -4,6 +4,7 @@ import Gestion from '../../layouts/Gestion.astro';
 import { contexte, viewersResumes, dernierImport, seuilArrete } from '../../lib/gestion';
 import { seuilsDe } from '../../lib/suivi';
 import { euros, dateCourte } from '../../lib/format';
+import { signeBp, teinte } from '../../lib/espace';
 import { urlLogoCabinet, MESSAGES_REFUS } from '../../lib/fichiers';
 import { EXPORT_COMPLET_CABINET, aLeRole } from '../../lib/roles';
 
@@ -16,6 +17,7 @@ const joursArrete = (await seuilsDe(c.db, c.tenant.id)).arrete; // réglage « a
 const seuil = seuilArrete(joursArrete);
 // Rappel calculé au chargement : viewers actifs dont l'arrêté dépasse le seuil. Ni tâche planifiée, ni e-mail.
 const enRetard = viewers.filter((v) => v.actif === 1 && (!v.arrete || v.arrete < seuil));
+const aDiverger = viewers.filter((v) => v.actif === 1 && v.divergence);
 const encours =viewers.reduce((s, v) => s + v.encours, 0);
 const actifs = viewers.filter((v) => v.actif === 1).length;
 const arretes = viewers.map((v) => v.arrete).filter((d): d is string => !!d).sort();
@@ -43,6 +45,21 @@ const MSG_LOGO: Record<string, string> = { ok: 'Logo du cabinet enregistré.', r
     </div>
   )}
 
+  {aDiverger.length > 0 && (
+    <div class="info alerte" role="status">
+      <strong>{aDiverger.length} viewer{aDiverger.length > 1 ? 's' : ''} dont le dernier point d'historique diffère des enveloppes</strong> :
+      l'encours ci-dessous suit les enveloppes, pas le point.
+      <ul>
+        {aDiverger.map((v) => (
+          <li>
+            <a href={`/gestionnaire/viewers/${encodeURIComponent(v.id)}`}>{v.nom}</a>
+            {' '}— point au {dateCourte(v.divergence!.date)} : {euros(v.divergence!.pointCents)}, enveloppes : {euros(v.divergence!.enveloppesCents)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )}
+
   <div class="kpis">
     <div class="kpi"><span class="etiquette">Encours suivis</span><span class="chiffre">{euros(encours)}</span></div>
     <div class="kpi"><span class="etiquette">Viewers</span><span class="chiffre">{viewers.length}</span></div>
@@ -58,13 +75,24 @@ const MSG_LOGO: Record<string, string> = { ok: 'Logo du cabinet enregistré.', r
       <div class="defile">
         <table class="table">
           <thead>
-            <tr><th>Nom</th><th class="num">Encours</th><th>Arrêté au</th><th>Accès</th></tr>
+            <tr><th>Nom</th><th class="num">Encours</th><th class="num">Perf. du mois</th><th>Arrêté au</th><th>Accès</th></tr>
           </thead>
           <tbody>
             {viewers.map((v) => (
               <tr>
                 <td><a href={`/gestionnaire/viewers/${encodeURIComponent(v.id)}`}>{v.nom}</a></td>
-                <td class="num">{euros(v.encours)}</td>
+                <td class="num">
+                  {euros(v.encours)}
+                  {v.divergence && (
+                    <>
+                      {' '}<a class="perime" href={`/gestionnaire/viewers/${encodeURIComponent(v.id)}`} title={`Le dernier point d'historique (${euros(v.divergence.pointCents)} au ${dateCourte(v.divergence.date)}) diffère des enveloppes.`}>⚠ écart</a>
+                    </>
+                  )}
+                  {v.nbEnveloppes === 0 && (
+                    <>{' '}<a class="perime" href={`/gestionnaire/viewers/${encodeURIComponent(v.id)}?onglet=arrete`}>aucune enveloppe</a></>
+                  )}
+                </td>
+                <td class={`num ${teinte(v.perfBp)}`}>{v.perfBp === null ? '—' : signeBp(v.perfBp)}</td>
                 <td class={!v.arrete || v.arrete < seuil ? 'perime' : undefined}>{v.arrete ? dateCourte(v.arrete) : 'Aucun'}</td>
                 <td>{v.actif === 1 ? 'Actif' : 'Suspendu'}</td>
               </tr>

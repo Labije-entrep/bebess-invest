@@ -190,7 +190,7 @@ export function troisCabinets(db: BaseTest): Record<Cle, Cabinet> {
 /** Le cabinet de l'éditeur : son compte `editeur` est hébergé chez lui, sans contrat. */
 export function cabinetEditeur(db: BaseTest): { id: string; hote: string; editeur: Compte } {
   const id = 'tenant-editeur';
-  poserTenant(db, id, 'BeBess’Invest', 'editeur.test');
+  poserTenant(db, id, 'Labije Cab', 'editeur.test');
   return { id, hote: 'editeur.test', editeur: nouveauCompte(db, id, 'editeur', 'editeur@editeur.test') };
 }
 
