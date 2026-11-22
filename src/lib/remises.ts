@@ -22,11 +22,11 @@ import type { Contrat } from './contrat';
 import { contratEnCours } from './contrat';
 import { dateCourte } from './format';
 import { EVENEMENT, requeteEvenement, type Acteur } from './journal';
-import { calculerCreditProrata, periodeAu, plafondRemise, totauxDuBon, type CodeLigne, type LigneBon, type RemisePonctuelle } from './tarif';
+import { calculerCreditProrata, ligneLibreAgregee, periodeAu, plafondRemise, totauxDuBon, type CodeLigne, type LigneBon, type RemisePonctuelle } from './tarif';
 
 const maintenant = (): string => new Date().toISOString();
 
-export const CODES_LIGNE: CodeLigne[] = ['socle', 'pilotage', 'site', 'acces_sup', 'installation'];
+export const CODES_LIGNE: CodeLigne[] = ['socle', 'pilotage', 'site', 'acces_sup', 'installation', 'libre'];
 
 export type CodeRemise = 'interdit' | 'introuvable' | 'pas_brouillon' | 'ligne_inconnue' | 'montant_invalide' | 'depasse_ligne' | 'motif_requis' | 'automatique';
 export type ResultatRemise = { ok: true; id: string } | { ok: false; code: CodeRemise; plafond?: number };
@@ -91,28 +91,50 @@ export const enRemises = (rows: Pick<RemiseLigne, 'code_ligne' | 'montant' | 'or
 
 // ---------------------------------------------------------------- les remises posées à la main
 
-interface BonLu {
+export interface BonLu {
   id: string;
   contrat_id: string;
   statut: string;
+  /** Les lignes du bon ET, s'il en a, ses lignes libres rassemblées en une seule ligne de code `libre` (tarif.ts, ligneLibreAgregee). */
   lignes: LigneBon[];
   remise_taux: number;
 }
 
-async function lireBon(db: Base, tenantId: string, bonId: string): Promise<BonLu | null> {
+export interface LigneLibre {
+  id: string;
+  bon_id: string;
+  libelle: string;
+  quantite: number;
+  prix_unitaire: number;
+  motif: string | null;
+  cree_le: string;
+}
+
+/** Les lignes libres d'un bon, dans l'ordre de pose. */
+export async function lignesLibresDuBon(db: Base, tenantId: string, bonId: string): Promise<LigneLibre[]> {
+  const { results } = await db
+    .prepare('SELECT id, bon_id, libelle, quantite, prix_unitaire, motif, cree_le FROM ligne_libre WHERE tenant_id = ? AND bon_id = ? ORDER BY cree_le, id')
+    .bind(tenantId, bonId)
+    .all<LigneLibre>();
+  return results;
+}
+
+export async function lireBon(db: Base, tenantId: string, bonId: string): Promise<BonLu | null> {
   const b = await db
     .prepare('SELECT id, contrat_id, statut, lignes, remise_taux FROM bon_a_facturer WHERE id = ? AND tenant_id = ?')
     .bind(bonId, tenantId)
     .first<{ id: string; contrat_id: string; statut: string; lignes: string; remise_taux: number }>();
-  return b ? { ...b, lignes: JSON.parse(b.lignes) as LigneBon[] } : null;
+  if (!b) return null;
+  return { ...b, lignes: [...(JSON.parse(b.lignes) as LigneBon[]), ...ligneLibreAgregee(await lignesLibresDuBon(db, tenantId, bonId))] };
 }
 
-/** La requête qui remet les totaux du bon d'aplomb à partir de ses lignes et de la liste FINALE de ses remises. Gardée par le statut. */
-function requeteTotaux(db: Base, bon: BonLu, finales: RemisePonctuelle[]): Requete {
+/** La requête qui remet les totaux du bon d'aplomb à partir de ses lignes (libres comprises) et de la liste FINALE de ses remises. Gardée par le statut. */
+export function requeteTotaux(db: Base, bon: BonLu, finales: RemisePonctuelle[]): Requete {
   const t = totauxDuBon(bon.lignes, bon.remise_taux, finales);
+  const libres = bon.lignes.filter((l) => l.code === 'libre').reduce((s, l) => s + l.montant, 0);
   return db
-    .prepare("UPDATE bon_a_facturer SET remise_ponctuelle_montant = ?, remise_montant = ?, total_ht = ? WHERE id = ? AND statut = 'brouillon'")
-    .bind(t.remise_ponctuelle_montant, t.remise_montant, t.total_ht, bon.id);
+    .prepare("UPDATE bon_a_facturer SET remise_ponctuelle_montant = ?, remise_montant = ?, lignes_libres_ht = ?, total_ht = ? WHERE id = ? AND statut = 'brouillon'")
+    .bind(t.remise_ponctuelle_montant, t.remise_montant, libres, t.total_ht, bon.id);
 }
 
 const motifNet = (m: string): string => m.trim().replace(/\s+/g, ' ').slice(0, 200);

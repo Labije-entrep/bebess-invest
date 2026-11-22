@@ -19,10 +19,10 @@ import { cleDeFacture, cleFacture, deposer, type Bucket, type Depot } from './fi
 import { identiteFacturation, identiteManquante, type ChampIdentite, type IdentiteFacturation } from './identite';
 import { ACCES_FACTURABLES, enSql } from './roles';
 import {
-  calculerBon, calculerComplementaire, calculerTva, motifRemise, periodeAu, periodesDebutant, retenirRemises, tauxParrainage, tauxRemise, totauxDuBon, TVA_TAUX,
+  calculerBon, calculerComplementaire, calculerTva, ligneLibreAgregee, montantLigneLibre, motifRemise, periodeAu, periodesDebutant, retenirRemises, tauxParrainage, tauxRemise, totauxDuBon, TVA_TAUX,
   type LigneBon, type Periode,
 } from './tarif';
-import { creditsEnAttente, enRemises, remisesDuBon, type RemiseLigne } from './remises';
+import { creditsEnAttente, enRemises, lignesLibresDuBon, remisesDuBon, type LigneLibre, type RemiseLigne } from './remises';
 
 /** Un bon est généré à l'avance : celui dont la date anniversaire tombe dans les 30 jours. */
 export const JOURS_AVANT_ANNIVERSAIRE = 30;
@@ -107,16 +107,19 @@ type EtatBon = 'cree' | 'actualise' | 'inchange' | 'fige';
 async function poserBon(db: Base, c: Contrat, type: 'periode' | 'complementaire' | 'installation', p: Periode, calc: Calcul, acces: number): Promise<EtatBon> {
   const lignes = JSON.stringify(calc.lignes);
   const existant = await db
-    .prepare('SELECT id, statut, periode_fin, acces_facturables, lignes, recurrent_ht, remise_taux, remise_montant, remise_ponctuelle_montant, remise_motif, tva_taux, total_ht FROM bon_a_facturer WHERE contrat_id = ? AND periode_debut = ? AND type = ?')
+    .prepare('SELECT id, statut, periode_fin, acces_facturables, lignes, recurrent_ht, remise_taux, remise_montant, remise_ponctuelle_montant, lignes_libres_ht, remise_motif, tva_taux, total_ht FROM bon_a_facturer WHERE contrat_id = ? AND periode_debut = ? AND type = ?')
     .bind(c.id, p.debut, type)
-    .first<{ id: string; statut: string; periode_fin: string; acces_facturables: number; lignes: string; recurrent_ht: number; remise_taux: number; remise_montant: number; remise_ponctuelle_montant: number; remise_motif: string | null; tva_taux: number; total_ht: number }>();
+    .first<{ id: string; statut: string; periode_fin: string; acces_facturables: number; lignes: string; recurrent_ht: number; remise_taux: number; remise_montant: number; remise_ponctuelle_montant: number; lignes_libres_ht: number; remise_motif: string | null; tva_taux: number; total_ht: number }>();
   if (existant && existant.statut !== 'brouillon') return 'fige';
 
   // Les remises ponctuelles SURVIVENT au recalcul : celles que le brouillon porte déjà (posées à la main, ou crédits déjà rattachés) sont
   // relues dans leur table et réappliquées. Un crédit de prorata en attente se rattache au bon PÉRIODIQUE dont la période commence à
   // (ou après) la date anniversaire de la sienne, dans la limite de ce qu'il reste à remiser sur la ligne « accès supplémentaires » ; le
   // surplus reste en attente pour le bon d'après.
+  // Les lignes libres (22/11/2026) sont stockées à part (table ligne_libre) pour la même raison : le recalcul ne les efface jamais ; leur somme
+  // est relue et ajoutée au total, hors du récurrent (la remise en pourcentage ne s'y applique pas).
   const portees: RemiseLigne[] = existant ? await remisesDuBon(db, c.tenant_id, existant.id) : [];
+  const libres = existant ? ligneLibreAgregee(await lignesLibresDuBon(db, c.tenant_id, existant.id)) : [];
   const rattacher: { credit: RemiseLigne; part: number }[] = [];
   if (type === 'periode') {
     // Un crédit s'impute d'abord sur la ligne « accès supplémentaires », puis sur le reste du récurrent (tarif.ts, `repli`) : ce qu'un bon peut
@@ -130,7 +133,7 @@ async function poserBon(db: Base, c: Contrat, type: 'periode' | 'complementaire'
     }
   }
   const toutes = [...enRemises(portees), ...rattacher.map((r) => ({ code: r.credit.code_ligne, montant: r.part, repli: true }))];
-  const t = totauxDuBon(calc.lignes, calc.remise_taux, toutes);
+  const t = totauxDuBon([...calc.lignes, ...libres], calc.remise_taux, toutes);
   calc = { ...calc, remise_montant: t.remise_montant, remise_ponctuelle_montant: t.remise_ponctuelle_montant, total_ht: t.total_ht };
 
   let etat: EtatBon;
@@ -162,7 +165,7 @@ async function poserBon(db: Base, c: Contrat, type: 'periode' | 'complementaire'
           `INSERT INTO bon_a_facturer (id, tenant_id, contrat_id, type, periode_debut, periode_fin, statut, acces_facturables, lignes, recurrent_ht,
                                        remise_taux, remise_montant, remise_ponctuelle_montant, remise_motif, tva_taux, total_ht, cree_le)
            VALUES (?, ?, ?, ?, ?, ?, 'brouillon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(contrat_id, periode_debut) DO NOTHING`,
+           ON CONFLICT(contrat_id, periode_debut) WHERE type <> 'prestation' DO NOTHING`,
         )
         .bind(bonId, c.tenant_id, c.id, type, p.debut, p.fin, acces, lignes, calc.recurrent_ht, calc.remise_taux, calc.remise_montant, calc.remise_ponctuelle_montant ?? 0, calc.remise_motif, TVA_TAUX, calc.total_ht, new Date().toISOString()),
       requeteEvenement(
@@ -239,7 +242,7 @@ export async function genererBons(ctx: Contexte): Promise<RapportBons> {
     // après, n'aura pas lieu et ne se facture pas. La période en cours va à son terme, sans remboursement.
     const periodes = periodesDebutant(debut, c.periodicite, ctx.jour, fenetre).filter((p) => c.resiliation_effet_le === null || p.debut < c.resiliation_effet_le);
     // Le bon d'installation (posé à la signature) n'est pas un bon de période : il ne dispense pas du premier, celui de la période en cours.
-    const aUnBon = await ctx.db.prepare("SELECT 1 AS ok FROM bon_a_facturer WHERE contrat_id = ? AND type <> 'installation' LIMIT 1").bind(c.id).first();
+    const aUnBon = await ctx.db.prepare("SELECT 1 AS ok FROM bon_a_facturer WHERE contrat_id = ? AND type NOT IN ('installation', 'prestation') LIMIT 1").bind(c.id).first();
     if (!aUnBon) {
       const courante = periodeAu(debut, c.periodicite, ctx.jour);
       if (courante && !periodes.some((p) => p.debut === courante.debut)) periodes.unshift(courante);
@@ -432,7 +435,7 @@ export interface BonsApresEffet {
  */
 export async function traiterBonsApresEffet(db: Base, tenantId: string, contratId: string, effet: string, acteur: Acteur): Promise<BonsApresEffet> {
   const { results } = await db
-    .prepare("SELECT id FROM bon_a_facturer WHERE contrat_id = ? AND tenant_id = ? AND statut <> 'annulee' AND periode_debut >= ? ORDER BY periode_debut, id")
+    .prepare("SELECT id FROM bon_a_facturer WHERE contrat_id = ? AND tenant_id = ? AND statut <> 'annulee' AND type <> 'prestation' AND periode_debut >= ? ORDER BY periode_debut, id")
     .bind(contratId, tenantId, effet)
     .all<{ id: string }>();
   const rapport: BonsApresEffet = { annules: 0, emis: 0 };
@@ -463,7 +466,7 @@ export async function traiterBonsApresEffet(db: Base, tenantId: string, contratI
  */
 export async function signalerBonsAnnulesParPreavis(db: Base, tenantId: string, contratId: string, effet: string): Promise<number> {
   const { results } = await db
-    .prepare("SELECT periode_debut, periode_fin, total_ht FROM bon_a_facturer WHERE contrat_id = ? AND tenant_id = ? AND statut = 'annulee' AND numero IS NULL AND periode_debut >= ? ORDER BY periode_debut")
+    .prepare("SELECT periode_debut, periode_fin, total_ht FROM bon_a_facturer WHERE contrat_id = ? AND tenant_id = ? AND statut = 'annulee' AND numero IS NULL AND type <> 'prestation' AND periode_debut >= ? ORDER BY periode_debut")
     .bind(contratId, tenantId, effet)
     .all<{ periode_debut: string; periode_fin: string; total_ht: number }>();
   for (const b of results) {
@@ -514,11 +517,14 @@ export async function signalerRevues(ctx: Contexte): Promise<RemiseARevoir[]> {
 
 // ---------------------------------------------------------------- émettre, annuler
 
+/** Les types de bon : la période, le complément au prorata, l'installation, et la prestation ponctuelle (22/11/2026, sans récurrent). */
+export type TypeBon = 'periode' | 'complementaire' | 'installation' | 'prestation';
+
 export interface Bon {
   id: string;
   tenant_id: string;
   contrat_id: string;
-  type: 'periode' | 'complementaire' | 'installation';
+  type: TypeBon;
   periode_debut: string;
   periode_fin: string;
   statut: 'brouillon' | 'emise' | 'annulee';
@@ -534,7 +540,7 @@ export function bonDe(db: Base, tenantId: string, bonId: string): Promise<Bon | 
   return db.prepare(`SELECT ${COLONNES_BON} FROM bon_a_facturer WHERE id = ? AND tenant_id = ?`).bind(bonId, tenantId).first<Bon>();
 }
 
-export type CodeBon = 'interdit' | 'introuvable' | 'pas_brouillon' | 'deja_annule' | 'pas_annulable' | 'identite_incomplete' | 'pas_emis';
+export type CodeBon = 'interdit' | 'introuvable' | 'pas_brouillon' | 'deja_annule' | 'pas_annulable' | 'identite_incomplete' | 'pas_emis' | 'prestation_vide';
 export type ResultatBon = { ok: true; bon: Bon } | { ok: false; code: CodeBon };
 export const MESSAGES_BON: Record<CodeBon, string> = {
   interdit: 'Seul l’éditeur émet ou annule un bon.',
@@ -544,6 +550,7 @@ export const MESSAGES_BON: Record<CodeBon, string> = {
   pas_annulable: 'Ce bon ne peut pas être annulé.',
   identite_incomplete: 'L’identité de facturation du cabinet est incomplète : le bon n’est pas émis. Complétez la fiche du cabinet, ou confirmez l’émission malgré le manque.',
   pas_emis: 'Seul un bon émis reçoit le PDF de sa facture.',
+  prestation_vide: 'Un bon de prestation s’émet avec au moins une ligne : ajoutez-en une avant de l’émettre.',
 };
 
 // L'année et l'instant se lisent DANS la requête (`strftime('now')` est constant pendant une instruction) : le numéro et la date
@@ -568,6 +575,8 @@ export async function emettreBon(
   const avant = await bonDe(db, tenantId, bonId);
   if (!avant) return { ok: false, code: 'introuvable' };
   if (avant.statut !== 'brouillon') return { ok: false, code: 'pas_brouillon' };
+  // Un bon de prestation n'a que ses lignes libres : vide, il n'y a rien à numéroter.
+  if (avant.type === 'prestation' && (await lignesLibresDuBon(db, tenantId, bonId)).length === 0) return { ok: false, code: 'prestation_vide' };
   // Un bon ne s'émet pas incomplet SANS QU'ON LE VOIE : il faut le confirmer, et l'événement garde ce qui manquait.
   const identite = await identiteFacturation(db, tenantId);
   const manque = identite ? identiteManquante(identite) : [];
@@ -654,6 +663,7 @@ export const LIBELLES_LIGNE: Record<LigneBon['code'], string> = {
   site: 'Module Site vitrine',
   acces_sup: 'Accès supplémentaires',
   installation: 'Frais d’installation',
+  libre: 'Lignes libres',
 };
 
 /** Tout ce qu'il faut pour taper la facture sans rien chercher ailleurs. */
@@ -661,7 +671,7 @@ export interface BonComplet {
   id: string;
   tenant_id: string;
   contrat_id: string;
-  type: 'periode' | 'complementaire' | 'installation';
+  type: TypeBon;
   statut: 'brouillon' | 'emise' | 'annulee';
   numero: string | null;
   emis_le: string | null;
@@ -679,6 +689,9 @@ export interface BonComplet {
   /** Les remises ponctuelles du bon, et leur somme (déjà déduite du total). */
   remises_ponctuelles: RemisePonctuelleBon[];
   remise_ponctuelle_montant: number;
+  /** Les lignes libres du bon (22/11/2026), chacune avec son montant (quantité × prix unitaire), et leur somme brute (comprise dans le total). */
+  lignes_libres: (LigneLibre & { montant: number })[];
+  lignes_libres_ht: number;
   total_ht: number;
   tva_taux: number;
   tva_montant: number;
@@ -689,7 +702,7 @@ export interface BonComplet {
 }
 
 interface LigneSql {
-  id: string; tenant_id: string; contrat_id: string; type: 'periode' | 'complementaire' | 'installation'; statut: 'brouillon' | 'emise' | 'annulee';
+  id: string; tenant_id: string; contrat_id: string; type: TypeBon; statut: 'brouillon' | 'emise' | 'annulee';
   numero: string | null; emis_le: string | null; annule_le: string | null; periode_debut: string; periode_fin: string; periodicite: string;
   facture_cle: string | null; acces_facturables: number; lignes: string; recurrent_ht: number; remise_taux: number; remise_montant: number;
   remise_motif: string | null; remise_ponctuelle_montant: number; total_ht: number; tva_taux: number;
@@ -714,10 +727,12 @@ export async function bonComplet(db: Base, bonId: string): Promise<BonComplet | 
   const identite: IdentiteFacturation = {
     raison_sociale: r.raison_sociale, siren: r.siren, adresse_facturation: r.adresse_facturation, contact_facturation: r.contact_facturation,
   };
-  const brutes = JSON.parse(r.lignes) as LigneBon[];
+  const libres = (await lignesLibresDuBon(db, r.tenant_id, r.id)).map((l) => ({ ...l, montant: montantLigneLibre(l.quantite, l.prix_unitaire) }));
+  // Les remises ponctuelles retiennent leur part sur les lignes du bon ET sur les lignes libres rassemblées (code `libre`).
+  const brutes = [...(JSON.parse(r.lignes) as LigneBon[]), ...ligneLibreAgregee(libres)];
   const portees = await remisesDuBon(db, r.tenant_id, r.id);
   const retenues = retenirRemises(brutes, enRemises(portees));
-  const lignes: LigneBonComplet[] = brutes.map((l) => ({ ...l, libelle: LIBELLES_LIGNE[l.code] ?? l.code }));
+  const lignes: LigneBonComplet[] = brutes.filter((l) => l.code !== 'libre').map((l) => ({ ...l, libelle: LIBELLES_LIGNE[l.code] ?? l.code }));
   const remises_ponctuelles: RemisePonctuelleBon[] = portees.map((x, i) => ({
     id: x.id, code_ligne: x.code_ligne, libelle: LIBELLES_LIGNE[x.code_ligne] ?? x.code_ligne, montant: retenues[i], motif: x.motif, origine: x.origine,
   }));
@@ -725,7 +740,7 @@ export async function bonComplet(db: Base, bonId: string): Promise<BonComplet | 
     id: r.id, tenant_id: r.tenant_id, contrat_id: r.contrat_id, type: r.type, statut: r.statut, numero: r.numero, emis_le: r.emis_le,
     annule_le: r.annule_le, periode_debut: r.periode_debut, periode_fin: r.periode_fin, periodicite: r.periodicite, facture_cle: r.facture_cle,
     acces_facturables: r.acces_facturables, lignes, recurrent_ht: r.recurrent_ht, remise_taux: r.remise_taux, remise_montant: r.remise_montant,
-    remise_motif: r.remise_motif, remises_ponctuelles, remise_ponctuelle_montant: r.remise_ponctuelle_montant, total_ht: r.total_ht, ...calculerTva(r.total_ht, r.tva_taux), identite, manque: identiteManquante(identite),
+    remise_motif: r.remise_motif, remises_ponctuelles, remise_ponctuelle_montant: r.remise_ponctuelle_montant, lignes_libres: libres, lignes_libres_ht: libres.reduce((n, l) => n + l.montant, 0), total_ht: r.total_ht, ...calculerTva(r.total_ht, r.tva_taux), identite, manque: identiteManquante(identite),
   };
 }
 
@@ -733,7 +748,7 @@ export interface LigneListeBon {
   id: string;
   tenant_id: string;
   cabinet: string;
-  type: 'periode' | 'complementaire' | 'installation';
+  type: TypeBon;
   statut: 'brouillon' | 'emise' | 'annulee';
   periode_debut: string;
   periode_fin: string;

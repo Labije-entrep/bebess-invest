@@ -17,7 +17,13 @@ import type { Role } from './db';
 import { ACCES_FACTURABLES } from './roles.ts';
 
 export type Periodicite = 'mensuelle' | 'annuelle';
-export type CodeLigne = 'socle' | 'pilotage' | 'site' | 'acces_sup' | 'installation';
+export type CodeLigne = 'socle' | 'pilotage' | 'site' | 'acces_sup' | 'installation' | 'libre';
+
+/**
+ * Les lignes qui ne sont pas du récurrent : les frais d'installation et les lignes libres ponctuelles (22/11/2026). La remise commerciale
+ * en pourcentage ne s'y applique jamais ; une remise ponctuelle peut les viser, sans dépasser leur montant.
+ */
+export const HORS_RECURRENT: readonly CodeLigne[] = ['installation', 'libre'];
 
 /** Le plafond de la remise, et celui de la remise de parrainage seule : 50 %. */
 export const REMISE_MAX = 5000;
@@ -359,7 +365,7 @@ export function retenirRemises(lignes: LigneBon[], remises: RemisePonctuelle[]):
     let a_prendre = r.montant - retenues[i];
     for (const [code, dispo] of reste) {
       if (a_prendre <= 0) break;
-      if (code === 'installation' || dispo <= 0) continue;
+      if (HORS_RECURRENT.includes(code) || dispo <= 0) continue;
       const pris = Math.min(a_prendre, dispo);
       reste.set(code, dispo - pris);
       retenues[i] += pris;
@@ -385,6 +391,18 @@ export interface TotauxBon {
   total_ht: number;
 }
 
+/** Le montant d'une ligne libre : quantité × prix unitaire, en centimes entiers (aucun flottant). */
+export const montantLigneLibre = (quantite: number, prix_unitaire: number): number => quantite * prix_unitaire;
+
+/**
+ * Les lignes libres d'un bon, rassemblées en UNE ligne de calcul de code `libre` (nulle si elles n'ont aucun montant) : c'est sous cette
+ * forme que `totauxDuBon` et les remises ponctuelles les voient. Fonction pure.
+ */
+export const ligneLibreAgregee = (libres: { quantite: number; prix_unitaire: number }[]): LigneBon[] => {
+  const montant = libres.reduce((s, l) => s + montantLigneLibre(l.quantite, l.prix_unitaire), 0);
+  return montant > 0 ? [{ code: 'libre', quantite: 1, prix_unitaire: montant, mois: 1, montant }] : [];
+};
+
 /**
  * Les totaux d'un bon à partir de ses lignes, du taux de la remise en pourcentage et des remises ponctuelles. C'est la SEULE fonction qui
  * additionne : le bon périodique, le complémentaire et celui d'installation (une ligne, sans remise en pourcentage) passent par elle, au
@@ -392,11 +410,11 @@ export interface TotauxBon {
  */
 export function totauxDuBon(lignes: LigneBon[], remise_taux: number, remises: RemisePonctuelle[] = []): TotauxBon {
   const retenues = retenirRemises(lignes, remises);
-  const recurrent_ht = lignes.filter((l) => l.code !== 'installation').reduce((s, l) => s + l.montant, 0);
-  const installation = lignes.filter((l) => l.code === 'installation').reduce((s, l) => s + l.montant, 0);
+  const recurrent_ht = lignes.filter((l) => !HORS_RECURRENT.includes(l.code)).reduce((s, l) => s + l.montant, 0);
+  const installation = lignes.filter((l) => HORS_RECURRENT.includes(l.code)).reduce((s, l) => s + l.montant, 0);
   let ponct_rec = 0;
   let ponct_inst = 0;
-  remises.forEach((r, i) => (r.code === 'installation' ? (ponct_inst += retenues[i]) : (ponct_rec += retenues[i])));
+  remises.forEach((r, i) => (HORS_RECURRENT.includes(r.code) ? (ponct_inst += retenues[i]) : (ponct_rec += retenues[i])));
   const remise_montant = appliquer(recurrent_ht - ponct_rec, remise_taux);
   return {
     recurrent_ht,
