@@ -18,6 +18,8 @@ Votre rôle compte aussi : l'**associé** voit tout, y compris les réglages et 
 
 Il n'y a pas de mot de passe. Sur la page de connexion de votre cabinet, saisissez votre adresse e-mail et cliquez sur **« Recevoir un lien »**. Vous recevez un lien à usage unique. Ouvrez-le, puis confirmez : vous arrivez sur votre tableau de bord. Le lien expire au bout de quelques minutes ; vous pouvez en redemander un à tout moment.
 
+L'adresse de connexion de votre cabinet est choisie avec l'éditeur ; si elle change, vous (et vos clients) devrez vous reconnecter une fois. Le lien reçu par courriel porte toujours la bonne adresse.
+
 Pour vous déconnecter, utilisez **« Déconnexion »** en haut de page.
 
 ## 2. Le tableau de bord

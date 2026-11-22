@@ -35,8 +35,9 @@ Principe : **les visiteurs cherchent le cabinet par son nom**, donc l'adresse du
 - [ ] **Montages 1 et 2** : le sous-domaine de l'éditeur reste l'hôte d'origine ; dans la rubrique « Domaines » de la fiche, déclarer le nom d'hôte du cabinet ; la console affiche l'enregistrement **CNAME** à poser.
 - [ ] Le cabinet (ou son prestataire) pose cet enregistrement CNAME chez son hébergeur de noms de domaine, et garde son site actuel sur une autre adresse tant que la bascule n'est pas décidée.
 - [ ] **Preuve** : le nom d'hôte est « validé » dans la console (nécessite le jeton Cloudflare de la plateforme), et le site s'ouvre en https à cette adresse. Un nom non validé n'ouvre rien.
-- [ ] Prévenir le cabinet : **changer d'adresse déconnecte ses clients**. L'adresse de l'espace client se choisit une fois pour toutes.
-- [ ] Point ouvert : quand le site est joint par deux adresses, ses pages existent aux deux (voir le dossier de livraison en production, section 9).
+- [ ] **Poser les adresses** (fiche du cabinet › « Domaines » › « Adresses du cabinet ») une fois le nom validé : « Adresse du site public » = `www.cabinet.fr` (montages 1 et 2) ; « Adresse de connexion et d'espace » = `www.cabinet.fr` (montage 1 seulement). Tant que rien n'est choisi, tout reste à l'hôte d'origine, sans redirection.
+- [ ] Prévenir le cabinet : **changer l'adresse de connexion et d'espace déconnecte ses clients et gestionnaires** (la session est liée à l'adresse) ; la console le rappelle avant l'enregistrement. À choisir une fois pour toutes, avant l'ouverture aux clients.
+- [ ] **Contrôler** : l'ancienne adresse (celle de l'éditeur) redirige vers le site du cabinet (page publique) et vers l'adresse de connexion choisie (`/connexion`) ; un courriel de lien de connexion porte la bonne adresse ; la canonique des pages publiques est celle du site du cabinet.
 
 ## 4. Donner l'accès au gestionnaire
 - [ ] Le gestionnaire ouvre son lien de première connexion (nécessite le service de courriel configuré).

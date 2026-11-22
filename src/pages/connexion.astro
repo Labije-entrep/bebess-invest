@@ -2,6 +2,7 @@
 import Connexion from '../layouts/Connexion.astro';
 import { accueilDuRole, demanderLien } from '../lib/auth';
 import { creerMailer, envDe } from '../lib/mail';
+import { lienConnexion } from '../lib/adresses';
 
 if (Astro.locals.utilisateur) {
   return Astro.redirect(accueilDuRole(Astro.locals.utilisateur.role));
@@ -16,8 +17,8 @@ if (Astro.request.method === 'POST') {
     try {
       const jeton = await demanderLien(env.DB, tenant.id, email);
       if (jeton) {
-        const lien = `${Astro.url.origin}/connexion/${jeton}`;
-        await creerMailer(env, Astro.url.hostname).envoyer(
+        const lien = lienConnexion(tenant, Astro.url, jeton);
+        await creerMailer(env, new URL(lien).hostname).envoyer(
           email,
           'Votre lien de connexion',
           `Bonjour,\n\nPour accéder à votre espace, ouvrez ce lien. Il est valable 15 minutes et ne sert qu'une fois :\n\n${lien}\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce message.\n\nLabije Cab`,
