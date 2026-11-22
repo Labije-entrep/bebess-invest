@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { accesCabinet, cabinetDe, declarerDomaine, gardeAdmin, introuvable, retirerDomaine, verifierDomaine } from '../../../../lib/admin';
+import { accesCabinet, cabinetDe, declarerDomaine, enregistrerAdresses, gardeAdmin, introuvable, retirerDomaine, verifierDomaine } from '../../../../lib/admin';
 
 export const prerender = false;
 
@@ -18,6 +18,11 @@ export const POST: APIRoute = async (ctx) => {
     action === 'declarer' ? await declarerDomaine(g.db, g.env, id, hote)
     : action === 'verifier' ? await verifierDomaine(g.db, g.env, id, hote)
     : action === 'retirer' ? await retirerDomaine(g.db, g.env, id, hote)
+    : action === 'adresses'
+      ? await enregistrerAdresses(g.db, id, { id: g.utilisateur.id, role: g.utilisateur.role }, {
+          site: String(f.get('site') ?? '').slice(0, 253),
+          espace: String(f.get('espace') ?? '').slice(0, 253),
+        })
     : null;
   if (!r) return new Response('Action inconnue.', { status: 400 });
   return ctx.redirect(`/admin/cabinets/${encodeURIComponent(id)}?r=${r.code}&ok=${r.ok ? 1 : 0}`, 303);

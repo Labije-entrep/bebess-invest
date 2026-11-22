@@ -5,6 +5,7 @@ import { attributsCabinet } from '../lib/personnalisation';
 import { T, chemin, type Lg } from '../lib/publang';
 import { envDe } from '../lib/mail';
 import { urlLogoCabinet } from '../lib/fichiers';
+import { origineDuSite, pageHorsAdresseDuSite } from '../lib/adresses';
 
 interface Props {
   titre: string;
@@ -15,7 +16,9 @@ const { titre, description = '', langue = 'fr' } = Astro.props;
 const l = T[langue];
 const nom = Astro.locals.tenant?.nom ?? "Labije Cab";
 const logo = Astro.locals.tenant ? await urlLogoCabinet(envDe(Astro.locals).DB, Astro.locals.tenant.id) : null;
-const canonique = Astro.url.origin + Astro.url.pathname;
+// La canonique pointe l'adresse du site public du cabinet, pas l'hôte de la requête ; hors de cette adresse, la page n'est pas indexée.
+const canonique = origineDuSite(Astro.locals.tenant, Astro.url) + Astro.url.pathname;
+const horsAdresse = pageHorsAdresseDuSite(Astro.locals.tenant, Astro.url);
 const liens: [string, string][] = [
   [chemin('approche', langue), l.nav.approche],
   [chemin('parcours', langue), l.nav.parcours],
@@ -33,6 +36,7 @@ const ici = Astro.url.pathname.replace(/\/$/, '');
     <title>{titre}</title>
     {description && <meta name="description" content={description} />}
     <link rel="canonical" href={canonique} />
+    {horsAdresse && <meta name="robots" content="noindex" />}
   </head>
   <body class="pub">
     <header class="pub-haut">

@@ -78,6 +78,8 @@ export const EVENEMENT = {
   EXPORT_COMPLET: 'export_complet',
   CABINET_SUSPENDU: 'cabinet_suspendu',
   CABINET_LEVE: 'cabinet_leve',
+  // 22/11/2026 : les adresses du cabinet (site public, connexion et espace). Des noms d'hôtes avant et après, rien d'autre.
+  ADRESSES_MODIFIEES: 'adresses_modifiees',
 } as const;
 export type TypeEvenement = (typeof EVENEMENT)[keyof typeof EVENEMENT];
 
