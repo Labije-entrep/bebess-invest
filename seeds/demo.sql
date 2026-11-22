@@ -202,9 +202,9 @@ INSERT INTO mouvement (id, viewer_id, date, libelle, enveloppe, montant_cents, s
   ('mvt_1', 'usr_claire', '2026-03-12', 'Versement complémentaire',               'Assurance-vie luxembourgeoise',        5000000, 'execute',  0, 0, 'Fonds crédités sur le contrat.'),
   ('mvt_2', 'usr_claire', '2026-06-20', 'Arbitrage actions vers obligations',     'Compte-titres',                        2000000, 'execute',  0, 0, 'Arbitrage exécuté au cours du jour.'),
   ('mvt_3', 'usr_claire', '2026-09-05', 'Retrait pour travaux',                   'Liquidités et capital-investissement', -1500000, 'execute', 0, 0, 'Virement effectué sur le compte courant.'),
-  ('mvt_4', 'usr_claire', '2026-10-28', 'Versement complémentaire',               'Assurance-vie luxembourgeoise',        3000000, 'en_cours', 1, 2, 'Virement émis, en attente de réception par l''assureur.'),
-  ('mvt_5', 'usr_claire', '2026-11-04', 'Arbitrage obligations vers actions',     'Compte-titres',                        1800000, 'en_cours', 1, 1, 'Ordre transmis par le gestionnaire.'),
-  ('mvt_6', 'usr_claire', '2026-11-10', 'Appel de fonds, capital-investissement', 'Liquidités et capital-investissement', 2500000, 'en_cours', 1, 3, 'Appel reçu, règlement programmé.');
+  ('mvt_4', 'usr_claire', '2026-10-28', 'Versement complémentaire',               'Assurance-vie luxembourgeoise',        3000000, 'chez_etablissement', 1, 2, 'Virement émis, en attente de réception par l''assureur.'),
+  ('mvt_5', 'usr_claire', '2026-11-04', 'Arbitrage obligations vers actions',     'Compte-titres',                        1800000, 'transmis', 1, 1, 'Ordre transmis par le gestionnaire.'),
+  ('mvt_6', 'usr_claire', '2026-11-10', 'Appel de fonds, capital-investissement', 'Liquidités et capital-investissement', 2500000, 'en_preparation', 1, 3, 'Appel reçu, règlement programmé.');
 
 INSERT INTO document (id, viewer_id, titre, categorie, date, cle_fichier, envoye_le) VALUES
   ('doc_1', 'usr_claire', 'Rapport de gestion, troisième trimestre 2026', 'rapport',     '2026-10-15', 'marchand/rapport-2026-t3.pdf',    '2026-10-15T08:30:00Z'),
