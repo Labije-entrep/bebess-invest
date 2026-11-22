@@ -1,5 +1,6 @@
 ---
 import '../styles/app.css';
+import { attributsCabinet } from '../lib/personnalisation';
 
 interface Props {
   titre: string;
@@ -8,7 +9,7 @@ const { titre } = Astro.props;
 ---
 
 <!doctype html>
-<html lang="fr" data-cabinet-theme={Astro.locals.tenant?.theme ?? 'maison'}>
+<html lang="fr" data-cabinet-theme={Astro.locals.tenant?.theme ?? 'maison'} {...attributsCabinet(Astro.locals.tenant?.personnalisation, Astro.locals.tenant?.theme ?? 'maison')}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -17,12 +18,12 @@ const { titre } = Astro.props;
          formulaire et le contrôle d'origine d'Astro rejette la confirmation (403). same-origin n'envoie
          aucun Referer vers l'extérieur : le jeton de l'URL ne fuit toujours pas. -->
     <meta name="referrer" content="same-origin" />
-    <title>{titre} · BeBess'Invest</title>
+    <title>{titre} · Labije Cab</title>
   </head>
   <body>
     <main class="cx">
       <aside class="cx-marque">
-        <a class="cx-logo" href="/">BeBess'Invest</a>
+        <a class="cx-logo" href="/">Labije Cab</a>
         <div>
           <span class="etiquette">Espace client</span>
           <p class="cx-accroche">Votre patrimoine, en toute transparence.</p>

@@ -1,4 +1,4 @@
-# Mode d'emploi du gestionnaire
+# Labije Cab : mode d'emploi du gestionnaire
 
 Ce document explique, pas à pas, comment utiliser votre espace. Vous y retrouvez ce que vous faites au quotidien, et ce que vous pouvez changer sur votre site public. Les captures d'écran seront ajoutées plus tard.
 
@@ -99,6 +99,7 @@ Menu **Réglages**, onglets :
 - **Membres** : l'équipe, avec une couleur par membre.
 - **Accès** : les personnes qui se connectent à votre espace. Créer un accès au-delà des accès inclus dans votre contrat s'accompagne d'un message qui indique le montant facturé. Un accès en lecture n'est jamais facturé.
 - **Identité** : le nom affiché, le thème de couleurs de votre site et de l'espace client (cinq au choix), et votre logo (PNG, JPEG ou WebP, 512 Ko au plus).
+  Sous le thème, la **personnalisation** : une couleur d'accent (sélecteur ou code `#RRGGBB`, refusée si elle est illisible sur votre thème, avec la couleur acceptable la plus proche), une police parmi trois (classique, moderne, éditoriale), la taille du texte (standard, confortable, grand) et la forme des boutons et des cartes (anguleux ou arrondi). Le choix se voit tout de suite sur la page, avant l'enregistrement ; sans rien changer, rien ne change. Si un client choisit lui-même un thème dans son espace, son thème passe avant votre couleur d'accent.
 - **Mentions légales** : les mentions affichées sur le site (raison sociale, ORIAS, statut, association, médiateur, hébergeur, contact pour les données personnelles).
 - **Mon abonnement** : votre formule, le montant, le nombre d'accès facturables et la liste de vos comptes.
 

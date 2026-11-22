@@ -20,7 +20,7 @@ if (Astro.request.method === 'POST') {
         await creerMailer(env, Astro.url.hostname).envoyer(
           email,
           'Votre lien de connexion',
-          `Bonjour,\n\nPour accéder à votre espace, ouvrez ce lien. Il est valable 15 minutes et ne sert qu'une fois :\n\n${lien}\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce message.\n\nBeBess'Invest`,
+          `Bonjour,\n\nPour accéder à votre espace, ouvrez ce lien. Il est valable 15 minutes et ne sert qu'une fois :\n\n${lien}\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce message.\n\nLabije Cab`,
         );
       }
     } catch (erreur) {

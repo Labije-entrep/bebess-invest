@@ -1,4 +1,4 @@
-# Déploiement
+# Labije Cab : déploiement
 
 Prérequis : Node 22.18 ou plus récent (le banc de vérification utilise `node:sqlite`), un compte Cloudflare (`npx wrangler login`).
 

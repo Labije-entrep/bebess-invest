@@ -1,4 +1,4 @@
-# Fil d'étapes : de la recette à la production
+# Labije Cab : fil d'étapes, de la recette à la production
 
 Ce document se lit de haut en bas. Chaque case se coche une fois la ligne
 « **Preuve** » obtenue. Ne passez pas à l'étape suivante si une preuve manque.

@@ -1,4 +1,4 @@
-# Checklist de livraison d'un cabinet
+# Labije Cab : checklist de livraison d'un cabinet
 
 À dérouler à chaque nouveau cabinet, dans l'ordre. Une case se coche quand la **preuve** est obtenue.
 

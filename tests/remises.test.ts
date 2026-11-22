@@ -474,6 +474,8 @@ test('migration 0017 rejouée sur le schéma 0016 : bons émis, brouillons et an
   }
   assert.throws(() => db.exec("UPDATE bon_a_facturer SET remise_ponctuelle_montant = 5 WHERE id = 'b-emis'"), /figé/);
   assert.throws(() => db.exec("UPDATE bon_a_facturer SET total_ht = 1 WHERE id = 'b-annule'"), /figé/);
+  // Le code applicatif d'aujourd'hui lit aussi la table des lignes libres (0018) : on la crée avant de poser une remise.
+  appliquerMigration(db, '0018');
   // Sur un brouillon existant : une remise se pose, le bon émis refuse.
   assert.equal((await poserRemise(db, 'ta', 'b-brouillon', { code_ligne: 'socle', montant: 1000, motif: 'Reprise' }, EDITEUR)).ok, true);
   assert.deepEqual(await poserRemise(db, 'ta', 'b-emis', { code_ligne: 'socle', montant: 1000, motif: 'Reprise' }, EDITEUR), { ok: false, code: 'pas_brouillon' });

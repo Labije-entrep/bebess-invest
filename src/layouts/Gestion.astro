@@ -1,5 +1,6 @@
 ---
 import '../styles/app.css';
+import { attributsCabinet } from '../lib/personnalisation';
 import { CABINET_ECRIT, REGLAGES, aLeRole } from '../lib/roles';
 import { MENU_PILOTAGE, MENU_SITE_CONTENU } from '../lib/modules';
 
@@ -44,17 +45,17 @@ const liens = admin ? liensAdmin : liensGestionnaire.filter(visible);
 const ici = Astro.url.pathname.replace(/\/$/, '');
 ---
 <!doctype html>
-<html lang="fr" data-cabinet-theme={Astro.locals.tenant?.theme ?? 'maison'}>
+<html lang="fr" data-cabinet-theme={Astro.locals.tenant?.theme ?? 'maison'} {...attributsCabinet(Astro.locals.tenant?.personnalisation, Astro.locals.tenant?.theme ?? 'maison')}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>{titre} · {admin ? 'Console de l’éditeur' : 'Espace gestionnaire'}</title>
+    <title>{titre} · {admin ? 'Console Labije Cab' : 'Espace gestionnaire'}</title>
   </head>
   <body class="gest">
     <header class="gest-haut">
       <div class="wrap gest-barre">
-        <a class="gest-marque" href={admin ? '/admin' : '/gestionnaire'}>{admin ? 'Console de l’éditeur' : 'Espace gestionnaire'}</a>
+        <a class="gest-marque" href={admin ? '/admin' : '/gestionnaire'}>{admin ? 'Labije Cab · Console de l’éditeur' : 'Espace gestionnaire'}</a>
         <button class="btn gest-burger" type="button" aria-expanded="false" aria-controls="gest-menu" data-menu>Menu</button>
         <nav id="gest-menu" class="gest-menu" aria-label="Navigation">
           {liens.map(([href, nom]) =>
@@ -101,9 +102,16 @@ const ici = Astro.url.pathname.replace(/\/$/, '');
   .kpi:first-child { border-left: 0; padding-left: 0; }
   .kpi .chiffre { font-size: 1.75rem; display: block; margin-top: var(--espace-xs); }
   @media (max-width: 48rem) {
-    .kpis { grid-template-columns: 1fr 1fr; }
+    .kpis { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .kpi { min-width: 0; overflow-wrap: anywhere; }
     .kpi:nth-child(3) { border-left: 0; padding-left: 0; }
     .kpi:nth-child(n + 3) { border-top: 1px solid var(--filet); }
+  }
+  /* Une seule colonne sur un petit écran : les indicateurs ne débordent plus, même quand le cabinet choisit le texte « grand » (rem agrandi). */
+  @media (max-width: 30rem) {
+    .kpis { grid-template-columns: minmax(0, 1fr); }
+    .kpi { border-left: 0; padding-left: 0; }
+    .kpi:nth-child(n + 2) { border-top: 1px solid var(--filet); }
   }
   .onglets { display: flex; flex-wrap: wrap; gap: var(--espace); border-bottom: 1px solid var(--filet); margin: var(--espace-l) 0; }
   .onglets a { padding: var(--espace-xs) 0; font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--texte-2); border-bottom: 1px solid transparent; margin-bottom: -1px; }
