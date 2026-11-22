@@ -409,7 +409,7 @@ const themeActuel = THEMES.some((t) => t.id === identite.theme) ? identite.theme
         <fieldset class="themes">
           <legend class="etiquette">Thème</legend>
           {erreurs.theme && <p class="erreur">{erreurs.theme}</p>}
-          <p class="aide">Cinq combinaisons déjà validées en contraste ; il n’y a pas de couleur libre. Le thème s’applique au site public, à l’espace client et à ce module.</p>
+          <p class="aide">Cinq combinaisons déjà validées en contraste. Le thème s’applique au site public, à l’espace client et à ce module.</p>
           {THEMES.map((t) => (
             <label class="choix-theme">
               <input type="radio" name="theme" value={t.id} checked={v('theme', themeActuel) === t.id} />

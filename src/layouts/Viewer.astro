@@ -122,10 +122,10 @@ const suite = choix && /^[\w-]{1,64}$/.test(choix) ? `?p=${encodeURIComponent(ch
     .kpi:first-child { border-top: 0; }
   }
 
-  .tb { display: grid; grid-template-columns: 2fr 1fr; gap: var(--espace-xl); align-items: start; }
+  .tb { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--espace-xl); align-items: start; }
   .tb-lateral { border-left: 1px solid var(--filet); padding-left: var(--espace-l); }
   @media (max-width: 48rem) {
-    .tb { grid-template-columns: 1fr; gap: var(--espace-l); }
+    .tb { grid-template-columns: minmax(0, 1fr); gap: var(--espace-l); }
     .tb-lateral { border-left: 0; padding-left: 0; border-top: 1px solid var(--filet); padding-top: var(--espace-l); }
   }
   .bloc { margin-bottom: var(--espace-xl); }

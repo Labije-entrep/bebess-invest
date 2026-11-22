@@ -53,3 +53,5 @@ Ce qui a été observé en déroulant `RECETTE-E2E.md` et qui n'est pas un défa
 | 4 | Le lien de première connexion ne peut pas être ouvert en recette sans courriel. |
 | 6 | Les paragraphes se saisissent dans « Texte (paragraphes séparés par une ligne vide) », pas dans « Description (balise meta) ». Le cabinet doit avoir le module Site vitrine actif, sinon la page répond 404. |
 | 21-22 | Il faut un second nom d'hôte joignable pour jouer le cloisonnement. |
+
+**Pris en charge (session « personnalisation Labije Cab », 2026-11-22, branche `develop`)** : (1) ligne libre ponctuelle sur un bon brouillon et bon ponctuel « prestation » (migration `0018`, `src/lib/lignes-libres.ts`) ; (2) quatre réglages de personnalisation du site (accent contrôlé en contraste, police, taille du texte, forme ; `src/lib/personnalisation.ts`) ; (3) l'outil s'appelle désormais Labije Cab. Détail et choix à valider : dans la PR.

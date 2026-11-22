@@ -102,9 +102,16 @@ const ici = Astro.url.pathname.replace(/\/$/, '');
   .kpi:first-child { border-left: 0; padding-left: 0; }
   .kpi .chiffre { font-size: 1.75rem; display: block; margin-top: var(--espace-xs); }
   @media (max-width: 48rem) {
-    .kpis { grid-template-columns: 1fr 1fr; }
+    .kpis { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .kpi { min-width: 0; overflow-wrap: anywhere; }
     .kpi:nth-child(3) { border-left: 0; padding-left: 0; }
     .kpi:nth-child(n + 3) { border-top: 1px solid var(--filet); }
+  }
+  /* Une seule colonne sur un petit écran : les indicateurs ne débordent plus, même quand le cabinet choisit le texte « grand » (rem agrandi). */
+  @media (max-width: 30rem) {
+    .kpis { grid-template-columns: minmax(0, 1fr); }
+    .kpi { border-left: 0; padding-left: 0; }
+    .kpi:nth-child(n + 2) { border-top: 1px solid var(--filet); }
   }
   .onglets { display: flex; flex-wrap: wrap; gap: var(--espace); border-bottom: 1px solid var(--filet); margin: var(--espace-l) 0; }
   .onglets a { padding: var(--espace-xs) 0; font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--texte-2); border-bottom: 1px solid transparent; margin-bottom: -1px; }
