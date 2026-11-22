@@ -42,6 +42,9 @@
   /* Courbe de l'espace client : valorisation et cumul des versements */
   --courbe-valeur: #dcbf88;
   --courbe-versements: #7c8aa0;
+  /* Marque Labije (logos en SVG en ligne, composant MarqueLabije) : encre et rouille du pack, versions pour fond sombre */
+  --marque-encre: #f7f5f1;
+  --marque-rouille: #d98a5c;
 
   color-scheme: dark;
 
@@ -83,6 +86,9 @@
   --serie-5: #9b7bd4;
   --courbe-valeur: #dcbf88;
   --courbe-versements: #7c8aa0;
+  /* Marque Labije (logos en SVG en ligne, composant MarqueLabije) : encre et rouille du pack, versions pour fond sombre */
+  --marque-encre: #f7f5f1;
+  --marque-rouille: #d98a5c;
 }
 
 :root[data-cabinet-theme="nuit"] {
@@ -105,6 +111,9 @@
   --serie-5: #a58be0;
   --courbe-valeur: #adc9f3;
   --courbe-versements: #8a97b0;
+  /* Marque Labije (logos en SVG en ligne, composant MarqueLabije) : encre et rouille du pack, versions pour fond sombre */
+  --marque-encre: #f7f5f1;
+  --marque-rouille: #d98a5c;
 }
 
 :root[data-cabinet-theme="foret"] {
@@ -127,6 +136,9 @@
   --serie-5: #b690d6;
   --courbe-valeur: #bfe0a9;
   --courbe-versements: #86a392;
+  /* Marque Labije (logos en SVG en ligne, composant MarqueLabije) : encre et rouille du pack, versions pour fond sombre */
+  --marque-encre: #f7f5f1;
+  --marque-rouille: #d98a5c;
 }
 
 :root[data-cabinet-theme="pierre"] {
@@ -149,6 +161,9 @@
   --serie-5: #a98fd1;
   --courbe-valeur: #e6cba9;
   --courbe-versements: #a39b90;
+  /* Marque Labije (logos en SVG en ligne, composant MarqueLabije) : encre et rouille du pack, versions pour fond sombre */
+  --marque-encre: #f7f5f1;
+  --marque-rouille: #d98a5c;
 }
 
 :root[data-cabinet-theme="clair"] {
@@ -171,6 +186,9 @@
   --serie-5: #6e4fb5;
   --courbe-valeur: #6b4c12;
   --courbe-versements: #5b6b82;
+  /* Marque Labije (logos en SVG en ligne, composant MarqueLabije) : encre et rouille du pack, versions pour fond clair */
+  --marque-encre: #16242f;
+  --marque-rouille: #9e4e2f;
 }
 
 /* ---------------------------------------------------------------- personnalisation du cabinet (22/11/2026)

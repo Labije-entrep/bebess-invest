@@ -1,0 +1,29 @@
+---
+// Le logo Labije en SVG EN LIGNE (pas de balise img) : ses deux couleurs viennent des jetons --marque-encre et --marque-rouille de app.css,
+// définis dans chaque thème (papier et rouille claire sur les thèmes sombres, encre et rouille sur le thème clair). Le dessin est celui des SVG du
+// pack (public/marque/), dont seules les couleurs sont remplacées ; jamais déformé (la hauteur suit la largeur).
+// Règle du pack : 110 px de large au minimum à l'écran ; zone de protection d'un huitième de la hauteur du pictogramme, assurée par l'appelant.
+import cab from '../../public/marque/labije-cab-horizontale-couleur.svg?raw';
+import software from '../../public/marque/labije-software-horizontale-couleur.svg?raw';
+
+interface Props {
+  /** `cab` : le logiciel ; `software` : la société éditrice. */
+  variante?: 'cab' | 'software';
+  /** Largeur en pixels ; jamais en dessous de 110. */
+  largeur?: number;
+}
+const { variante = 'cab', largeur = 112 } = Astro.props;
+const brut = variante === 'software' ? software : cab;
+const corps = brut
+  .replace(/^[\s\S]*?<svg[^>]*>/, '')
+  .replace(/<\/svg>\s*$/, '')
+  .replaceAll('#16242F', 'var(--marque-encre)')
+  .replaceAll('#9E4E2F', 'var(--marque-rouille)');
+const viewBox = /viewBox="([^"]*)"/.exec(brut)?.[1] ?? '0 0 304 81';
+const nom = variante === 'software' ? 'Labije Software' : 'Labije Cab';
+const w = Math.max(110, Math.round(largeur));
+---
+<svg xmlns="http://www.w3.org/2000/svg" viewBox={viewBox} role="img" aria-label={nom} focusable="false" class="marque-labije" data-variante={variante} style={`width:${w}px;height:auto;display:block`}>
+  <title>{nom}</title>
+  <Fragment set:html={corps} />
+</svg>

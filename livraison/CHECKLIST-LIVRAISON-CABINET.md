@@ -9,6 +9,9 @@
 - [ ] La formule : annuelle (engagement de 12 mois) ou mensuelle, les accès inclus (3 par défaut), les frais d'installation.
 - [ ] Le **nom d'hôte** du cabinet (par exemple `patrimoine.cabinet.fr`) et la personne qui peut poser un enregistrement CNAME chez son hébergeur DNS.
 
+- [ ] **Identité de la plateforme renseignée** dans la console `/admin/reglages` (rubrique « Identité de la plateforme » : raison sociale, forme juridique, capital, SIREN, siège, directeur de la publication, contact, hébergeur). La console avertit quand elle est incomplète ; la page publique `/plateforme` de chaque cabinet n'affiche que les lignes renseignées. Les textes de cette page sont provisoires, à faire valider par un juriste.
+- [ ] **Preuve** : la page `/plateforme`, ouverte sur l'hôte du cabinet sans être connecté, affiche l'identité de la société éditrice.
+
 ## 1. Créer le cabinet (console de l'éditeur)
 - [ ] Console `/admin` › Nouveau cabinet : nom, nom d'hôte, premier gestionnaire, SIREN, adresse, contact de facturation, thème.
 - [ ] **Preuve** : la fiche du cabinet s'ouvre, « Cabinet créé » est affiché, l'associé figure dans les accès.

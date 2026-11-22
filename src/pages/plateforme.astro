@@ -1,0 +1,51 @@
+---
+export const prerender = false;
+import Connexion from '../layouts/Connexion.astro';
+import MarqueLabije from '../components/MarqueLabije.astro';
+import { envDe } from '../lib/mail';
+import { identitePlateforme, lignesPlateforme } from '../lib/plateforme';
+
+// Les mentions de la plateforme : publique, SANS session, sur n'importe quel hôte de cabinet (le middleware ne la garde pas et aucun module ne la ferme).
+// Gabarit sobre de la connexion, thème du cabinet. Aucune donnée du cabinet n'est lue ici : seulement l'identité de l'éditeur (réglages globaux).
+//
+// TEXTES PROVISOIRES : à faire valider par un juriste avant tout usage commercial ; ils n'affirment aucune conformité.
+// Le contenu des réglages est inséré comme TEXTE (échappé par Astro), jamais comme HTML (aucun set:html ici).
+const lignes = lignesPlateforme(await identitePlateforme(envDe(Astro.locals).DB));
+const contact = lignes.find((l) => l.libelle === 'Contact')?.valeur ?? null;
+---
+<Connexion titre="Mentions de la plateforme" pied={false}>
+  <h1>Mentions de la plateforme</h1>
+  <div class="pf-logos">
+    <MarqueLabije variante="cab" largeur={160} />
+    <MarqueLabije variante="software" largeur={160} />
+  </div>
+  <p>Labije Cab est un logiciel édité par Labije Software.</p>
+  <p><strong>Labije Cab est un outil mis à disposition de votre cabinet : le conseil est fourni par votre cabinet, pas par Labije Software.</strong></p>
+
+  {lignes.length > 0 && (
+    <>
+      <h2>Société éditrice</h2>
+      <dl class="pf-def">
+        {lignes.map((l) => (<><dt class="etiquette">{l.libelle}</dt><dd class={l.long ? 'pf-multi' : undefined}>{l.valeur}</dd></>))}
+      </dl>
+    </>
+  )}
+
+  <h2>Données personnelles</h2>
+  <p>
+    Votre cabinet est responsable du traitement des données personnelles de ses clients et de son équipe. Labije Software les traite pour le compte du cabinet,
+    en qualité de sous-traitant, et uniquement pour faire fonctionner Labije Cab. Pour exercer vos droits (accès, rectification, effacement), adressez-vous
+    d’abord à votre cabinet{contact ? <> ; vous pouvez aussi écrire à Labije Software : {contact}</> : ''}.
+  </p>
+  <p class="cx-note">Textes provisoires, rédigés simplement : ils restent à faire valider par un juriste.</p>
+  <p class="cx-note"><a href="/connexion">← Retour à la connexion</a></p>
+</Connexion>
+
+<style is:global>
+  .pf-logos { display: flex; flex-wrap: wrap; gap: var(--espace) var(--espace-l); align-items: center; margin: var(--espace) 0; }
+  .pf-def { display: grid; grid-template-columns: max-content 1fr; gap: var(--espace-xs) var(--espace); margin: 0 0 var(--espace); }
+  .pf-def dd { margin: 0; overflow-wrap: anywhere; }
+  .pf-multi { white-space: pre-line; }
+  .cx-boite h2 { font-size: 1.2rem; margin-top: var(--espace-l); }
+  @media (max-width: 30rem) { .pf-def { grid-template-columns: 1fr; } }
+</style>

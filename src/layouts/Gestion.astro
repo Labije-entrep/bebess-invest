@@ -1,5 +1,7 @@
 ---
 import '../styles/app.css';
+import MarqueLabije from '../components/MarqueLabije.astro';
+import PiedMarque from '../components/PiedMarque.astro';
 import { attributsCabinet } from '../lib/personnalisation';
 import { CABINET_ECRIT, REGLAGES, aLeRole } from '../lib/roles';
 import { MENU_PILOTAGE, MENU_SITE_CONTENU } from '../lib/modules';
@@ -55,7 +57,7 @@ const ici = Astro.url.pathname.replace(/\/$/, '');
   <body class="gest">
     <header class="gest-haut">
       <div class="wrap gest-barre">
-        <a class="gest-marque" href={admin ? '/admin' : '/gestionnaire'}>{admin ? 'Labije Cab · Console de l’éditeur' : 'Espace gestionnaire'}</a>
+        <a class="gest-marque" href={admin ? '/admin' : '/gestionnaire'}>{admin ? <span class="gest-marque-console"><MarqueLabije variante="cab" largeur={120} /><span>Console de l’éditeur</span></span> : 'Espace gestionnaire'}</a>
         <button class="btn gest-burger" type="button" aria-expanded="false" aria-controls="gest-menu" data-menu>Menu</button>
         <nav id="gest-menu" class="gest-menu" aria-label="Navigation">
           {liens.map(([href, nom]) =>
@@ -67,6 +69,7 @@ const ici = Astro.url.pathname.replace(/\/$/, '');
       </div>
     </header>
     <main class="wrap section"><slot /></main>
+    {!admin && <PiedMarque />}
     <script is:inline nonce={Astro.locals.nonce}>
       var b = document.querySelector('[data-menu]'), m = document.getElementById('gest-menu');
       b.addEventListener('click', function () {
@@ -85,6 +88,7 @@ const ici = Astro.url.pathname.replace(/\/$/, '');
   .gest-haut { border-bottom: 1px solid var(--filet); }
   .gest-barre { display: flex; align-items: center; justify-content: space-between; gap: var(--espace); min-height: 4rem; flex-wrap: wrap; }
   .gest-marque { font-family: var(--serif); font-weight: 300; font-size: 1.25rem; color: var(--texte); }
+  .gest-marque-console { display: inline-flex; align-items: center; gap: var(--espace-s); }
   .gest-menu { display: flex; gap: var(--espace); flex-wrap: wrap; }
   .gest-menu a { font-size: 0.875rem; color: var(--texte-2); }
   .gest-menu a[aria-current='page'] { color: var(--accent-clair); }
